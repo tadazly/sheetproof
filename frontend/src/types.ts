@@ -29,6 +29,9 @@ export interface Summary {
     rightLabel: string;
     readonlyLeft: boolean;
     output: string;
+    repositoryPath?: string;
+    repositoryFile?: string;
+    repositoryRef?: string;
   };
   diff: {
     equal: boolean;
@@ -61,4 +64,47 @@ export interface Region {
   fromCol: number;
   toCol: number;
   cells: RegionCell[];
+}
+
+export interface RepositoryBranch {
+  name: string;
+  fullName: string;
+  kind: "local" | "remote";
+}
+
+export interface RepositoryView {
+  name: string;
+  path: string;
+  currentBranch: string;
+  detached: boolean;
+  workspaceDirty: boolean;
+  operation: string;
+  files: string[];
+  branches: RepositoryBranch[];
+  defaultRef: string;
+  selectedFile: string;
+  selectedRef: string;
+  leftState: string;
+  rightState: string;
+  leftMessage: string;
+  rightMessage: string;
+  fileModified: boolean;
+  sidebarWidth: number;
+  notice: string;
+  loading: boolean;
+  loadGeneration: number;
+  comparisonActive: boolean;
+}
+
+export interface RepositoryResult {
+  repository: RepositoryView;
+  summary: Summary | null;
+}
+
+export interface BootstrapState {
+  loading: boolean;
+  hasSession: boolean;
+  error: string;
+  mode?: "" | "files" | "repository";
+  repository?: RepositoryView;
 }

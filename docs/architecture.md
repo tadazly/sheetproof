@@ -2,6 +2,26 @@
 
 `ugxlsx` 将 Excel 处理保持在 Go 后端，GUI 与 CLI 复用相同领域逻辑。
 
+## 两种入口模式
+
+直接文件模式仍通过两个 `.xlsx` 路径建立普通 `Session`。仓库模式由
+`internal/repository` 先定位 Git 工作区根目录、扫描 `.xlsx` 相对路径并
+读取已有引用：
+
+```text
+工作区 <root>/<relative.xlsx> ── OpenLeft ── 可写左侧
+refs/heads/* 或 refs/remotes/* ── git show ── 系统临时 XLSX ── 只读右侧
+```
+
+左侧始终从文件系统读取，因此包含尚未提交的工作区修改。右侧使用完整
+`refs/heads/...` 或 `refs/remotes/...` 引用读取，不执行 checkout、
+switch 或 fetch。临时文件位于系统临时目录，切换来源和退出时清理。
+
+`Session.ReplaceRight` 只替换只读来源并重新计算差异，不改变左侧内存编辑、
+撤销栈和保存目标。`Session.DetachRight` 用于“未选择分支”“分支中没有同
+路径文件”等状态；此时左侧仍可显示和编辑，但不制造空工作簿、不计算虚假
+差异，也不允许合并。
+
 ## 数据流
 
 1. `workbook.Reader` 用 excelize 打开 `.xlsx`，同时计算文件大小、mtime 和 SHA-256。
@@ -19,9 +39,10 @@
 - `internal/history`：会话级命令栈。
 - `internal/storage`：安全保存与保存后验证。
 - `internal/preferences`：跨会话保存“另存为”的最后目录。
+- `internal/repository`：Git 根目录发现、XLSX 扫描、分支排序、状态读取和引用对象导出。
 - `internal/app`：并发安全的 GUI/CLI 共享会话。
 - `internal/cli`：命令解析、结构化输出和退出码。
-- `frontend`：Vue 3 双栏视口化网格。
+- `frontend`：Vue 3 仓库导航和双栏视口化网格。
 
 ## 并发和内存
 
@@ -31,11 +52,39 @@
 
 启动时后端异步打开命令行传入的两个工作簿，前端轮询 `Bootstrap`。启动全过程显示居中的阻塞式加载提示，完成后才展示可操作状态。
 
+仓库文件或引用切换使用独立的递增请求序号。切换开始时界面先进入明确的
+loading/comparing 状态；只有仍属于最新选择的结果可以安装到界面。区域请求
+和仓库请求分别编号，避免快速点击文件、分支或差异导航时互相覆盖。
+
+## 前端交互结构
+
+直接文件模式使用“工作表/差异索引 + 左右网格”。仓库模式在同一框架左侧
+增加仓库侧栏，并通过页签复用有限宽度：
+
+```text
+仓库文件页签：搜索 + XLSX 目录树 + 刷新
+工作表与差异页签：Sheet 切换 + 差异索引
+内容区：当前工作区可写网格 + 对比分支只读网格
+底部：当前单元格左右值、类型和差异状态
+```
+
+左侧原位编辑只是 `Controller.EditLeft` 的输入界面，不持有独立工作簿状态。
+Enter 或失焦提交，Esc 取消。输入与右侧 `raw` 完全一致时，前端优先沿用右侧
+的数字/文本类型；否则按公式前缀和数字语法推断。提交成功后重新获取 Summary、
+Differences 和 Region，因此差异高亮仍以 Go 后端结果为准。
+
+选中态和差异态是可叠加状态：无差异选中项使用蓝色；差异选中项保留黄色/
+橙色标记并叠加蓝色边框；缺失单元格保留红色系标记。这避免选中后无法判断
+原单元格是否存在差异。
+
 ## 前后端 API
 
 Wails 暴露的 `Controller` 方法如下：
 
 - `Bootstrap`、`SelectAndOpen`、`OpenFiles`：启动和文件选择。
+- `SelectRepository`、`OpenRepository`、`Repository`：打开和读取仓库状态。
+- `SelectRepositoryFile`、`SelectRepositoryRef`：加载工作区文件并替换右侧引用。
+- `RefreshRepository`、`SetRepositorySidebarWidth`：重新扫描和持久化目录树宽度。
 - `Summary`：工作簿、工作表、未保存状态和撤销数量摘要。
 - `Region`：读取指定工作表的局部矩形区域。
 - `Differences`：分页读取工作表差异索引，单次最多 10,000 条。
@@ -65,6 +114,19 @@ Wails 暴露的 `Controller` 方法如下：
 5. 再次检查目标身份，避免保存期间发生竞争修改。
 6. 保留原权限并原子替换：Unix 使用同目录 rename，Windows 使用 `MoveFileEx(REPLACE_EXISTING | WRITE_THROUGH)`。
 7. 同步目录，重新计算身份并再次打开最终文件。
+
+仓库模式把 `Output` 清空，保存目标固定为当前工作区中的所选相对路径。
+保存后重新读取 Git 状态以更新 modified 标记，但不会暂存、提交或清理
+Git 工作区。merge、rebase、cherry-pick 等操作进行中时，保存前由控制器
+显示警告。
+
+## Git 安全边界
+
+所有 Git 子进程都使用 `exec.CommandContext` 参数数组、明确的
+`git -C <root>` 和 15 秒超时。文件路径先规范化为仓库内 `.xlsx` 相对路径；
+引用必须来自 `for-each-ref` 返回的候选集合。分支下拉框和内部状态保留完整
+引用，避免本地与远端同名时发生歧义。仓库功能不调用 shell，也不执行任何
+写 Git 状态的命令。
 
 ## 保真边界
 

@@ -3,6 +3,7 @@ package preferences
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -11,6 +12,8 @@ const preferencesFilename = "preferences.json"
 
 type savePreferences struct {
 	LastSaveDirectory string `json:"lastSaveDirectory"`
+	LastRepository    string `json:"lastRepository,omitempty"`
+	RepositoryWidth   int    `json:"repositoryWidth,omitempty"`
 }
 
 // Store persists small, non-sensitive GUI preferences for the current user.
@@ -34,8 +37,8 @@ func NewStoreAt(path string) Store {
 // SaveDirectory returns the last successful Save As directory, or the platform
 // Downloads directory on first use. Missing and corrupt preferences are ignored.
 func (s Store) SaveDirectory() string {
-	if saved := s.load(); directoryExists(saved) {
-		return saved
+	if saved := s.load().LastSaveDirectory; directoryExists(saved) {
+		return filepath.Clean(saved)
 	}
 	if downloads := platformDownloadsDirectory(); directoryExists(downloads) {
 		return downloads
@@ -61,7 +64,60 @@ func (s Store) RecordSaveTarget(target string) error {
 	if !directoryExists(directory) {
 		return os.ErrNotExist
 	}
-	data, err := json.MarshalIndent(savePreferences{LastSaveDirectory: directory}, "", "  ")
+	value := s.load()
+	value.LastSaveDirectory = directory
+	return s.write(value)
+}
+
+// LastRepository returns the last successfully opened repository path. The
+// caller intentionally receives missing paths too, so startup can report that
+// the recent repository is no longer available.
+func (s Store) LastRepository() string {
+	value := s.load().LastRepository
+	if value == "" {
+		return ""
+	}
+	return filepath.Clean(value)
+}
+
+func (s Store) RecordRepository(root string) error {
+	if s.path == "" {
+		return errors.New("user configuration directory is unavailable")
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	if !directoryExists(absolute) {
+		return os.ErrNotExist
+	}
+	value := s.load()
+	value.LastRepository = filepath.Clean(absolute)
+	return s.write(value)
+}
+
+func (s Store) RepositoryWidth() int {
+	width := s.load().RepositoryWidth
+	if width < 180 || width > 520 {
+		return 280
+	}
+	return width
+}
+
+func (s Store) RecordRepositoryWidth(width int) error {
+	if width < 180 || width > 520 {
+		return fmt.Errorf("repository sidebar width must be between 180 and 520")
+	}
+	value := s.load()
+	value.RepositoryWidth = width
+	return s.write(value)
+}
+
+func (s Store) write(value savePreferences) error {
+	if s.path == "" {
+		return errors.New("user configuration directory is unavailable")
+	}
+	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -97,19 +153,19 @@ func (s Store) RecordSaveTarget(target string) error {
 	return os.WriteFile(s.path, data, 0o600)
 }
 
-func (s Store) load() string {
+func (s Store) load() savePreferences {
 	if s.path == "" {
-		return ""
+		return savePreferences{}
 	}
 	data, err := os.ReadFile(s.path)
 	if err != nil {
-		return ""
+		return savePreferences{}
 	}
 	var value savePreferences
 	if json.Unmarshal(data, &value) != nil {
-		return ""
+		return savePreferences{}
 	}
-	return filepath.Clean(value.LastSaveDirectory)
+	return value
 }
 
 func directoryExists(path string) bool {

@@ -30,6 +30,7 @@ func launchGUI(left, right string, appOptions coreapp.Options) error {
 		Title: title, Width: 1440, Height: 900, MinWidth: 960, MinHeight: 640,
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 247, G: 248, B: 250, A: 1},
+		DragAndDrop:      &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: false},
 		OnStartup:        controller.startup, OnShutdown: controller.shutdown,
 		OnBeforeClose: controller.beforeClose,
 		Bind:          []interface{}{controller},

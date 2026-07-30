@@ -18,11 +18,14 @@ import (
 )
 
 type Options struct {
-	Title        string `json:"title"`
-	LeftLabel    string `json:"leftLabel"`
-	RightLabel   string `json:"rightLabel"`
-	ReadonlyLeft bool   `json:"readonlyLeft"`
-	Output       string `json:"output"`
+	Title          string `json:"title"`
+	LeftLabel      string `json:"leftLabel"`
+	RightLabel     string `json:"rightLabel"`
+	ReadonlyLeft   bool   `json:"readonlyLeft"`
+	Output         string `json:"output"`
+	RepositoryPath string `json:"repositoryPath,omitempty"`
+	RepositoryFile string `json:"repositoryFile,omitempty"`
+	RepositoryRef  string `json:"repositoryRef,omitempty"`
 }
 
 type Summary struct {
@@ -91,17 +94,79 @@ func Open(leftPath, rightPath string, options Options) (*Session, error) {
 		_ = leftFile.Close()
 		return nil, err
 	}
+	options = defaultOptions(options)
+	return &Session{
+		leftFile: leftFile, rightFile: rightFile,
+		left: left, right: right, currentDiff: diff.Compare(left, right),
+		options: options, stateID: 1, savedState: 1, nextState: 2,
+	}, nil
+}
+
+// OpenLeft opens the editable workbook without manufacturing an empty right
+// workbook. Repository mode uses it while no comparison ref is selected or the
+// selected ref does not contain the same path.
+func OpenLeft(leftPath string, options Options) (*Session, error) {
+	reader := workbook.Reader{}
+	leftFile, left, err := reader.Open(leftPath)
+	if err != nil {
+		return nil, err
+	}
+	options = defaultOptions(options)
+	return &Session{
+		leftFile: leftFile, left: left, options: options,
+		stateID: 1, savedState: 1, nextState: 2,
+	}, nil
+}
+
+func defaultOptions(options Options) Options {
 	if options.LeftLabel == "" {
 		options.LeftLabel = "本地（可编辑）"
 	}
 	if options.RightLabel == "" {
 		options.RightLabel = "对比来源（只读）"
 	}
-	return &Session{
-		leftFile: leftFile, rightFile: rightFile,
-		left: left, right: right, currentDiff: diff.Compare(left, right),
-		options: options, stateID: 1, savedState: 1, nextState: 2,
-	}, nil
+	return options
+}
+
+// ReplaceRight changes only the read-only comparison source. In-memory edits,
+// undo history and the left save target remain intact.
+func (s *Session) ReplaceRight(rightPath, rightLabel string) error {
+	reader := workbook.Reader{}
+	rightFile, right, err := reader.Open(rightPath)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	old := s.rightFile
+	s.rightFile = rightFile
+	s.right = right
+	s.currentDiff = diff.Compare(s.left, right)
+	if rightLabel != "" {
+		s.options.RightLabel = rightLabel
+	}
+	s.mu.Unlock()
+	if old != nil {
+		return old.Close()
+	}
+	return nil
+}
+
+// DetachRight keeps the editable workbook open while explicitly representing
+// that there is no right-side workbook to compare.
+func (s *Session) DetachRight(rightLabel string) error {
+	s.mu.Lock()
+	old := s.rightFile
+	s.rightFile = nil
+	s.right = nil
+	s.currentDiff = nil
+	if rightLabel != "" {
+		s.options.RightLabel = rightLabel
+	}
+	s.mu.Unlock()
+	if old != nil {
+		return old.Close()
+	}
+	return nil
 }
 
 func (s *Session) Close() error {
@@ -121,14 +186,32 @@ func (s *Session) Summary() Summary {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	selected := ""
-	if len(s.currentDiff.Sheets) > 0 {
-		selected = s.currentDiff.Sheets[0].Name
+	presentation := s.presentationDiffLocked()
+	if len(presentation.Sheets) > 0 {
+		selected = presentation.Sheets[0].Name
 	}
 	return Summary{
-		Options: s.options, Diff: compactDiff(s.currentDiff),
+		Options: s.options, Diff: compactDiff(presentation),
 		Dirty: s.dirty, UndoCount: s.history.Len(),
 		Warnings: append([]string{}, s.warnings...), SelectedSheet: selected,
 	}
+}
+
+func (s *Session) presentationDiffLocked() *diff.WorkbookDiff {
+	if s.currentDiff != nil {
+		return s.currentDiff
+	}
+	result := &diff.WorkbookDiff{
+		Equal: false, LeftFile: s.left.Path, Sheets: make([]*diff.SheetDiff, 0, len(s.left.Sheets)),
+	}
+	for _, sheet := range s.left.Sheets {
+		result.Sheets = append(result.Sheets, &diff.SheetDiff{
+			Name: sheet.Name, Status: diff.SheetEqual, LeftIndex: sheet.Index, RightIndex: -1,
+			MaxRow: sheet.MaxRow, MaxCol: sheet.MaxCol,
+		})
+	}
+	result.SheetCount = len(result.Sheets)
+	return result
 }
 
 func compactDiff(source *diff.WorkbookDiff) *diff.WorkbookDiff {
@@ -145,6 +228,12 @@ func compactDiff(source *diff.WorkbookDiff) *diff.WorkbookDiff {
 func (s *Session) Differences(sheet string, offset, limit int) ([]diff.CellDiff, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if s.currentDiff == nil {
+		if s.left.ByName[sheet] != nil {
+			return []diff.CellDiff{}, nil
+		}
+		return nil, fmt.Errorf("worksheet %q not found", sheet)
+	}
 	for _, item := range s.currentDiff.Sheets {
 		if item.Name != sheet {
 			continue
@@ -171,17 +260,22 @@ func (s *Session) Region(sheet string, fromRow, rowCount, fromCol, colCount int)
 		return Region{}, fmt.Errorf("invalid region (maximum 300 rows by 100 columns)")
 	}
 	leftSheet := s.left.ByName[sheet]
-	rightSheet := s.right.ByName[sheet]
+	var rightSheet *workbook.SheetSnapshot
+	if s.right != nil {
+		rightSheet = s.right.ByName[sheet]
+	}
 	if leftSheet == nil && rightSheet == nil {
 		return Region{}, fmt.Errorf("worksheet %q not found", sheet)
 	}
 	statuses := make(map[workbook.CellKey]diff.CellStatus)
-	for _, sheetDiff := range s.currentDiff.Sheets {
-		if sheetDiff.Name == sheet {
-			for _, cellDiff := range sheetDiff.Differences {
-				statuses[workbook.CellKey{Row: cellDiff.Ref.Row, Col: cellDiff.Ref.Col}] = cellDiff.Status
+	if s.currentDiff != nil {
+		for _, sheetDiff := range s.currentDiff.Sheets {
+			if sheetDiff.Name == sheet {
+				for _, cellDiff := range sheetDiff.Differences {
+					statuses[workbook.CellKey{Row: cellDiff.Ref.Row, Col: cellDiff.Ref.Col}] = cellDiff.Status
+				}
+				break
 			}
-			break
 		}
 	}
 	region := Region{
@@ -216,6 +310,9 @@ func (s *Session) CopyRightToLeftMany(sheet string, cells []CellCoordinate) erro
 	defer s.mu.Unlock()
 	if s.options.ReadonlyLeft {
 		return fmt.Errorf("left workbook is read-only")
+	}
+	if s.right == nil || s.rightFile == nil {
+		return fmt.Errorf("当前没有可用于合并的右侧工作簿")
 	}
 	if s.right.ByName[sheet] == nil || s.left.ByName[sheet] == nil {
 		return fmt.Errorf("worksheet %q must exist on both sides", sheet)
@@ -465,6 +562,9 @@ func (s *Session) updateCellLocked(ref workbook.CellRef, state merge.CellState) 
 				sheet.CellList = append(sheet.CellList[:index], sheet.CellList[index+1:]...)
 			}
 		}
+	}
+	if s.currentDiff == nil || s.right == nil {
+		return nil
 	}
 	return s.currentDiff.UpdateCell(ref, state.Value, s.right.ByName[ref.Sheet].Cell(ref.Row, ref.Col))
 }

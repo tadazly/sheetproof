@@ -11,6 +11,7 @@ import (
 
 	"github.com/ug-tools/ugxlsx/internal/app"
 	"github.com/ug-tools/ugxlsx/internal/diff"
+	"github.com/ug-tools/ugxlsx/internal/repository"
 	"github.com/ug-tools/ugxlsx/internal/workbook"
 )
 
@@ -40,6 +41,8 @@ func Run(args []string, stdout, stderr io.Writer, launch Launcher) int {
 		return runDiff(args[1:], stdout, stderr)
 	case "compare":
 		return runCompare(args[1:], stderr, launch)
+	case "repo":
+		return runRepository(args[1:], stderr, launch)
 	case "help", "--help", "-h":
 		printUsage(stdout)
 		return ExitOK
@@ -51,6 +54,63 @@ func Run(args []string, stdout, stderr io.Writer, launch Launcher) int {
 		printUsage(stderr)
 		return ExitRuntime
 	}
+}
+
+func runRepository(args []string, stderr io.Writer, launch Launcher) int {
+	flags := flag.NewFlagSet("repo", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	path := flags.String("path", "", "local Git repository path")
+	file := flags.String("file", "", "repository-relative .xlsx path")
+	ref := flags.String("ref", "", "local or remote comparison ref")
+	if err := flags.Parse(args); err != nil {
+		return ExitRuntime
+	}
+	if *path == "" {
+		fmt.Fprintln(stderr, "--path is required")
+		return ExitRuntime
+	}
+	repo, info, err := repository.Open(*path)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return ExitRuntime
+	}
+	normalizedFile := filepath.ToSlash(*file)
+	if normalizedFile != "" {
+		found := false
+		for _, candidate := range info.Files {
+			if candidate == normalizedFile {
+				found = true
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(stderr, "仓库中不存在指定的 XLSX 文件: %s\n", *file)
+			return ExitRead
+		}
+		if _, err := repo.ResolveRelativePath(normalizedFile); err != nil {
+			fmt.Fprintln(stderr, err)
+			return ExitRuntime
+		}
+	}
+	fullRef := ""
+	if *ref != "" {
+		branch, err := repo.ResolveReference(*ref, info.Branches)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return ExitRuntime
+		}
+		fullRef = branch.FullName
+	}
+	options := app.Options{
+		RepositoryPath: info.Root,
+		RepositoryFile: normalizedFile,
+		RepositoryRef:  fullRef,
+	}
+	if err := launch("", "", options); err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitCode(err)
+	}
+	return ExitOK
 }
 
 func runDiff(args []string, stdout, stderr io.Writer) int {
@@ -194,6 +254,7 @@ func printUsage(w io.Writer) {
 
 Usage:
   ugxlsx compare [--left FILE --right FILE] [--title TEXT] [--left-label TEXT] [--right-label TEXT] [--readonly-left] [--output FILE]
+  ugxlsx repo --path DIRECTORY [--file RELATIVE.xlsx] [--ref BRANCH]
   ugxlsx diff --left FILE --right FILE [--format json|text]
   ugxlsx`)
 }

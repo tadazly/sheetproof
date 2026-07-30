@@ -1,4 +1,4 @@
-import type { CellDiff, Region, Summary } from "./types";
+import type { BootstrapState, CellDiff, Region, RepositoryResult, Summary } from "./types";
 
 function controller(): Record<string, (...args: any[]) => Promise<any>> {
   const value = window.go?.main?.Controller;
@@ -7,11 +7,21 @@ function controller(): Record<string, (...args: any[]) => Promise<any>> {
 }
 
 export const backend = {
-  bootstrap: (): Promise<{ loading: boolean; hasSession: boolean; error: string }> =>
+  bootstrap: (): Promise<BootstrapState> =>
     controller().Bootstrap(),
   selectAndOpen: (): Promise<Summary> => controller().SelectAndOpen(),
   openFiles: (left: string, right: string): Promise<Summary> =>
     controller().OpenFiles(left, right),
+  selectRepository: (): Promise<RepositoryResult> => controller().SelectRepository(),
+  openRepository: (path: string): Promise<RepositoryResult> => controller().OpenRepository(path),
+  repository: (): Promise<RepositoryResult> => controller().Repository(),
+  selectRepositoryFile: (path: string): Promise<RepositoryResult> =>
+    controller().SelectRepositoryFile(path),
+  selectRepositoryRef: (ref: string): Promise<RepositoryResult> =>
+    controller().SelectRepositoryRef(ref),
+  refreshRepository: (): Promise<RepositoryResult> => controller().RefreshRepository(),
+  setRepositorySidebarWidth: (width: number): Promise<void> =>
+    controller().SetRepositorySidebarWidth(width),
   summary: (): Promise<Summary> => controller().Summary(),
   region: (sheet: string, row: number, rows: number, col: number, cols: number): Promise<Region> =>
     controller().Region(sheet, row, rows, col, cols),

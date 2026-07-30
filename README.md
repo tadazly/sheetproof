@@ -4,6 +4,13 @@
 
 ## 已实现
 
+- 以本地 Git 工作区为入口的三栏界面：仓库 XLSX 目录树、当前工作区、其他本地/远端分支
+- 从仓库子目录自动定位根目录，支持目录拖放、最近仓库自动恢复和可调目录树宽度
+- 仓库目录树支持紧凑字号、按完整相对路径搜索，以及“仓库文件 / 工作表与差异”页签
+- 其他分支通过 Git 对象读取到系统临时目录，不 checkout、switch、fetch 或修改工作区
+- 本地分支优先、远端分支随后；排除当前分支和 `origin/HEAD` 等符号引用
+- 分支缺少同路径文件、无其他分支、Detached HEAD、Git 操作中、损坏 XLSX 等独立界面状态
+- 仓库模式合并和编辑只保存到当前工作区文件，不自动 add、commit 或 push
 - `.xlsx` 工作簿、工作表集合和工作表顺序对比
 - 文本、数字、布尔、日期、显式空字符串、真正空单元格、公式及类型差异
 - 左右双栏、同步滚动、窗口化渲染、差异分页索引和上一处/下一处导航
@@ -13,6 +20,8 @@
 - 单格、Shift 范围、鼠标拖拽范围和整行选择
 - 右键菜单及批量复制差异到左侧（值、公式、样式、超链接、批注）
 - 左侧文本、数字、公式和清空编辑
+- 左侧双击原位编辑，底部两行显示左右值、类型和差异状态
+- 选中差异保留黄色/橙色差异标记及蓝色边框；编辑到真正相等后高亮立即消失
 - 会话级复制/批量复制/编辑撤销；支持 Ctrl/Command+Z，保存后仍保留历史
 - 默认保存左侧；`Ctrl/Command + Shift + S` 另存为
 - 另存为默认沿用左侧文件名，首次打开系统下载目录，并记住上次成功保存目录
@@ -58,6 +67,25 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 dev
 ```
 
 ## CLI
+
+### 打开本地 Git 仓库
+
+```bash
+ugxlsx repo --path "/path/to/repository"
+```
+
+可以直接定位仓库内的表格和对比分支：
+
+```bash
+ugxlsx repo \
+  --path "/path/to/repository" \
+  --file "config/activity/reward.xlsx" \
+  --ref "origin/develop"
+```
+
+`--file` 必须是仓库根目录下的 `.xlsx` 相对路径，`--ref` 必须是当前本地
+仓库已经存在的本地分支或远端跟踪分支。该命令不会执行 `git fetch`，也不会
+切换当前分支。
 
 ### UGit 配置
 
@@ -128,7 +156,7 @@ UGit 会启动 GUI，并在窗口关闭后继续。
 | 范围选择 | Shift 扩展，或按住鼠标拖选 |
 | 整行选择 | 点击或拖动行号，Shift 可扩展多行 |
 | 复制到左侧 | 右键选区或点击顶部“复制到左侧” |
-| 编辑左侧 | 选择单格后在底部编辑区设置文本、数字、公式或清空 |
+| 编辑左侧 | 双击左侧单元格直接编辑；Enter 或失焦提交，Esc 取消 |
 | 撤销 | `Ctrl/Command + Z`；保存后撤销历史仍保留 |
 | 另存为 | `Ctrl/Command + Shift + S` |
 
@@ -195,20 +223,26 @@ internal/merge      单元格捕获和跨工作簿应用
 internal/history    撤销栈
 internal/storage    安全写入
 internal/preferences 另存为目录偏好
+internal/repository Git 工作区发现、XLSX 扫描、分支与对象读取
 internal/app        共享会话和视口 API
 internal/cli        命令、JSON/text 输出、退出码
 frontend            Vue 3 + TypeScript 窗口化双栏 UI
 cmd/gentestdata     验收工作簿生成器
 docs                架构和手工验收
+.agents/skills      项目级 Codex 接手与验证技能
+AGENTS.md            项目协作规则和兼容不变量
 ```
 
 详细设计见 [docs/architecture.md](docs/architecture.md)。
-第一轮完整交付状态和第二轮接手入口见
+当前工作区状态和后续迭代入口见
+[docs/iteration-2-handoff.md](docs/iteration-2-handoff.md)；可复制的新会话提示词见
+[docs/new-session-prompt.md](docs/new-session-prompt.md)。第一轮历史事实保留在
 [docs/iteration-1-handoff.md](docs/iteration-1-handoff.md)。
 
 ## 已知限制
 
 - 不支持 `.xls`、`.xlsm`、`.ods`、CSV 和加密工作簿。
+- 仓库模式不负责 fetch、pull、push、add、commit、分支创建/删除/切换或冲突恢复。
 - 不编辑图片、图表、数据透视表、宏、外部连接或条件格式。
 - 右侧独有工作表会显示，但首版没有“一键复制整个工作表”；可逐单元格合并的前提是工作表两侧都存在。
 - 范围和整行选择只会复制选区内存在差异的单元格；单次最多提交 10,000 个坐标。

@@ -300,6 +300,50 @@ func TestSessionRejectsReadOnlyLeftFile(t *testing.T) {
 	}
 }
 
+func TestSessionCanAttachAndDetachRightWithoutLosingLeftEdits(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := OpenLeft(pair.Left, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if session.Summary().Diff.RightFile != "" || session.Summary().Diff.DifferenceCount != 0 {
+		t.Fatalf("left-only summary = %+v", session.Summary().Diff)
+	}
+	if err := session.EditLeft(workbook.CellRef{Sheet: "数据 表", Row: 1, Col: 1}, "未保存编辑", "text"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.ReplaceRight(pair.Right, "develop"); err != nil {
+		t.Fatal(err)
+	}
+	region, err := session.Region("数据 表", 1, 1, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Left.Raw != "未保存编辑" || region.Cells[0].Right.Raw != "新文本" {
+		t.Fatalf("region after attach = %+v", region.Cells[0])
+	}
+	if !session.Dirty() || session.Summary().UndoCount != 1 {
+		t.Fatalf("left edit state was lost: %+v", session.Summary())
+	}
+	if err := session.DetachRight("missing"); err != nil {
+		t.Fatal(err)
+	}
+	region, err = session.Region("数据 表", 1, 1, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Left.Raw != "未保存编辑" || region.Cells[0].Right.Present {
+		t.Fatalf("region after detach = %+v", region.Cells[0])
+	}
+	if err := session.CopyRightToLeft(workbook.CellRef{Sheet: "数据 表", Row: 1, Col: 1}); err == nil {
+		t.Fatal("copy unexpectedly succeeded without a right workbook")
+	}
+}
+
 func assertCell(t *testing.T, f *excelize.File, sheet, axis, want string) {
 	t.Helper()
 	got, err := f.GetCellValue(sheet, axis, excelize.Options{RawCellValue: true})

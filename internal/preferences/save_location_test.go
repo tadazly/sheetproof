@@ -57,3 +57,34 @@ func TestStoreDoesNotRecordMissingDirectory(t *testing.T) {
 		t.Fatalf("preference file unexpectedly created: %v", statErr)
 	}
 }
+
+func TestStoreRemembersRepositoryAndSidebarWidthWithoutLosingSaveDirectory(t *testing.T) {
+	root := t.TempDir()
+	repository := filepath.Join(root, "中文 仓库")
+	saveDirectory := filepath.Join(root, "saved")
+	for _, directory := range []string{repository, saveDirectory} {
+		if err := os.Mkdir(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := NewStoreAt(filepath.Join(root, "config", preferencesFilename))
+	if err := store.RecordSaveTarget(filepath.Join(saveDirectory, "book.xlsx")); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepositoryWidth(336); err != nil {
+		t.Fatal(err)
+	}
+	reopened := NewStoreAt(store.path)
+	if got := reopened.LastRepository(); got != repository {
+		t.Fatalf("last repository = %q, want %q", got, repository)
+	}
+	if got := reopened.RepositoryWidth(); got != 336 {
+		t.Fatalf("repository width = %d", got)
+	}
+	if got := reopened.SaveDirectory(); got != saveDirectory {
+		t.Fatalf("save directory was lost: %q", got)
+	}
+}
