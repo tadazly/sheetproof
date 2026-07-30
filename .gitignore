@@ -1,0 +1,7 @@
+/build/
+/frontend/node_modules/
+/frontend/wailsjs/
+/frontend/package.json.md5
+*.out
+.DS_Store
+.cache

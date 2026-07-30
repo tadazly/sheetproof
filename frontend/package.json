@@ -1,0 +1,35 @@
+{
+  "name": "ugxlsx-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "postinstall": "node scripts/ensure-go-boundary.mjs",
+    "dev": "vite",
+    "lint": "eslint src --max-warnings=0",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "build": "vue-tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "vue": "3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "5.2.4",
+    "@eslint/js": "9.39.5",
+    "@vue/test-utils": "2.4.6",
+    "@types/node": "22.10.5",
+    "eslint": "9.39.5",
+    "eslint-plugin-vue": "9.32.0",
+    "jsdom": "26.1.0",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.19.1",
+    "vite": "6.4.3",
+    "vitest": "3.2.7",
+    "vue-eslint-parser": "9.4.3",
+    "vue-tsc": "3.3.8"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8"
+  }
+}
