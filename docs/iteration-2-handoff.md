@@ -8,16 +8,18 @@
 
 ## 当前工作区状态
 
-本次 Windows 接手时实际分支是 `main`，当前提交及远端均为：
+本次 Windows 接手开始时实际分支是 `main`，当时提交及远端均为：
 
 ```text
 5315d1a Implement repository comparison and merge workflow
 ```
 
 用户提示中的 `6933f8a` 和“领先 origin/main 1 个提交”与本机实际状态不一致；
-修改前工作树为 clean。本轮 Windows 修复、测试和文档均尚未提交，必须整体保留。
-除非用户明确要求，不得自行 commit、push、改写提交或发布。新会话看到的工作
-树改动均应视为用户有效成果，不得执行 `git reset --hard`、
+修改前工作树为 clean。第一批 Windows 修复已提交为
+`ee5663a Fix Windows desktop integrations` 并推送；后续 TaskDialog STA 修复的
+准确提交状态应以接手时的 `git status` 和 `git log` 为准。除非用户明确要求，
+不得自行 commit、push、改写提交或发布。新会话看到的工作树改动均应视为用户
+有效成果，不得执行 `git reset --hard`、
 `git checkout --` 或覆盖式清理。
 
 主要改动范围：
@@ -51,7 +53,11 @@ main.go
 - Wails 2.10.2 Windows 问题对话框固定使用 `MB_YESNO`，忽略自定义按钮并返回
   `Yes` / `No`。这同时导致“配置 UGit”确认无效和未保存切换/关闭无法匹配中文
   选择。Windows 已改用 TaskDialog；关闭和切换均提供“保存并继续 / 不保存并继续 /
-  取消”，非 Windows 继续使用 Wails 实现。
+  取消”，非 Windows 继续使用 Wails 实现。后续实机复测发现首次真正进入
+  TaskDialog 时返回 `E_INVALIDARG (0x80070057)`；根因是 Wails 绑定回调线程未满足
+  TaskDialog 的 STA 前置条件。Windows 辅助函数现锁定同一 OS 线程、初始化 STA，
+  调用完成后成对反初始化。删除 UGit XLSX 配置后的同路径复测已不再立即报错，
+  原生模态对话框成功进入等待选择状态。
 - 本机 UGit 是 5.51.0，安装于
   `C:\\Users\\luyi\\AppData\\Local\\UGit\\app-5.51.0`。UGit 自带 Git 2.45.2，
   系统 PATH Git 是 2.37.1.windows.1。Windows 配置逻辑现优先按自然版本选择
@@ -69,8 +75,8 @@ main.go
 本轮自动化结果：`go test ./...`、`go vet ./...`、前端 lint/typecheck、24 项测试、
 前端生产构建和 Windows amd64 Wails 原生构建通过，`git diff --check` 通过。
 `go test -race ./...` 先因 `CGO_ENABLED=0` 未启动，启用 CGO 后又因本机没有
-`gcc` 失败，不能记为通过。最终仅保留 `build/bin/ugxlsx.exe`：17,223,680 字节，
-SHA-256 `ABE2A0352F8744EC0C8926FBA5B8DC5F1897039212419B2DF21D80A5236AC5F2`；
+`gcc` 失败，不能记为通过。最终仅保留 `build/bin/ugxlsx.exe`：17,225,728 字节，
+SHA-256 `0D515D01B7F4C983D2B8D016AD9C2C4AA66347E16D801EF0821114F6FD4993D8`；
 PE machine `0x8664`、PE32+、GUI subsystem。关联图标提取结果与已确认的项目图标
 PNG 哈希一致。最终 EXE 已在本机原生启动并显示 250 表索引结果；任务栏无闪烁、
 索引中关闭、UGit 差异/合并、保存快捷键和三处系统图标仍需 Win11 目视/交互验收。

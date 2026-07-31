@@ -27,10 +27,11 @@ npm run test
 npm run typecheck
 cd ..
 
-重要：2026-07-31 Windows 接手时实际 HEAD 与 origin/main 都是 `5315d1a`；
-旧提示中的 `6933f8a` 已失效。Windows 后台进程、UGit 配置、未保存三按钮和
-运行窗口图标修复仍可能未提交，都是有效成果。除非用户明确要求，不要 commit、
-push、改写提交或发布；不要 reset、checkout、覆盖或清理现有修改。
+重要：2026-07-31 Windows 接手开始时 HEAD 与 origin/main 都是 `5315d1a`；
+第一批 Windows 修复已提交为 `ee5663a` 并推送，旧提示中的 `6933f8a` 已失效。
+后续 TaskDialog STA/`0x80070057` 等修复是否提交，以当前 `git status` 和
+`git log` 为准。除非用户明确要求，不要 commit、push、改写提交或发布；不要
+reset、checkout、覆盖或清理现有修改。
 
 以 docs/iteration-2-handoff.md 记录的已实现且已验证行为作为兼容基线。必须
 保留仓库模式和直接双文件模式，共用现有 Go 差异、合并、撤销和安全保存逻辑。

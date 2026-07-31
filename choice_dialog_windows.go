@@ -22,9 +22,38 @@ const (
 
 var (
 	taskDialogProc               = windows.NewLazySystemDLL("comctl32.dll").NewProc("TaskDialogIndirect")
+	coInitializeExProc           = windows.NewLazySystemDLL("ole32.dll").NewProc("CoInitializeEx")
+	coUninitializeProc           = windows.NewLazySystemDLL("ole32.dll").NewProc("CoUninitialize")
 	getForegroundWindowProc      = windows.NewLazySystemDLL("user32.dll").NewProc("GetForegroundWindow")
 	getWindowThreadProcessIDProc = windows.NewLazySystemDLL("user32.dll").NewProc("GetWindowThreadProcessId")
+	taskDialogNative             = nativeTaskDialogCalls{
+		initializeSTA: func() uintptr {
+			result, _, _ := coInitializeExProc.Call(
+				0,
+				windows.COINIT_APARTMENTTHREADED|windows.COINIT_DISABLE_OLE1DDE,
+			)
+			return result
+		},
+		uninitialize: func() {
+			coUninitializeProc.Call()
+		},
+		show: func(config *taskDialogConfig, selected *int32) uintptr {
+			result, _, _ := taskDialogProc.Call(
+				uintptr(unsafe.Pointer(config)),
+				uintptr(unsafe.Pointer(selected)),
+				0,
+				0,
+			)
+			return result
+		},
+	}
 )
+
+type nativeTaskDialogCalls struct {
+	initializeSTA func() uintptr
+	uninitialize  func()
+	show          func(config *taskDialogConfig, selected *int32) uintptr
+}
 
 type taskDialogButton struct {
 	id   int32
@@ -77,14 +106,11 @@ func showChoiceDialog(ctx context.Context, options runtime.MessageDialogOptions)
 	if err := taskDialogProc.Find(); err != nil {
 		return "", fmt.Errorf("Windows 自定义选择对话框不可用: %w", err)
 	}
-	selected := int32(0)
-	result, _, _ := taskDialogProc.Call(
-		uintptr(unsafe.Pointer(&prepared.config)),
-		uintptr(unsafe.Pointer(&selected)),
-		0,
-		0,
-	)
+	selected, result, err := runTaskDialog(&prepared.config)
 	goruntime.KeepAlive(prepared)
+	if err != nil {
+		return "", err
+	}
 	if result != 0 {
 		return "", fmt.Errorf("显示 Windows 选择对话框失败: HRESULT 0x%08X", uint32(result))
 	}
@@ -96,6 +122,27 @@ func showChoiceDialog(ctx context.Context, options runtime.MessageDialogOptions)
 		return "", fmt.Errorf("Windows 选择对话框返回未知按钮: %d", selected)
 	}
 	return answer, nil
+}
+
+func runTaskDialog(config *taskDialogConfig) (int32, uintptr, error) {
+	// TaskDialogIndirect requires a single-threaded apartment. Wails binding
+	// calls are not guaranteed to stay on an initialized OS thread, so keep the
+	// whole native dialog lifetime on one thread and balance COM initialization.
+	goruntime.LockOSThread()
+	defer goruntime.UnlockOSThread()
+
+	initialization := taskDialogNative.initializeSTA()
+	if initialization != 0 && initialization != 1 { // S_OK or S_FALSE
+		return 0, 0, fmt.Errorf(
+			"初始化 Windows 选择对话框线程失败: HRESULT 0x%08X",
+			uint32(initialization),
+		)
+	}
+	defer taskDialogNative.uninitialize()
+
+	selected := int32(0)
+	result := taskDialogNative.show(config, &selected)
+	return selected, result, nil
 }
 
 func prepareTaskDialog(options runtime.MessageDialogOptions) (preparedTaskDialog, error) {

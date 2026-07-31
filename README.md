@@ -150,7 +150,9 @@ UGit 自带的 Git，再回退到 `PATH` 和常见 UGit/Git 安装位置。
 Windows 的后台 Git/UGit CLI 子进程使用无控制台窗口的进程属性，避免建立仓库
 差异索引时由 `git.exe` / `conhost.exe` 产生临时任务栏图标。该设置不作用于
 ugxlsx 主窗口，也不改变 macOS/Linux 行为。Windows 的未保存确认使用原生三按钮
-对话框，关闭或切换时均提供“保存并继续 / 不保存并继续 / 取消”。
+对话框，关闭或切换时均提供“保存并继续 / 不保存并继续 / 取消”。原生
+`TaskDialogIndirect` 调用会锁定当前 OS 线程并初始化 STA，避免首次真正显示确认框时
+返回 `HRESULT 0x80070057`。
 
 如需手工配置，在 UGit 的“设置 → 工具 → 差异工具”中添加：
 

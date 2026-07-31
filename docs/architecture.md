@@ -97,7 +97,10 @@ Windows 上 Wails 2.10.2 的 `MessageDialog` 不使用调用方给出的自定�
 把问题对话框固定成 Win32 `MB_YESNO` 并返回英文 `Yes` / `No`。根包因此以 build
 tag 隔离：Windows 使用 Common Controls v6 `TaskDialogIndirect` 保留业务按钮
 文本，其他平台继续使用 Wails 原生实现。关闭窗口和切换会话共用该选择接口；
-关闭时“保存并继续”仍调用现有安全保存流程。
+关闭时“保存并继续”仍调用现有安全保存流程。Windows 辅助函数在整个
+`TaskDialogIndirect` 生命周期锁定同一 OS 线程，以 STA 模式初始化 COM，并在返回后
+成对反初始化；否则 Wails 绑定回调线程首次显示对话框会返回
+`E_INVALIDARG (0x80070057)`。
 
 Windows 可执行文件继续嵌入多尺寸 ICO。Wails 2.10.2 只设置 `ICON_SMALL`，因此
 `OnDomReady` 后由 Windows 专用辅助函数为当前进程顶层窗口补充
