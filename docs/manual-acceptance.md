@@ -117,7 +117,9 @@ ugxlsx repo \
 12. 修改后按 `Ctrl/Command+S` 并再次用“保存左侧”验证同一流程；确认保存完成
     后撤销仍可用。执行撤销后应重新显示“有未保存修改”，再次保存后结果落盘。
 13. 按 `Ctrl/Command+Shift+S`；确认默认文件名沿用左侧文件名，首次目录是系统“下载”目录。取消不应显示错误；另存成功后再次打开，确认默认目录是上次保存位置。
-14. 关闭存在未保存修改的窗口，确认出现“取消 / 丢弃并关闭”提示；选择取消应继续留在应用中。
+14. 关闭存在未保存修改的窗口，确认出现“保存并继续 / 不保存并继续 / 取消”
+    三个按钮；分别确认保存后关闭、丢弃后关闭和取消后留在应用中。Windows 不应
+    再显示只有“是 / 否”的系统问题框。
 15. 执行 `go run . diff --left testdata/left.xlsx --right testdata/right.xlsx --format json`，确认 JSON 合法且差异数符合操作结果；再用 Excel、LibreOffice 或 WPS 打开保存文件，确认公式、样式、J1:K1 合并区、行高和列宽仍存在。
 
 ## UGit 验收
@@ -139,6 +141,9 @@ ugxlsx repo \
 6. macOS 从 `.app` 验证注册路径是
    `Contents/MacOS/ugxlsx`；Win11 验证带空格的安装目录和 `ugxlsx.exe` 路径。
    从 macOS App Translocation 或系统临时目录启动时，应拒绝注册并提示先移动。
+7. Windows 确认对话框与成功/错误信息显示 UGit 实际使用的 Git 路径以及
+   `file:.../.gitconfig` 等配置来源；同时执行 `where.exe git`，证明即使系统
+   `PATH` 指向另一版本，应用仍选择当前 UGit 版本自带的 `cmd\\git.exe`。
 
 ### 差异与合并流程
 
@@ -189,3 +194,13 @@ ugxlsx compare \
 未点击保存直接关闭时 `${MERGED}` 不变；点击保存后结果写入 `${MERGED}`，UGit
 可以继续其冲突处理流程。两侧标签应来自 UGit 的实际合并引用；当前合并是
 `$LOCAL`/`$REMOTE` 双向语义合并，不使用 `${BASE}`。
+
+### Windows 后台进程和图标
+
+1. 用缓存未命中的真实仓库建立差异表索引；在 Process Explorer 或等价工具中
+   记录 ugxlsx 的 `git.exe` 子进程。确认候选扫描、`cat-file -e` 和 `show`
+   均没有创建可见 `conhost.exe` 窗口，任务栏全程没有“未知应用程序”图标。
+2. 索引进行中关闭窗口，确认进程及时退出，且没有遗留 Git、conhost 或导出临时
+   文件。自动化进程属性测试不能替代任务栏观察。
+3. 在资源管理器、任务栏和 Alt+Tab 检查图标。确认 EXE 资源和运行窗口的大小
+   图标均为项目图标，而非默认 W 或未知图标；必要时刷新 Windows 图标缓存后复核。

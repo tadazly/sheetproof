@@ -13,6 +13,7 @@ import (
 	"github.com/ug-tools/ugxlsx/internal/preferences"
 	"github.com/ug-tools/ugxlsx/internal/repository"
 	"github.com/ug-tools/ugxlsx/internal/testutil"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -338,6 +339,56 @@ func TestControllerUnsavedRepositorySwitchOffersCancelSaveAndDiscard(t *testing.
 		t.Fatalf("discard-and-continue unexpectedly saved %q", got)
 	}
 	controller.shutdown(context.Background())
+}
+
+func TestControllerUnsavedCloseOffersSaveDiscardAndCancel(t *testing.T) {
+	tests := []struct {
+		name        string
+		answer      string
+		wantBlocked bool
+		wantSaved   bool
+	}{
+		{name: "save", answer: "保存并继续", wantSaved: true},
+		{name: "discard", answer: "不保存并继续"},
+		{name: "cancel", answer: "取消", wantBlocked: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pair, err := testutil.CreatePair(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			controller := NewController(pair.Left, pair.Right, coreapp.Options{})
+			controller.openInitialFiles()
+			if _, err := controller.EditLeft("数据 表", 4, 1, "关闭前修改", "text"); err != nil {
+				t.Fatal(err)
+			}
+			controller.dialog = func(_ context.Context, options runtime.MessageDialogOptions) (string, error) {
+				want := []string{"保存并继续", "不保存并继续", "取消"}
+				if len(options.Buttons) != len(want) {
+					t.Fatalf("buttons = %v", options.Buttons)
+				}
+				for index := range want {
+					if options.Buttons[index] != want[index] {
+						t.Fatalf("buttons = %v", options.Buttons)
+					}
+				}
+				return test.answer, nil
+			}
+
+			if blocked := controller.beforeClose(context.Background()); blocked != test.wantBlocked {
+				t.Fatalf("beforeClose blocked = %v, want %v", blocked, test.wantBlocked)
+			}
+			got := controllerWorkbookCell(t, pair.Left, "A4")
+			if test.wantSaved && got != "关闭前修改" {
+				t.Fatalf("saved value = %q", got)
+			}
+			if !test.wantSaved && got == "关闭前修改" {
+				t.Fatalf("answer %q unexpectedly saved the workbook", test.answer)
+			}
+			controller.shutdown(context.Background())
+		})
+	}
 }
 
 func TestControllerDirectoryDropUsesFirstItemAndRejectsFiles(t *testing.T) {

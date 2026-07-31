@@ -31,6 +31,14 @@ func TestConfigureUpdatesMovedExecutableAndOnlyTouchesXLSXTools(t *testing.T) {
 	if !first.Configured {
 		t.Fatal("first configuration was not verified")
 	}
+	if first.GitPath != gitPath {
+		t.Fatalf("Git path = %q, want %q", first.GitPath, gitPath)
+	}
+	if len(first.ConfigOrigins) != 1 || !strings.Contains(
+		filepath.ToSlash(first.ConfigOrigins[0]), filepath.ToSlash(globalConfig),
+	) {
+		t.Fatalf("config origins = %v, want %s", first.ConfigOrigins, globalConfig)
+	}
 	assertConfigValue(t, c, "difftool.*.csv_Custom.cmd", "'/tools/csv' \"$LOCAL\" \"$REMOTE\"")
 	assertConfigMissing(t, c, "difftool.*.xlsx_BeyondCompare.cmd")
 

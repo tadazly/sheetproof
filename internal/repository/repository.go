@@ -8,13 +8,14 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/ug-tools/ugxlsx/internal/backgroundcmd"
 )
 
 const commandTimeout = 15 * time.Second
@@ -557,7 +558,7 @@ func runGitContext(parent context.Context, directory string, stdout io.Writer, a
 	ctx, cancel := context.WithTimeout(parent, commandTimeout)
 	defer cancel()
 	commandArgs := append([]string{"-C", directory}, args...)
-	command := exec.CommandContext(ctx, "git", commandArgs...)
+	command := backgroundcmd.CommandContext(ctx, "git", commandArgs...)
 	var output bytes.Buffer
 	var stderr bytes.Buffer
 	if stdout == nil {

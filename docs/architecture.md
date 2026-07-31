@@ -43,6 +43,8 @@ switch 或 fetch。临时文件位于系统临时目录，切换来源和退出�
   各仓库的对比引用和精确语义差异文件索引。
 - `internal/repository`：Git 根目录发现、XLSX 扫描、分支排序、状态读取、变化候选筛选和引用对象导出。
 - `internal/ugit`：UGit `*.xlsx` 外部工具配置检测、跨平台 Git 定位、路径更新和失败回滚。
+- `internal/backgroundcmd`：仅对后台 CLI 子进程应用平台进程属性；Windows 使用
+  `CREATE_NO_WINDOW`，其他平台为空操作。
 - `internal/app`：并发安全的 GUI/CLI 共享会话。
 - `internal/cli`：命令解析、结构化输出和退出码。
 - `frontend`：Vue 3 仓库导航和双栏视口化网格。
@@ -85,9 +87,21 @@ UGit 5.51.0 会额外注入 `LOCAL_TITLE`、`REMOTE_TITLE` 和 `WORKSPACE_PATH`�
 可执行文件路径来自 `os.Executable` 并规范化：macOS 使用 `.app` 内部 Mach-O，
 Windows 使用当前 `.exe`。再次配置会把已经移动失效的旧路径替换为新路径。
 临时目录、macOS App Translocation 和含单引号的路径会被拒绝，避免写入下次
-无法执行的命令。Git 查找优先使用 `PATH`，并回退到 macOS 系统/UGit 路径以及
-Windows 常见 UGit、Git 安装位置。UGit 没有公开的工具注册 API，因此外部写入
-后提示用户重启正在运行的 UGit 以刷新缓存。
+无法执行的命令。macOS 的 Git 查找优先使用 `PATH`；Windows 先按自然版本顺序
+寻找 UGit 的 `app-*\\resources\\app\\git\\cmd\\git.exe`，同版本再回退到
+`mingw64\\bin\\git.exe`，之后才使用 `PATH` 和其他常见安装位置。读取配置时
+同时取得 `--show-origin`，确认框、成功结果和错误均显示实际 Git 或来源。
+UGit 没有公开的工具注册 API，因此外部写入后提示用户重启正在运行的 UGit。
+
+Windows 上 Wails 2.10.2 的 `MessageDialog` 不使用调用方给出的自定义按钮，而会
+把问题对话框固定成 Win32 `MB_YESNO` 并返回英文 `Yes` / `No`。根包因此以 build
+tag 隔离：Windows 使用 Common Controls v6 `TaskDialogIndirect` 保留业务按钮
+文本，其他平台继续使用 Wails 原生实现。关闭窗口和切换会话共用该选择接口；
+关闭时“保存并继续”仍调用现有安全保存流程。
+
+Windows 可执行文件继续嵌入多尺寸 ICO。Wails 2.10.2 只设置 `ICON_SMALL`，因此
+`OnDomReady` 后由 Windows 专用辅助函数为当前进程顶层窗口补充
+`ICON_SMALL`、`ICON_SMALL2` 和 `ICON_BIG`；非 Windows 构建为空操作。
 
 仓库文件或引用切换使用独立的递增请求序号。切换开始时界面先进入明确的
 loading/comparing 状态；只有仍属于最新选择的结果可以安装到界面。区域请求
@@ -118,7 +132,8 @@ loading/comparing 状态；只有仍属于最新选择的结果可以安装到�
 红/绿差异块沿用网格的删除/增加语义，中心双向箭头表示检查与合并。
 `build/appicon.png` 是 Wails 和 macOS `icns` 的 1024 px 输入，
 `build/windows/icon.ico` 则显式包含 16–256 px 多尺寸资源。图标外围保留透明
-安全区，不依赖特定平台蒙版或系统字体。
+安全区，不依赖特定平台蒙版或系统字体。运行时大小图标的补充设置只修改 Wails
+主窗口的 `WM_SETICON`，不隐藏窗口，也不改变可执行文件资源。
 
 差异表采用两阶段只读索引。第一阶段用 `git diff` 和 `git ls-tree` 取得“工作区
 中存在、所选引用中也存在、Git 内容不同”的 `.xlsx` 候选；第二阶段在后台把候选

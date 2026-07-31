@@ -138,12 +138,19 @@ ugxlsx repo \
 - 自动写入差异、合并和 `trustExitCode=false` 配置，并在写入后重新读取校验；
 - 如果应用被移动，再次点击会检测当前可执行文件路径并覆盖旧路径；
 - 如果任一步失败，会尝试恢复配置前的全部 `*.xlsx` 工具项；
-- 已经正确配置时不会重复写入；UGit 正在运行时，配置后应重启 UGit。
+- 已经正确配置时不会重复写入；UGit 正在运行时，配置后应重启 UGit；
+- Windows 会优先使用当前版本 UGit 自带的 `cmd\\git.exe`，确认框和结果中显示
+  实际 Git 路径及配置来源，避免把配置静默写入另一套 Git 上下文。
 
 macOS 注册 `.app/Contents/MacOS/ugxlsx`，Windows 注册当前 `ugxlsx.exe`。
 macOS App Translocation 或其他系统临时目录中的程序不会被注册；应先把应用移动
-到固定目录。应用优先使用系统 `PATH` 中的 Git，并兼容常见的 macOS 和 Windows
-UGit/Git 安装路径。
+到固定目录。macOS 优先使用系统 `PATH` 中的 Git；Windows 优先选择当前版本
+UGit 自带的 Git，再回退到 `PATH` 和常见 UGit/Git 安装位置。
+
+Windows 的后台 Git/UGit CLI 子进程使用无控制台窗口的进程属性，避免建立仓库
+差异索引时由 `git.exe` / `conhost.exe` 产生临时任务栏图标。该设置不作用于
+ugxlsx 主窗口，也不改变 macOS/Linux 行为。Windows 的未保存确认使用原生三按钮
+对话框，关闭或切换时均提供“保存并继续 / 不保存并继续 / 取消”。
 
 如需手工配置，在 UGit 的“设置 → 工具 → 差异工具”中添加：
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"os"
@@ -31,7 +32,11 @@ func launchGUI(left, right string, appOptions coreapp.Options) error {
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 247, G: 248, B: 250, A: 1},
 		DragAndDrop:      &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: false},
-		OnStartup:        controller.startup, OnShutdown: controller.shutdown,
+		OnStartup:        controller.startup,
+		OnDomReady: func(context.Context) {
+			applyPlatformWindowIcon()
+		},
+		OnShutdown:    controller.shutdown,
 		OnBeforeClose: controller.beforeClose,
 		Bind:          []interface{}{controller},
 	}); err != nil {

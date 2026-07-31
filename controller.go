@@ -76,13 +76,21 @@ type Controller struct {
 	differenceIndexCancel     context.CancelFunc
 	shuttingDown              bool
 	switchPrompt              func() (string, error)
+	dialog                    func(context.Context, runtime.MessageDialogOptions) (string, error)
 }
 
 func NewController(left, right string, options coreapp.Options) *Controller {
 	return &Controller{
 		left: left, right: right, options: options,
-		prefs: preferences.NewStore(),
+		prefs: preferences.NewStore(), dialog: showChoiceDialog,
 	}
+}
+
+func (c *Controller) ask(ctx context.Context, options runtime.MessageDialogOptions) (string, error) {
+	if c.dialog != nil {
+		return c.dialog(ctx, options)
+	}
+	return showChoiceDialog(ctx, options)
 }
 
 func (c *Controller) startup(ctx context.Context) {
@@ -198,7 +206,7 @@ func (c *Controller) ConfigureUGit() (UGitConfigurationResult, error) {
 	if inspection.Configured {
 		return UGitConfigurationResult{
 			Configured: true, ExecutablePath: executablePath,
-			Message: "UGit 的 *.xlsx 差异与合并工具已经指向当前应用，无需更新。",
+			Message: "UGit 的 *.xlsx 差异与合并工具已经指向当前应用，无需更新。\n" + ugitConfigurationContext(inspection),
 		}, nil
 	}
 	if ctx.Value("frontend") == nil {
@@ -206,8 +214,8 @@ func (c *Controller) ConfigureUGit() (UGitConfigurationResult, error) {
 	}
 
 	message := fmt.Sprintf(
-		"将把 UGit 的 *.xlsx 差异工具和合并工具配置为当前应用：\n%s\n\n只会替换 *.xlsx 相关配置，不影响其他文件类型。",
-		executablePath,
+		"将把 UGit 的 *.xlsx 差异工具和合并工具配置为当前应用：\n%s\n\n%s\n\n只会替换 *.xlsx 相关配置，不影响其他文件类型。",
+		executablePath, ugitConfigurationContext(inspection),
 	)
 	if inspection.NeedsUpdate {
 		if len(inspection.ExistingPaths) > 0 {
@@ -216,7 +224,7 @@ func (c *Controller) ConfigureUGit() (UGitConfigurationResult, error) {
 			message += "\n\n检测到已有但不完整或不兼容的 *.xlsx 工具配置，将一并修复。"
 		}
 	}
-	answer, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+	answer, err := c.ask(ctx, runtime.MessageDialogOptions{
 		Type: runtime.QuestionDialog, Title: "配置 UGit",
 		Message: message, Buttons: []string{"取消", "配置 UGit"},
 		DefaultButton: "配置 UGit", CancelButton: "取消",
@@ -232,12 +240,20 @@ func (c *Controller) ConfigureUGit() (UGitConfigurationResult, error) {
 	}
 	updated, err := ugit.Configure(ctx, executablePath)
 	if err != nil {
-		return UGitConfigurationResult{}, err
+		return UGitConfigurationResult{}, fmt.Errorf("配置 UGit（Git: %s）: %w", inspection.GitPath, err)
 	}
 	return UGitConfigurationResult{
 		Configured: updated.Configured, Changed: true, ExecutablePath: executablePath,
-		Message: "UGit 的 *.xlsx 差异与合并工具已更新。若 UGit 正在运行，请重启 UGit 后再测试。",
+		Message: "UGit 的 *.xlsx 差异与合并工具已更新。若 UGit 正在运行，请重启 UGit 后再测试。\n" + ugitConfigurationContext(updated),
 	}, nil
+}
+
+func ugitConfigurationContext(inspection ugit.Inspection) string {
+	origins := "尚无现有 *.xlsx 配置"
+	if len(inspection.ConfigOrigins) > 0 {
+		origins = strings.Join(inspection.ConfigOrigins, "、")
+	}
+	return fmt.Sprintf("使用 Git：%s\n*.xlsx 配置来源：%s", inspection.GitPath, origins)
 }
 
 func (c *Controller) shutdown(_ context.Context) {
@@ -268,12 +284,24 @@ func (c *Controller) beforeClose(ctx context.Context) bool {
 	if session == nil || !session.Dirty() {
 		return false
 	}
-	answer, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+	answer, err := c.ask(ctx, runtime.MessageDialogOptions{
 		Type: runtime.QuestionDialog, Title: "存在未保存修改",
-		Message: "关闭窗口将丢失尚未保存的修改。确定关闭吗？",
-		Buttons: []string{"取消", "丢弃并关闭"}, DefaultButton: "取消", CancelButton: "取消",
+		Message:       "当前表格存在未保存的修改。",
+		Buttons:       []string{"保存并继续", "不保存并继续", "取消"},
+		DefaultButton: "保存并继续", CancelButton: "取消",
 	})
-	return err != nil || answer != "丢弃并关闭"
+	if err != nil {
+		return true
+	}
+	switch answer {
+	case "保存并继续":
+		_, err := c.Save()
+		return err != nil
+	case "不保存并继续":
+		return false
+	default:
+		return true
+	}
 }
 
 func (c *Controller) SelectAndOpen() (coreapp.Summary, error) {
@@ -973,7 +1001,7 @@ func (c *Controller) Save() (coreapp.Summary, error) {
 		}
 	}
 	if inRepository && view.Operation != "" && ctx != nil && ctx.Value("frontend") != nil {
-		answer, dialogErr := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		answer, dialogErr := c.ask(ctx, runtime.MessageDialogOptions{
 			Type: runtime.WarningDialog, Title: "Git 操作进行中",
 			Message: fmt.Sprintf("仓库正在进行 %s。保存只会修改当前 XLSX 文件，不会恢复或完成 Git 操作。", view.Operation),
 			Buttons: []string{"取消", "仍然保存"}, DefaultButton: "取消", CancelButton: "取消",
@@ -1176,7 +1204,7 @@ func (c *Controller) confirmSessionSwitch() error {
 		if ctx == nil || ctx.Value("frontend") == nil {
 			return errors.New("当前表格存在未保存的修改，无法在无界面确认的情况下切换")
 		}
-		answer, err = runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		answer, err = c.ask(ctx, runtime.MessageDialogOptions{
 			Type: runtime.QuestionDialog, Title: "当前表格存在未保存的修改",
 			Message:       "当前表格存在未保存的修改。",
 			Buttons:       []string{"保存并继续", "不保存并继续", "取消"},

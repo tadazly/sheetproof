@@ -8,17 +8,14 @@
 
 ## 当前工作区状态
 
-当前分支是 `main`，当前提交为：
+本次 Windows 接手时实际分支是 `main`，当前提交及远端均为：
 
 ```text
-6933f8a Implement repository comparison and spreadsheet editing workflows
+5315d1a Implement repository comparison and merge workflow
 ```
 
-第二、三轮仓库模式、目录树和分支偏好、差异分类与冲突处理、后台索引及编辑
-体验改进均已进入上述提交。随后生成的
-`docs/iteration-2-handoff.md`、`docs/new-session-prompt.md` 交接更新，以及本轮
-现代化 UI 的 `frontend/src`、`frontend/dist`、README 和相关文档修改尚未提交，
-必须整体保留。`main` 相对 `origin/main` 领先 1 个提交，尚未推送。
+用户提示中的 `6933f8a` 和“领先 origin/main 1 个提交”与本机实际状态不一致；
+修改前工作树为 clean。本轮 Windows 修复、测试和文档均尚未提交，必须整体保留。
 除非用户明确要求，不得自行 commit、push、改写提交或发布。新会话看到的工作
 树改动均应视为用户有效成果，不得执行 `git reset --hard`、
 `git checkout --` 或覆盖式清理。
@@ -40,6 +37,43 @@ main.go
 
 每次 Wails/前端生产构建都会更新带内容哈希的 `frontend/dist/assets` 文件名，
 删除旧哈希并新增新哈希属于正常构建结果。
+
+### 2026-07-31 Windows 实机修复
+
+- 实际宿主为 Windows 10 Pro 21H2（build 19044），不是 Windows 11；因此下面的
+  原生构建和取证不能表述为 Win11 完整验收。
+- 缓存未命中的 250 表真实仓库取证捕获到
+  `ugxlsx.exe -> git.exe -> conhost.exe`。对应命令包括候选扫描，以及逐表
+  `cat-file -e` / `show <ref>:<path>`；不是 Go 工作簿解析或前端轮询。
+- `internal/repository` 与 `internal/ugit` 的后台命令统一经
+  `internal/backgroundcmd` 创建。Windows build tag 设置 `CREATE_NO_WINDOW`，
+  macOS/Linux 为空操作；超时、context 取消、参数数组和错误输出均保留。
+- Wails 2.10.2 Windows 问题对话框固定使用 `MB_YESNO`，忽略自定义按钮并返回
+  `Yes` / `No`。这同时导致“配置 UGit”确认无效和未保存切换/关闭无法匹配中文
+  选择。Windows 已改用 TaskDialog；关闭和切换均提供“保存并继续 / 不保存并继续 /
+  取消”，非 Windows 继续使用 Wails 实现。
+- 本机 UGit 是 5.51.0，安装于
+  `C:\\Users\\luyi\\AppData\\Local\\UGit\\app-5.51.0`。UGit 自带 Git 2.45.2，
+  系统 PATH Git 是 2.37.1.windows.1。Windows 配置逻辑现优先按自然版本选择
+  UGit 自带 `cmd\\git.exe`，并回读 `--show-origin`；界面显示 Git 路径和配置来源。
+- 已在真实全局配置中覆盖错误 XLSX 旧路径，先写入带中文和空格的固定测试路径，
+  再覆盖为最终 `build\\bin\\ugxlsx.exe`；回读来源为
+  `file:C:/Users/luyi/.gitconfig`，命令中的 `$LOCAL`、`$REMOTE`、`$MERGED`
+  保持原样。临时 EXE 已删除。UGit 已强制退出并重启，且从 UGit 打开 250 变更验证仓库。
+  由于 Windows 10 图形捕获接口不支持当前自动化截图，尚未从 UGit 文件行真实
+  触发差异和合并各一次。
+- Windows EXE 原本已嵌入正确 ICO，但 Wails 只设置 `ICON_SMALL`；现在
+  `OnDomReady` 后补设 `ICON_SMALL`、`ICON_SMALL2` 和 `ICON_BIG`。资源管理器、
+  任务栏和 Alt+Tab 的目视复核仍需真正的 Windows 11 会话完成。
+
+本轮自动化结果：`go test ./...`、`go vet ./...`、前端 lint/typecheck、24 项测试、
+前端生产构建和 Windows amd64 Wails 原生构建通过，`git diff --check` 通过。
+`go test -race ./...` 先因 `CGO_ENABLED=0` 未启动，启用 CGO 后又因本机没有
+`gcc` 失败，不能记为通过。最终仅保留 `build/bin/ugxlsx.exe`：17,223,680 字节，
+SHA-256 `ABE2A0352F8744EC0C8926FBA5B8DC5F1897039212419B2DF21D80A5236AC5F2`；
+PE machine `0x8664`、PE32+、GUI subsystem。关联图标提取结果与已确认的项目图标
+PNG 哈希一致。最终 EXE 已在本机原生启动并显示 250 表索引结果；任务栏无闪烁、
+索引中关闭、UGit 差异/合并、保存快捷键和三处系统图标仍需 Win11 目视/交互验收。
 
 ## 当前可运行主流程
 
