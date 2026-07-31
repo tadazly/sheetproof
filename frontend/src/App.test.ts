@@ -20,6 +20,7 @@ const emptySummary: Summary = {
     differenceCount: 0,
     sheets: []
   },
+  resolutions: [],
   dirty: false,
   undoCount: 0,
   warnings: [],
@@ -34,13 +35,15 @@ const repositoryView: RepositoryView = {
   workspaceDirty: true,
   operation: "",
   files: ["config/activity/reward.xlsx", "中文 目录/配置.xlsx"],
+  differenceFiles: ["config/activity/reward.xlsx"],
+  differenceIndexing: false,
   branches: [
     { name: "develop", fullName: "refs/heads/develop", kind: "local" },
     { name: "origin/main", fullName: "refs/remotes/origin/main", kind: "remote" }
   ],
   defaultRef: "refs/heads/develop",
   selectedFile: "",
-  selectedRef: "",
+  selectedRef: "refs/heads/develop",
   leftState: "no-file",
   rightState: "no-file",
   leftMessage: "请先在左侧目录树中选择一个 XLSX 表格",
@@ -54,6 +57,7 @@ const repositoryView: RepositoryView = {
 };
 
 enableAutoUnmount(afterEach);
+afterEach(() => vi.useRealTimers());
 
 describe("App", () => {
   const selectAndOpen = vi.fn(async () => emptySummary);
@@ -104,6 +108,14 @@ describe("App", () => {
     expect(wrapper.text()).toContain("reward.xlsx");
     expect(wrapper.text().match(/请先在左侧目录树中选择一个 XLSX 表格/g)).toHaveLength(2);
     expect(wrapper.find(".repository-resizer").exists()).toBe(true);
+    const differenceTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("差异表"));
+    expect(differenceTab?.text()).toContain("1");
+    await differenceTab!.trigger("click");
+    expect(wrapper.get(".repository-tree").text()).toContain("reward.xlsx");
+    expect(wrapper.get(".repository-tree").text()).not.toContain("配置.xlsx");
+    expect(wrapper.find(".tree-difference-count").exists()).toBe(false);
+    const filesTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("仓库文件"));
+    await filesTab!.trigger("click");
     const search = wrapper.get('input[aria-label="筛选仓库文件或目录"]');
     await search.setValue("中文 目录");
     expect(wrapper.get(".repository-tree").text()).toContain("中文 目录");
@@ -114,12 +126,100 @@ describe("App", () => {
     expect(wrapper.text()).toContain("没有匹配的文件或目录");
   });
 
+  it("keeps unverified workbooks hidden while the semantic difference index is building", async () => {
+    vi.useFakeTimers();
+    const indexing = {
+      ...structuredClone(repositoryView),
+      differenceFiles: [],
+      differenceIndexing: true
+    };
+    const repository = vi.fn(async (): Promise<RepositoryResult> => ({
+      repository: structuredClone(repositoryView),
+      summary: null
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({
+            loading: false,
+            hasSession: false,
+            error: "",
+            mode: "repository",
+            repository: indexing
+          }),
+          Repository: repository
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+    const differenceTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("差异表"));
+    expect(differenceTab?.text()).toContain("…");
+    await differenceTab!.trigger("click");
+    expect(wrapper.text()).toContain("正在后台建立差异表索引");
+    expect(wrapper.find(".repository-tree").exists()).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+    expect(repository).toHaveBeenCalledOnce();
+    expect(differenceTab?.text()).toContain("1");
+    expect(wrapper.get(".repository-tree").text()).toContain("reward.xlsx");
+    wrapper.unmount();
+    vi.useRealTimers();
+  });
+
+  it("preserves collapsed repository folders while the difference index is polling", async () => {
+    vi.useFakeTimers();
+    const indexing = {
+      ...structuredClone(repositoryView),
+      differenceFiles: [],
+      differenceIndexing: true
+    };
+    const repository = vi.fn(async (): Promise<RepositoryResult> => ({
+      repository: structuredClone(repositoryView),
+      summary: null
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({
+            loading: false,
+            hasSession: false,
+            error: "",
+            mode: "repository",
+            repository: indexing
+          }),
+          Repository: repository
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+    const configDirectory = wrapper.findAll(".tree-row").find((row) => row.attributes("title") === "config");
+    expect(configDirectory?.text()).toContain("▾");
+    await configDirectory!.trigger("click");
+    expect(wrapper.get(".repository-tree").text()).not.toContain("reward.xlsx");
+
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+
+    expect(repository).toHaveBeenCalledOnce();
+    const collapsedDirectory = wrapper.findAll(".tree-row").find((row) => row.attributes("title") === "config");
+    expect(collapsedDirectory?.text()).toContain("▸");
+    expect(wrapper.get(".repository-tree").text()).not.toContain("reward.xlsx");
+    const differenceTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("差异表"));
+    expect(differenceTab?.text()).toContain("1");
+    wrapper.unmount();
+    vi.useRealTimers();
+  });
+
   it("shows a missing-ref file state without replacing the left workbook with an empty grid", async () => {
     const leftOnly = structuredClone(emptySummary);
     leftOnly.diff.sheetCount = 1;
     leftOnly.diff.sheets = [{
       name: "Sheet1", status: "equal", orderDifferent: false,
-      differenceCount: 0, maxRow: 1, maxCol: 1
+      differenceCount: 0, maxRow: 1, maxCol: 1, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 0, rows: []
     }];
     leftOnly.selectedSheet = "Sheet1";
     leftOnly.diff.rightFile = "";
@@ -143,7 +243,7 @@ describe("App", () => {
           Region: async () => ({
             sheet: "Sheet1", fromRow: 1, toRow: 1, fromCol: 1, toCol: 1,
             cells: [{
-              row: 1, col: 1, axis: "A1", status: "unchanged",
+              row: 1, col: 1, axis: "A1", status: "unchanged", rowStatus: "unchanged",
               left: { ...empty, present: true, raw: "工作区内容", display: "工作区内容", type: "string" },
               right: empty
             }]
@@ -263,7 +363,9 @@ describe("App", () => {
     loaded.diff.differenceCount = 1;
     loaded.diff.sheets = [{
       name: "数据 表", status: "modified", orderDifferent: false,
-      differenceCount: 1, maxRow: 2, maxCol: 2
+      differenceCount: 1, maxRow: 2, maxCol: 2, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 1, conflictRowCount: 0,
+      rows: [{ row: 1, id: "", status: "modified" }]
     }];
     loaded.selectedSheet = "数据 表";
     loaded.warnings = null as unknown as string[];
@@ -288,7 +390,7 @@ describe("App", () => {
           Summary: async () => loaded,
           Differences: async () => editedToMatch ? [] : [{
             ref: { sheet: "数据 表", row: 1, col: 1 },
-            status: "modified",
+            status: "modified", rowStatus: "modified",
             left: { ...empty, present: true, raw: "旧", display: "旧", type: "string" },
             right: { ...empty, present: true, raw: "123", display: "123", type: "string" }
           }],
@@ -296,6 +398,7 @@ describe("App", () => {
             sheet: "数据 表", fromRow: 1, toRow: 1, fromCol: 1, toCol: 1,
             cells: [{
               row: 1, col: 1, axis: "A1", status: editedToMatch ? "unchanged" : "modified",
+              rowStatus: editedToMatch ? "unchanged" : "modified",
               left: {
                 ...empty,
                 present: true,
@@ -315,9 +418,24 @@ describe("App", () => {
     expect(wrapper.text()).toContain("数据 表");
     expect(wrapper.text()).toContain("旧");
     expect(wrapper.text()).toContain("123");
-    expect(wrapper.text()).toContain("0 / 1");
+    expect(wrapper.text()).toContain("1 / 1");
+    const activeFilter = wrapper.findAll(".diff-filter-tabs button")
+      .find((button) => button.attributes("aria-selected") === "true");
+    expect(activeFilter?.text()).toContain("修改");
+    const scrolls = wrapper.findAll(".grid-scroll");
+    expect(wrapper.findAll(".row-header-layer")).toHaveLength(2);
+    expect(wrapper.findAll(".col-header-layer")).toHaveLength(2);
+    (scrolls[0].element as HTMLElement).scrollLeft = 160;
+    await scrolls[0].trigger("scroll");
+    expect((scrolls[1].element as HTMLElement).scrollLeft).toBe(160);
+    (scrolls[1].element as HTMLElement).scrollLeft = 240;
+    await scrolls[1].trigger("scroll");
+    expect((scrolls[0].element as HTMLElement).scrollLeft).toBe(240);
+    expect(wrapper.get(".row-header").attributes("style")).toContain("left: 0px");
     const leftCell = wrapper.findAll(".grid-panel")[0].get(".cell");
-    expect(leftCell.classes()).toContain("difference");
+    const rightCell = wrapper.findAll(".grid-panel")[1].get(".cell");
+    expect(leftCell.classes()).toEqual(expect.arrayContaining(["difference", "cell-deleted"]));
+    expect(rightCell.classes()).toEqual(expect.arrayContaining(["difference", "cell-added"]));
     await leftCell.trigger("dblclick");
     expect(leftCell.classes()).toEqual(expect.arrayContaining(["difference", "selected", "active"]));
     expect((wrapper.get(".inline-cell-editor").element as HTMLInputElement).value).toBe("旧");
@@ -347,13 +465,18 @@ describe("App", () => {
     loaded.diff.differenceCount = 2;
     loaded.diff.sheets = [{
       name: "底部差异", status: "modified", orderDifferent: false,
-      differenceCount: 2, maxRow: 1000, maxCol: 2
+      differenceCount: 2, maxRow: 1000, maxCol: 2, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 2, conflictRowCount: 0,
+      rows: [
+        { row: 900, id: "", status: "modified" },
+        { row: 1000, id: "", status: "modified" }
+      ]
     }];
     loaded.selectedSheet = "底部差异";
     const empty = { present: false, raw: "", display: "", type: "unset" };
     const differences = [900, 1000].map((row) => ({
       ref: { sheet: "底部差异", row, col: 1 },
-      status: "modified",
+      status: "modified", rowStatus: "modified",
       left: { ...empty },
       right: { ...empty, present: true, raw: String(row), display: String(row), type: "number" }
     }));
@@ -372,7 +495,7 @@ describe("App", () => {
     const makeRegion = (row: number, display: string): Region => ({
       sheet: "底部差异", fromRow: 6, toRow: 53, fromCol: 1, toCol: 2,
       cells: [{
-        row, col: 1, axis: `A${row}`, status: "modified",
+        row, col: 1, axis: `A${row}`, status: "modified", rowStatus: "modified",
         left: { ...empty },
         right: { ...empty, present: true, raw: display, display, type: "string" }
       }]
@@ -410,7 +533,11 @@ describe("App", () => {
     pendingRegions[0](makeRegion(900, "过期区域"));
     await flushPromises();
 
-    expect(wrapper.get(".col-header").attributes("style")).toContain("top: 120px");
+    for (const item of wrapper.findAll(".grid-scroll")) {
+      expect((item.element as HTMLElement).scrollTop).toBe(120);
+    }
+    expect(wrapper.findAll(".col-header-layer")).toHaveLength(2);
+    expect(wrapper.get(".col-header").attributes("style")).toContain("top: 0px");
     expect(regionCall.mock.calls.at(-1)?.[1]).toBe(6);
     expect(wrapper.text()).toContain("最新区域");
     expect(wrapper.text()).not.toContain("过期区域");
@@ -424,12 +551,15 @@ describe("App", () => {
     loaded.diff.differenceCount = 2;
     loaded.diff.sheets = [{
       name: "批量", status: "modified", orderDifferent: false,
-      differenceCount: 2, maxRow: 1, maxCol: 2
+      differenceCount: 2, maxRow: 1, maxCol: 2, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 1, conflictRowCount: 0,
+      rows: [{ row: 1, id: "", status: "modified" }]
     }];
     loaded.selectedSheet = "批量";
     const empty = { present: false, raw: "", display: "", type: "unset" };
     const cells = [1, 2].map((col) => ({
       row: 1, col, axis: `${col === 1 ? "A" : "B"}1`, status: "modified",
+      rowStatus: "modified" as const,
       left: { ...empty, present: true, raw: `旧${col}`, display: `旧${col}`, type: "string" },
       right: { ...empty, present: true, raw: `新${col}`, display: `新${col}`, type: "string" }
     }));
@@ -446,7 +576,7 @@ describe("App", () => {
           Summary: async () => loaded,
           Differences: async () => cells.map((cell) => ({
             ref: { sheet: "批量", row: cell.row, col: cell.col },
-            status: cell.status, left: cell.left, right: cell.right
+            status: cell.status, rowStatus: cell.rowStatus, left: cell.left, right: cell.right
           })),
           Region: regionCall,
           CopyRightToLeftMany: copyMany,
@@ -456,7 +586,7 @@ describe("App", () => {
     };
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.get(".zoom-button").text()).toBe("100%");
+    expect(wrapper.get(".zoom-button").text()).toBe("缩放 100%");
     wrapper.get(".grid-scroll").element.dispatchEvent(new WheelEvent("wheel", {
       bubbles: true,
       cancelable: true,
@@ -466,8 +596,10 @@ describe("App", () => {
       clientY: 40
     }));
     await flushPromises();
-    expect(wrapper.get(".zoom-button").text()).toBe("110%");
+    expect(wrapper.get(".zoom-button").text()).toBe("缩放 110%");
     expect(window.localStorage.length).toBe(1);
+    await wrapper.get(".zoom-button").trigger("click");
+    expect(wrapper.get(".zoom-button").text()).toBe("缩放 100%");
     const rightCells = wrapper.findAll(".grid-panel")[1].findAll(".cell");
     await rightCells[0].trigger("pointerdown", { button: 0 });
     await rightCells[1].trigger("pointerenter");
@@ -490,5 +622,137 @@ describe("App", () => {
     }));
     await flushPromises();
     expect(undo).toHaveBeenCalledOnce();
+  });
+
+  it("shows conflict colors, row counts, and multi-row ID append actions", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.equal = false;
+    loaded.diff.sheetCount = 1;
+    loaded.diff.differentSheetCount = 1;
+    loaded.diff.differenceCount = 5;
+    loaded.diff.sheets = [{
+      name: "冲突", status: "modified", orderDifferent: false,
+      differenceCount: 5, maxRow: 6, maxCol: 3, idColumn: 1, nextId: 3,
+      addedRowCount: 1, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 2,
+      rows: [
+        { row: 2, id: "1", status: "conflict" },
+        { row: 3, id: "2", status: "conflict" },
+        { row: 6, id: "6", status: "added" }
+      ]
+    }];
+    loaded.selectedSheet = "冲突";
+    const value = (raw: string) => ({
+      present: true, raw, display: raw, type: /^\d+$/.test(raw) ? "number" : "string"
+    });
+    const cells = [
+      { row: 1, col: 1, axis: "A1", status: "unchanged", rowStatus: "unchanged", left: value("id"), right: value("id") },
+      { row: 1, col: 2, axis: "B1", status: "unchanged", rowStatus: "unchanged", left: value("name"), right: value("name") },
+      { row: 1, col: 3, axis: "C1", status: "unchanged", rowStatus: "unchanged", left: value("value"), right: value("value") },
+      { row: 2, col: 1, axis: "A2", status: "unchanged", rowStatus: "conflict", left: value("1"), right: value("1") },
+      { row: 2, col: 2, axis: "B2", status: "modified", rowStatus: "conflict", left: value("左一"), right: value("右一") },
+      { row: 2, col: 3, axis: "C2", status: "modified", rowStatus: "conflict", left: value("左二"), right: value("右二") },
+      { row: 3, col: 1, axis: "A3", status: "unchanged", rowStatus: "conflict", left: value("2"), right: value("2") },
+      { row: 3, col: 2, axis: "B3", status: "modified", rowStatus: "conflict", left: value("左三"), right: value("右三") },
+      { row: 3, col: 3, axis: "C3", status: "modified", rowStatus: "conflict", left: value("左四"), right: value("右四") },
+      { row: 6, col: 1, axis: "A6", status: "right-added", rowStatus: "added", left: { present: false, raw: "", display: "", type: "unset" }, right: value("6") }
+    ] as Region["cells"];
+    const missing = { present: false, raw: "", display: "", type: "unset" };
+    const appendedCells = [
+      { row: 4, col: 1, axis: "A4", status: "left-added", rowStatus: "deleted", left: value("10"), right: missing },
+      { row: 4, col: 2, axis: "B4", status: "left-added", rowStatus: "deleted", left: value("右一"), right: missing },
+      { row: 4, col: 3, axis: "C4", status: "left-added", rowStatus: "deleted", left: value("右二"), right: missing },
+      { row: 5, col: 1, axis: "A5", status: "left-added", rowStatus: "deleted", left: value("11"), right: missing },
+      { row: 5, col: 2, axis: "B5", status: "left-added", rowStatus: "deleted", left: value("右三"), right: missing },
+      { row: 5, col: 3, axis: "C5", status: "left-added", rowStatus: "deleted", left: value("右四"), right: missing }
+    ] as Region["cells"];
+    const handled = structuredClone(loaded);
+    handled.diff.sheets[0].maxRow = 6;
+    handled.diff.sheets[0].deletedRowCount = 2;
+    handled.diff.sheets[0].rows = [
+      ...(handled.diff.sheets[0].rows ?? []),
+      { row: 4, id: "10", status: "deleted" },
+      { row: 5, id: "11", status: "deleted" }
+    ];
+    handled.resolutions = [
+      { sheet: "冲突", sourceRow: 2, targetRow: 4, targetId: "10", kind: "append-specified" },
+      { sheet: "冲突", sourceRow: 3, targetRow: 5, targetId: "11", kind: "append-specified" }
+    ];
+    handled.dirty = true;
+    handled.undoCount = 1;
+    let appended = false;
+    const appendRows = vi.fn(async () => {
+      appended = true;
+      return handled;
+    });
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => (appended ? [...cells, ...appendedCells] : cells)
+            .filter((cell) => cell.status !== "unchanged")
+            .map((cell) => ({
+              ref: { sheet: "冲突", row: cell.row, col: cell.col },
+              status: cell.status,
+              rowStatus: cell.rowStatus,
+              left: cell.left,
+              right: cell.right
+            })),
+          Region: async () => ({
+            sheet: "冲突", fromRow: 1, toRow: 6, fromCol: 1, toCol: 3,
+            cells: appended ? [...cells, ...appendedCells] : cells
+          }),
+          AppendRowsRightToLeft: appendRows
+        }
+      }
+    };
+
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.get(".row-status-chip.conflict").text()).toBe("冲突 2");
+    expect(wrapper.findAll(".grid-panel")[1].findAll(".cell.row-conflict")).toHaveLength(6);
+    const activeConflictFilter = wrapper.findAll(".diff-filter-tabs button")
+      .find((button) => button.attributes("aria-selected") === "true");
+    expect(activeConflictFilter?.text()).toContain("冲突");
+    const addedFilter = wrapper.findAll(".diff-filter-tabs button")
+      .find((button) => button.text().includes("增加"));
+    await addedFilter!.trigger("click");
+    expect(wrapper.findAll(".diff-list button")).toHaveLength(1);
+    expect(wrapper.get(".diff-list button").text()).toContain("6:A");
+    const conflictFilter = wrapper.findAll(".diff-filter-tabs button")
+      .find((button) => button.text().includes("冲突"));
+    await conflictFilter!.trigger("click");
+
+    const rightPanel = wrapper.findAll(".grid-panel")[1];
+    const rowHeaders = rightPanel.findAll(".row-header");
+    await rowHeaders[1].trigger("pointerdown", { button: 0 });
+    await rowHeaders[2].trigger("pointerenter");
+    const rowThreeCell = rightPanel.findAll(".cell").find((cell) => cell.text() === "2");
+    await rowThreeCell!.trigger("contextmenu", { clientX: 120, clientY: 120 });
+    const menuText = wrapper.get(".context-menu").text();
+    expect(menuText).toContain("覆盖单元格到左侧");
+    expect(menuText).toContain("覆盖整行到左侧");
+    expect(menuText).toContain("将整行新增为 id:3~4 到左侧");
+    expect(menuText).toContain("将整行新增到指定 id 到左侧");
+
+    const specified = wrapper.findAll(".context-menu button")
+      .find((button) => button.text().includes("指定 id"));
+    await specified!.trigger("click");
+    const inputs = wrapper.findAll(".id-dialog input");
+    expect(inputs).toHaveLength(2);
+    await inputs[0].setValue("10");
+    await inputs[1].setValue("11");
+    await wrapper.get(".id-dialog").trigger("submit");
+    await flushPromises();
+    expect(appendRows).toHaveBeenCalledWith("冲突", [2, 3], ["10", "11"]);
+    const markers = wrapper.findAll(".resolution-marker");
+    expect(markers.map((marker) => marker.text())).toEqual(expect.arrayContaining([
+      "已新增为指定 ID 10",
+      "已新增为指定 ID 11"
+    ]));
+    const appendedLeftCell = wrapper.findAll(".grid-panel")[0].findAll(".cell")
+      .find((cell) => cell.text() === "10");
+    expect(appendedLeftCell?.classes()).toContain("cell-added");
+    expect(appendedLeftCell?.classes()).not.toContain("cell-deleted");
   });
 });

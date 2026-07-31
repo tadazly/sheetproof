@@ -1,6 +1,7 @@
 package workbook
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -45,6 +46,16 @@ func ValidateXLSXPath(path string) error {
 }
 
 func Identity(path string) (FileIdentity, error) {
+	return IdentityContext(context.Background(), path)
+}
+
+// IdentityContext calculates the file identity while allowing background
+// callers such as repository indexing to stop promptly during application
+// shutdown.
+func IdentityContext(ctx context.Context, path string) (FileIdentity, error) {
+	if err := contextError(ctx); err != nil {
+		return FileIdentity{}, err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		code := ErrUnreadable
@@ -59,7 +70,11 @@ func Identity(path string) (FileIdentity, error) {
 	}
 	defer f.Close()
 	hash := sha256.New()
-	if _, err = io.Copy(hash, f); err != nil {
+	var source io.Reader = f
+	if ctx.Done() != nil {
+		source = &contextReader{ctx: ctx, reader: f}
+	}
+	if _, err = io.Copy(hash, source); err != nil {
 		return FileIdentity{}, &Error{Code: ErrUnreadable, Path: path, Err: err}
 	}
 	return FileIdentity{
@@ -70,6 +85,16 @@ func Identity(path string) (FileIdentity, error) {
 }
 
 func (Reader) Open(path string) (*excelize.File, *WorkbookSnapshot, error) {
+	return (Reader{}).OpenContext(context.Background(), path)
+}
+
+// OpenContext opens and snapshots a workbook while periodically checking ctx.
+// Interactive opens use Open; background semantic indexing uses this method so
+// closing the application does not wait for the entire workbook scan.
+func (Reader) OpenContext(ctx context.Context, path string) (*excelize.File, *WorkbookSnapshot, error) {
+	if err := contextError(ctx); err != nil {
+		return nil, nil, err
+	}
 	if err := ValidateXLSXPath(path); err != nil {
 		return nil, nil, err
 	}
@@ -77,15 +102,18 @@ func (Reader) Open(path string) (*excelize.File, *WorkbookSnapshot, error) {
 	if err != nil {
 		return nil, nil, &Error{Code: ErrUnreadable, Path: path, Err: err}
 	}
-	id, err := Identity(abs)
+	id, err := IdentityContext(ctx, abs)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := contextError(ctx); err != nil {
 		return nil, nil, err
 	}
 	f, err := excelize.OpenFile(abs, excelize.Options{RawCellValue: true})
 	if err != nil {
 		return nil, nil, &Error{Code: ErrCorrupt, Path: abs, Err: err}
 	}
-	snapshot, err := Snapshot(f, abs, id)
+	snapshot, err := snapshotContext(ctx, f, abs, id)
 	if err != nil {
 		_ = f.Close()
 		return nil, nil, err
@@ -94,6 +122,13 @@ func (Reader) Open(path string) (*excelize.File, *WorkbookSnapshot, error) {
 }
 
 func Snapshot(f *excelize.File, path string, id FileIdentity) (*WorkbookSnapshot, error) {
+	return snapshotContext(context.Background(), f, path, id)
+}
+
+func snapshotContext(ctx context.Context, f *excelize.File, path string, id FileIdentity) (*WorkbookSnapshot, error) {
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	names := f.GetSheetList()
 	if len(names) == 0 {
 		return nil, &Error{Code: ErrNoSheets, Path: path, Err: fmt.Errorf("workbook contains no worksheets")}
@@ -105,7 +140,10 @@ func Snapshot(f *excelize.File, path string, id FileIdentity) (*WorkbookSnapshot
 		Identity: id,
 	}
 	for index, name := range names {
-		sheet, err := snapshotSheet(f, name, index)
+		if err := contextError(ctx); err != nil {
+			return nil, err
+		}
+		sheet, err := snapshotSheet(ctx, f, name, index)
 		if err != nil {
 			return nil, &Error{Code: ErrCorrupt, Path: path, Err: fmt.Errorf("read sheet %q: %w", name, err)}
 		}
@@ -115,7 +153,7 @@ func Snapshot(f *excelize.File, path string, id FileIdentity) (*WorkbookSnapshot
 	return result, nil
 }
 
-func snapshotSheet(f *excelize.File, name string, index int) (*SheetSnapshot, error) {
+func snapshotSheet(ctx context.Context, f *excelize.File, name string, index int) (*SheetSnapshot, error) {
 	rows, err := f.Rows(name)
 	if err != nil {
 		return nil, err
@@ -128,12 +166,18 @@ func snapshotSheet(f *excelize.File, name string, index int) (*SheetSnapshot, er
 	}
 	rowIndex := 0
 	for rows.Next() {
+		if err := contextError(ctx); err != nil {
+			return nil, err
+		}
 		rowIndex++
 		columns, err := rows.Columns(excelize.Options{RawCellValue: true})
 		if err != nil {
 			return nil, err
 		}
 		for colIndex := 1; colIndex <= len(columns); colIndex++ {
+			if err := contextError(ctx); err != nil {
+				return nil, err
+			}
 			axis, _ := excelize.CoordinatesToCellName(colIndex, rowIndex)
 			cellType, err := f.GetCellType(name, axis)
 			if err != nil {
@@ -181,6 +225,27 @@ func snapshotSheet(f *excelize.File, name string, index int) (*SheetSnapshot, er
 		return sheet.CellList[i].Row < sheet.CellList[j].Row
 	})
 	return sheet, nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *contextReader) Read(buffer []byte) (int, error) {
+	if err := contextError(r.ctx); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(buffer)
+}
+
+func contextError(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
 }
 
 func ClassifyCellType(f *excelize.File, t excelize.CellType, formula, raw string, styleID int) string {

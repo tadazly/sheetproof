@@ -9,8 +9,32 @@ export interface CellValue {
 export interface CellDiff {
   ref: { sheet: string; row: number; col: number };
   status: string;
+  rowStatus: RowStatus;
   left: CellValue;
   right: CellValue;
+}
+
+export type RowStatus = "unchanged" | "added" | "deleted" | "modified" | "conflict";
+
+export interface RowDiff {
+  row: number;
+  id?: string;
+  status: RowStatus;
+}
+
+export type ResolutionKind =
+  | "overwrite-cells"
+  | "overwrite-row"
+  | "append-auto"
+  | "append-specified";
+
+export interface RowResolution {
+  sheet: string;
+  sourceRow: number;
+  targetRow?: number;
+  targetId?: string;
+  kind: ResolutionKind;
+  cellCount?: number;
 }
 
 export interface SheetDiff {
@@ -20,6 +44,13 @@ export interface SheetDiff {
   differenceCount: number;
   maxRow: number;
   maxCol: number;
+  idColumn: number;
+  nextId: number;
+  addedRowCount: number;
+  deletedRowCount: number;
+  modifiedRowCount: number;
+  conflictRowCount: number;
+  rows?: RowDiff[];
 }
 
 export interface Summary {
@@ -42,6 +73,7 @@ export interface Summary {
     differenceCount: number;
     sheets: SheetDiff[];
   };
+  resolutions: RowResolution[];
   dirty: boolean;
   undoCount: number;
   warnings: string[];
@@ -55,6 +87,7 @@ export interface RegionCell {
   left: CellValue;
   right: CellValue;
   status: string;
+  rowStatus: RowStatus;
 }
 
 export interface Region {
@@ -80,6 +113,8 @@ export interface RepositoryView {
   workspaceDirty: boolean;
   operation: string;
   files: string[];
+  differenceFiles: string[];
+  differenceIndexing: boolean;
   branches: RepositoryBranch[];
   defaultRef: string;
   selectedFile: string;

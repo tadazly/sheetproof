@@ -18,6 +18,7 @@ func TestRepositoryDiscoveryBranchesScanAndObjectRead(t *testing.T) {
 	git(t, root, "init", "-b", "main")
 	git(t, root, "config", "user.email", "test@example.com")
 	git(t, root, "config", "user.name", "ugxlsx test")
+	git(t, root, "remote", "add", "origin", ".")
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("base"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +30,9 @@ func TestRepositoryDiscoveryBranchesScanAndObjectRead(t *testing.T) {
 	writeWorkbook(t, filepath.Join(root, filepath.FromSlash(relative)), "main")
 	git(t, root, "add", relative)
 	git(t, root, "commit", "-m", "main workbook")
+	mainHash := strings.TrimSpace(git(t, root, "rev-parse", "HEAD"))
+	git(t, root, "update-ref", "refs/remotes/origin/main", mainHash)
+	git(t, root, "branch", "--set-upstream-to=origin/main", "main")
 	git(t, root, "branch", "feature10")
 	git(t, root, "branch", "feature2")
 	git(t, root, "branch", "develop")
@@ -67,18 +71,30 @@ func TestRepositoryDiscoveryBranchesScanAndObjectRead(t *testing.T) {
 	}
 	wantNames := []string{
 		"local:develop", "local:feature2", "local:feature10", "local:missing",
-		"remote:origin/develop",
+		"remote:origin/develop", "remote:origin/main",
 	}
 	if strings.Join(gotNames, "|") != strings.Join(wantNames, "|") {
 		t.Fatalf("branches = %#v, want %#v", gotNames, wantNames)
 	}
-	if info.DefaultRef != "refs/heads/develop" {
+	if info.DefaultRef != "refs/remotes/origin/main" {
 		t.Fatalf("default ref = %q", info.DefaultRef)
+	}
+	git(t, root, "branch", "--unset-upstream", "main")
+	refreshed, err := repo.Refresh()
+	if err != nil || refreshed.DefaultRef != "refs/remotes/origin/main" {
+		t.Fatalf("matching remote fallback = %q, %v", refreshed.DefaultRef, err)
 	}
 
 	develop, err := repo.ResolveReference("develop", info.Branches)
 	if err != nil {
 		t.Fatal(err)
+	}
+	candidates, err := repo.ChangedCommonXLSX(develop, info.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || candidates[0] != relative {
+		t.Fatalf("changed XLSX candidates = %#v", candidates)
 	}
 	beforeBranch := strings.TrimSpace(git(t, root, "branch", "--show-current"))
 	beforeStatus := git(t, root, "status", "--porcelain=v1")
@@ -107,8 +123,23 @@ func TestRepositoryDiscoveryBranchesScanAndObjectRead(t *testing.T) {
 	if _, err := repo.ReadReferenceFile(missing, relative); !IsMissingFile(err) {
 		t.Fatalf("missing ref path error = %v", err)
 	}
+	candidates, err = repo.ChangedCommonXLSX(missing, info.Files)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("missing-ref candidates = %#v, %v", candidates, err)
+	}
 
+	signatureBefore, err := repo.DifferenceIndexSignature(develop, info.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
 	writeWorkbook(t, filepath.Join(root, filepath.FromSlash(relative)), "uncommitted")
+	signatureAfter, err := repo.DifferenceIndexSignature(develop, info.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signatureBefore == signatureAfter {
+		t.Fatal("difference index signature did not change after worktree edit")
+	}
 	modified, err := repo.FileModified(relative)
 	if err != nil || !modified {
 		t.Fatalf("FileModified = %t, %v", modified, err)

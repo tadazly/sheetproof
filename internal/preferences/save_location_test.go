@@ -77,6 +77,15 @@ func TestStoreRemembersRepositoryAndSidebarWidthWithoutLosingSaveDirectory(t *te
 	if err := store.RecordRepositoryWidth(336); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.RecordRepositoryRef(repository, "refs/remotes/origin/develop"); err != nil {
+		t.Fatal(err)
+	}
+	indexFiles := []string{"config/a.xlsx", "中文/b.xlsx"}
+	if err := store.RecordRepositoryIndex(
+		repository, "refs/remotes/origin/develop", "signature-1", indexFiles,
+	); err != nil {
+		t.Fatal(err)
+	}
 	reopened := NewStoreAt(store.path)
 	if got := reopened.LastRepository(); got != repository {
 		t.Fatalf("last repository = %q, want %q", got, repository)
@@ -86,5 +95,25 @@ func TestStoreRemembersRepositoryAndSidebarWidthWithoutLosingSaveDirectory(t *te
 	}
 	if got := reopened.SaveDirectory(); got != saveDirectory {
 		t.Fatalf("save directory was lost: %q", got)
+	}
+	if got := reopened.RepositoryRef(repository); got != "refs/remotes/origin/develop" {
+		t.Fatalf("repository ref = %q", got)
+	}
+	if got, exists := reopened.RepositoryIndex(
+		repository, "refs/remotes/origin/develop", "signature-1",
+	); !exists || len(got) != 2 || got[1] != indexFiles[1] {
+		t.Fatalf("repository index = %#v, exists=%t", got, exists)
+	}
+	if _, exists := reopened.RepositoryIndex(
+		repository, "refs/remotes/origin/develop", "stale-signature",
+	); exists {
+		t.Fatal("stale repository index was reused")
+	}
+	otherRepository := filepath.Join(root, "other")
+	if err := os.Mkdir(otherRepository, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.RepositoryRef(otherRepository); got != "" {
+		t.Fatalf("unrelated repository ref = %q", got)
 	}
 }

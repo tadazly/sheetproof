@@ -12,7 +12,7 @@ description: Continue, review, debug, test, or document the ugxlsx Go/Wails/Vue 
    `../../../docs/architecture.md` completely.
 3. Read `../../../docs/manual-acceptance.md` when changing user-visible behavior.
 4. Run `git status --short` before editing. Treat existing changes as user work.
-5. Do not reset or overwrite the uncommitted second-iteration baseline.
+5. Do not reset or overwrite any uncommitted second- or third-iteration baseline changes.
 
 Use `docs/iteration-1-handoff.md` only for first-iteration history. Do not treat it as the
 current implementation state.
@@ -46,13 +46,25 @@ pipeline for both.
 
 ## Preserve current interaction semantics
 
-- Keep the repository sidebar tabs for files and sheets/differences.
+- Keep the repository sidebar tabs for files, differing workbooks, and sheets/differences.
 - Keep the compact searchable XLSX-only tree.
+- Keep the differing-workbook tree on the cached semantic index. Git may select paths present
+  on both sides as candidates, but background comparison must apply the Go equality semantics;
+  never show unverified or semantically equal workbooks. Calculate exact per-workbook cell counts
+  only after opening a workbook. Keep background indexing cancellable so application shutdown
+  does not wait for all remaining workbooks, while still cleaning exported temporary files.
+- Preserve per-repository comparison-ref preferences and default to the current branch's matching
+  remote ref when no valid preference exists.
 - Edit the left grid in place on double-click; submit with Enter or blur and cancel with Esc.
 - Keep the bottom two-line value/type inspector instead of the legacy edit form.
 - Let the Go diff result determine highlighting.
-- Show selected equal cells in blue. Show selected differences with both the yellow/orange
-  difference cue and blue selection border.
+- Use the Go row classification for added, deleted, modified, and conflict colors/counts.
+  Follow split Git colors for modified cells (old/left red, new/right green), use orange for
+  conflicts, and preserve each semantic background under the blue selection border.
+- Keep conflict row copy/overwrite/append operations in Session merge/history. Auto IDs continue
+  from the largest integer ID on the left; specified IDs are one per selected source row.
+- Keep conflict resolution markers in Session state, remove them with the corresponding undo,
+  show the resolution on the right source row, and render appended left target rows as additions.
 - When an inline value exactly matches the right raw value, preserve the right text/number type
   so visibly equal numeric text does not remain different only because of inference.
 

@@ -11,12 +11,20 @@ import (
 const preferencesFilename = "preferences.json"
 
 type savePreferences struct {
-	LastSaveDirectory string `json:"lastSaveDirectory"`
-	LastRepository    string `json:"lastRepository,omitempty"`
-	RepositoryWidth   int    `json:"repositoryWidth,omitempty"`
+	LastSaveDirectory string                                      `json:"lastSaveDirectory"`
+	LastRepository    string                                      `json:"lastRepository,omitempty"`
+	RepositoryWidth   int                                         `json:"repositoryWidth,omitempty"`
+	RepositoryRefs    map[string]string                           `json:"repositoryRefs,omitempty"`
+	RepositoryIndexes map[string]map[string]repositoryIndexRecord `json:"repositoryIndexes,omitempty"`
 }
 
-// Store persists small, non-sensitive GUI preferences for the current user.
+type repositoryIndexRecord struct {
+	Signature string   `json:"signature"`
+	Files     []string `json:"files"`
+}
+
+// Store persists non-sensitive GUI preferences and lightweight repository
+// indexes for the current user.
 type Store struct {
 	path string
 }
@@ -92,7 +100,88 @@ func (s Store) RecordRepository(root string) error {
 		return os.ErrNotExist
 	}
 	value := s.load()
-	value.LastRepository = filepath.Clean(absolute)
+	cleaned := filepath.Clean(absolute)
+	if value.LastRepository == cleaned {
+		return nil
+	}
+	value.LastRepository = cleaned
+	return s.write(value)
+}
+
+// RepositoryRef returns the last comparison ref selected for a repository.
+func (s Store) RepositoryRef(root string) string {
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return ""
+	}
+	return s.load().RepositoryRefs[filepath.Clean(absolute)]
+}
+
+func (s Store) RecordRepositoryRef(root, ref string) error {
+	if s.path == "" {
+		return errors.New("user configuration directory is unavailable")
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	if !directoryExists(absolute) {
+		return os.ErrNotExist
+	}
+	if ref == "" {
+		return errors.New("repository comparison ref is empty")
+	}
+	value := s.load()
+	if value.RepositoryRefs == nil {
+		value.RepositoryRefs = make(map[string]string)
+	}
+	rootKey := filepath.Clean(absolute)
+	if value.RepositoryRefs[rootKey] == ref {
+		return nil
+	}
+	value.RepositoryRefs[rootKey] = ref
+	return s.write(value)
+}
+
+func (s Store) RepositoryIndex(root, ref, signature string) ([]string, bool) {
+	absolute, err := filepath.Abs(root)
+	if err != nil || ref == "" || signature == "" {
+		return nil, false
+	}
+	byRef := s.load().RepositoryIndexes[filepath.Clean(absolute)]
+	record, exists := byRef[ref]
+	if !exists || record.Signature != signature {
+		return nil, false
+	}
+	return append([]string{}, record.Files...), true
+}
+
+func (s Store) RecordRepositoryIndex(root, ref, signature string, files []string) error {
+	if s.path == "" {
+		return errors.New("user configuration directory is unavailable")
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	if !directoryExists(absolute) {
+		return os.ErrNotExist
+	}
+	if ref == "" || signature == "" {
+		return errors.New("repository index ref and signature are required")
+	}
+	value := s.load()
+	if value.RepositoryIndexes == nil {
+		value.RepositoryIndexes = make(map[string]map[string]repositoryIndexRecord)
+	}
+	rootKey := filepath.Clean(absolute)
+	if value.RepositoryIndexes[rootKey] == nil {
+		value.RepositoryIndexes[rootKey] = make(map[string]repositoryIndexRecord)
+	}
+	value.RepositoryIndexes[rootKey][ref] = repositoryIndexRecord{
+		Signature: signature,
+		Files:     append([]string{}, files...),
+	}
 	return s.write(value)
 }
 

@@ -2,9 +2,18 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { backend } from "./backend";
-import { nextDiffIndex } from "./diffNav";
+import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
-import type { CellDiff, Region, RegionCell, RepositoryResult, RepositoryView, Summary } from "./types";
+import type {
+  CellDiff,
+  Region,
+  RegionCell,
+  RepositoryResult,
+  RepositoryView,
+  RowResolution,
+  RowStatus,
+  Summary
+} from "./types";
 
 const BASE_ROW_HEIGHT = 23;
 const BASE_COL_WIDTH = 96;
@@ -15,6 +24,7 @@ const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.8;
 const VIEW_ROWS = 48;
 const VIEW_COLS = 20;
+const DIFF_FILTER_TABS: DiffFilter[] = ["added", "deleted", "modified", "conflict"];
 
 const summary = ref<Summary | null>(null);
 const repository = ref<RepositoryView | null>(null);
@@ -27,21 +37,34 @@ const selectionAnchor = ref<CellPoint | null>(null);
 const selection = ref<SelectionRange | null>(null);
 const busy = ref(false);
 const error = ref("");
-const onlyDiffs = ref(false);
+const diffFilter = ref<DiffFilter>("modified");
 const leftScroll = ref<HTMLElement | null>(null);
 const rightScroll = ref<HTMLElement | null>(null);
 const viewportTop = ref(0);
 const viewportLeft = ref(0);
 const zoom = ref(1);
 const columnWidths = ref<Record<number, number>>({});
-const contextMenu = ref({ visible: false, x: 0, y: 0 });
+const contextMenu = ref<{
+  visible: boolean;
+  x: number;
+  y: number;
+  row: number;
+  side: "left" | "right";
+  kind: "cell" | "row";
+}>({ visible: false, x: 0, y: 0, row: 0, side: "right", kind: "cell" });
+const idDialog = ref<{
+  visible: boolean;
+  rows: number[];
+  values: string[];
+}>({ visible: false, rows: [], values: [] });
 const startupLoading = ref(true);
 const expandedDirectories = ref(new Set<string>());
 const repositorySearch = ref("");
-const repositorySidebarTab = ref<"files" | "sheets">("files");
+const repositorySidebarTab = ref<"files" | "differences" | "sheets">("files");
 const inlineEdit = ref<{ row: number; col: number; value: string; original: RegionCell } | null>(null);
 const repoSidebar = ref<HTMLElement | null>(null);
 let loadingTimer = 0;
+let differenceIndexTimer = 0;
 let regionRequest = 0;
 let repositoryRequest = 0;
 let pendingActions = 0;
@@ -89,6 +112,24 @@ const columnOffsets = computed(() => {
 });
 const canvasWidth = computed(() => rowHeaderWidth.value + columnOffsets.value[totalCols.value + 1]);
 const selectionSize = computed(() => rangeSize(selection.value));
+const filteredDiffEntries = computed(() =>
+  diffs.value
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => (item.rowStatus || "modified") === diffFilter.value)
+);
+const diffFilterCounts = computed(() => {
+  const counts: Record<DiffFilter, number> = {
+    added: 0, deleted: 0, modified: 0, conflict: 0
+  };
+  for (const item of diffs.value) {
+    const status = item.rowStatus || "modified";
+    if (status !== "unchanged") counts[status]++;
+  }
+  return counts;
+});
+const filteredDiffPosition = computed(() =>
+  filteredDiffEntries.value.findIndex(({ index }) => index === diffIndex.value)
+);
 const activeCell = computed(() => {
   const point = activePoint.value;
   return point ? region.value?.cells.find((cell) => cell.row === point.row && cell.col === point.col) ?? null : null;
@@ -103,12 +144,57 @@ const copyTargets = computed(() => {
   }
   return result;
 });
+const selectionCoordinates = computed(() => {
+  if (!selection.value) return activePoint.value ? [{ ...activePoint.value }] : [];
+  const result: CellPoint[] = [];
+  for (let row = selection.value.startRow; row <= selection.value.endRow; row++) {
+    for (let col = selection.value.startCol; col <= selection.value.endCol; col++) {
+      result.push({ row, col });
+      if (result.length > 10000) return result;
+    }
+  }
+  return result;
+});
+const contextRows = computed(() => {
+  const row = contextMenu.value.row;
+  if (!row) return [];
+  if (!selection.value || row < selection.value.startRow || row > selection.value.endRow) {
+    return [row];
+  }
+  return Array.from(
+    { length: selection.value.endRow - selection.value.startRow + 1 },
+    (_, index) => selection.value!.startRow + index
+  );
+});
+const contextRowStatuses = computed(() =>
+  contextRows.value.map((row) => rowStatus(row))
+);
+const contextIsConflict = computed(() =>
+  contextRowStatuses.value.length > 0 &&
+  contextRowStatuses.value.every((status) => status === "conflict")
+);
+const contextIsActionable = computed(() =>
+  contextRowStatuses.value.length > 0 &&
+  contextRowStatuses.value.every((status) => status !== "unchanged")
+);
+const contextActionDisabled = computed(() =>
+  busy.value || Boolean(summary.value?.options.readonlyLeft) || !comparisonActive.value
+);
+const automaticIDLabel = computed(() => {
+  const nextID = activeSheet.value?.nextId ?? 0;
+  if (!nextID || !contextRows.value.length) return "";
+  const lastID = nextID + contextRows.value.length - 1;
+  return nextID === lastID ? `id:${nextID}` : `id:${nextID}~${lastID}`;
+});
 const comparisonActive = computed(() => !repository.value || repository.value.comparisonActive);
 const repositoryRows = computed<RepositoryTreeRow[]>(() => {
   type Node = { directories: Map<string, Node>; files: string[] };
   const root: Node = { directories: new Map(), files: [] };
   const query = repositorySearch.value.trim().toLocaleLowerCase();
-  const files = (repository.value?.files ?? []).filter((path) =>
+  const sourceFiles = repositorySidebarTab.value === "differences"
+    ? (repository.value?.differenceFiles ?? [])
+    : (repository.value?.files ?? []);
+  const files = sourceFiles.filter((path) =>
     !query || path.toLocaleLowerCase().includes(query)
   );
   for (const path of files) {
@@ -186,15 +272,39 @@ async function initialLoad() {
 }
 
 function acceptRepositoryView(view: RepositoryView) {
+  const repositoryChanged = repository.value?.path !== view.path;
   repository.value = view;
-  const expanded = new Set(expandedDirectories.value);
-  for (const file of view.files) {
-    const parts = file.split("/");
-    for (let index = 1; index < parts.length; index++) {
-      expanded.add(parts.slice(0, index).join("/"));
+  if (repositoryChanged) {
+    const expanded = new Set<string>();
+    for (const file of view.files) {
+      const parts = file.split("/");
+      for (let index = 1; index < parts.length; index++) {
+        expanded.add(parts.slice(0, index).join("/"));
+      }
     }
+    expandedDirectories.value = expanded;
   }
-  expandedDirectories.value = expanded;
+  scheduleDifferenceIndexPoll();
+}
+
+function scheduleDifferenceIndexPoll() {
+  window.clearTimeout(differenceIndexTimer);
+  const current = repository.value;
+  if (!current?.differenceIndexing) return;
+  const expectedPath = current.path;
+  const expectedRef = current.selectedRef;
+  differenceIndexTimer = window.setTimeout(async () => {
+    try {
+      const result = await backend.repository();
+      if (
+        repository.value?.path !== expectedPath ||
+        repository.value?.selectedRef !== expectedRef
+      ) return;
+      acceptRepositoryView(result.repository);
+    } catch (reason) {
+      error.value = reason instanceof Error ? reason.message : String(reason);
+    }
+  }, 200);
 }
 
 async function acceptRepositoryResult(result: RepositoryResult) {
@@ -218,19 +328,23 @@ function clearWorkbook() {
 }
 
 async function chooseRepository() {
+  window.clearTimeout(differenceIndexTimer);
   const result = await guard(() => backend.selectRepository());
   if (result) await acceptRepositoryResult(result);
+  else scheduleDifferenceIndexPoll();
 }
 
 async function chooseFiles() {
+  window.clearTimeout(differenceIndexTimer);
   const data = await guard(() => backend.selectAndOpen());
   if (data) {
     repository.value = null;
     await acceptSummary(data, data.selectedSheet);
-  }
+  } else scheduleDifferenceIndexPoll();
 }
 
 async function selectRepositoryFile(path: string) {
+  window.clearTimeout(differenceIndexTimer);
   const request = ++repositoryRequest;
   const previous = repository.value ? { ...repository.value } : null;
   if (repository.value) {
@@ -243,7 +357,7 @@ async function selectRepositoryFile(path: string) {
   }, 120);
   const result = await guard(() => backend.selectRepositoryFile(path));
   if (!result || request !== repositoryRequest) {
-    if (!result && request === repositoryRequest && previous) repository.value = previous;
+    if (!result && request === repositoryRequest && previous) acceptRepositoryView(previous);
     return;
   }
   await acceptRepositoryResult(result);
@@ -251,6 +365,7 @@ async function selectRepositoryFile(path: string) {
 }
 
 async function selectRepositoryRef(value: string) {
+  window.clearTimeout(differenceIndexTimer);
   const request = ++repositoryRequest;
   const previous = repository.value ? { ...repository.value } : null;
   if (repository.value) {
@@ -263,7 +378,7 @@ async function selectRepositoryRef(value: string) {
   }, 120);
   const result = await guard(() => backend.selectRepositoryRef(value));
   if (!result || request !== repositoryRequest) {
-    if (!result && request === repositoryRequest && previous) repository.value = previous;
+    if (!result && request === repositoryRequest && previous) acceptRepositoryView(previous);
     return;
   }
   await acceptRepositoryResult(result);
@@ -271,8 +386,10 @@ async function selectRepositoryRef(value: string) {
 }
 
 async function refreshRepository() {
+  window.clearTimeout(differenceIndexTimer);
   const result = await guard(() => backend.refreshRepository());
   if (result) await acceptRepositoryResult(result);
+  else scheduleDifferenceIndexPoll();
 }
 
 function toggleDirectory(path: string) {
@@ -312,6 +429,7 @@ async function loadSheet(name: string, resetSelection = true) {
   diffIndex.value = -1;
   const list = await guard(() => backend.differences(name, 0, 10000));
   diffs.value = list ?? [];
+  selectDiffFilter(preferredDiffFilter(diffs.value));
   const source = leftScroll.value ?? rightScroll.value;
   const fromRow = changed || resetSelection
     ? 1
@@ -328,8 +446,7 @@ async function loadSheet(name: string, resetSelection = true) {
         element.scrollLeft = 0;
       }
     }
-    viewportTop.value = 0;
-    viewportLeft.value = 0;
+    updateViewportOffsets(0, 0);
   }
 }
 
@@ -348,15 +465,21 @@ function onScroll(side: "left" | "right") {
   const target = side === "left" ? rightScroll.value : leftScroll.value;
   if (!source || !target) return;
   syncing = true;
-  target.scrollTop = source.scrollTop;
-  target.scrollLeft = source.scrollLeft;
-  viewportTop.value = source.scrollTop;
-  viewportLeft.value = source.scrollLeft;
+  const actualTop = source.scrollTop;
+  const actualLeft = source.scrollLeft;
+  updateViewportOffsets(actualTop, actualLeft);
+  target.scrollTop = actualTop;
+  target.scrollLeft = actualLeft;
   syncing = false;
   window.clearTimeout(loadingTimer);
   loadingTimer = window.setTimeout(() => {
     loadRegion(Math.floor(source.scrollTop / rowHeight.value) + 1, columnAtOffset(source.scrollLeft));
   }, 60);
+}
+
+function updateViewportOffsets(top: number, left: number) {
+  viewportTop.value = top;
+  viewportLeft.value = left;
 }
 
 function setSingleSelection(cell: RegionCell) {
@@ -365,7 +488,11 @@ function setSingleSelection(cell: RegionCell) {
   selectionAnchor.value = point;
   selection.value = makeRange(point, point);
   const index = diffs.value.findIndex((item) => item.ref.row === cell.row && item.ref.col === cell.col);
-  if (index >= 0) diffIndex.value = index;
+  if (index >= 0) {
+    const status = diffs.value[index].rowStatus || "modified";
+    if (status !== "unchanged") diffFilter.value = status;
+    diffIndex.value = index;
+  }
 }
 
 function beginCellSelection(cell: RegionCell, event: PointerEvent) {
@@ -439,11 +566,26 @@ function finishPointerAction() {
 
 async function navigate(direction: 1 | -1) {
   if (!comparisonActive.value) return;
-  const index = nextDiffIndex(diffIndex.value, diffs.value.length, direction);
-  if (index < 0) return;
-  diffIndex.value = index;
-  const target = diffs.value[index];
+  const entries = filteredDiffEntries.value;
+  const current = entries.findIndex(({ index }) => index === diffIndex.value);
+  const filteredIndex = nextDiffIndex(current, entries.length, direction);
+  if (filteredIndex < 0) return;
+  const targetEntry = entries[filteredIndex];
+  diffIndex.value = targetEntry.index;
+  const target = targetEntry.item;
   await scrollTo(target.ref.row, target.ref.col);
+}
+
+function selectDiffFilter(status: DiffFilter) {
+  diffFilter.value = status;
+  diffIndex.value = diffs.value.findIndex((item) =>
+    (item.rowStatus || "modified") === status
+  );
+}
+
+function selectDiffEntry(index: number, item: CellDiff) {
+  diffIndex.value = index;
+  void scrollTo(item.ref.row, item.ref.col);
 }
 
 async function scrollTo(row: number, col: number) {
@@ -467,8 +609,7 @@ async function scrollTo(row: number, col: number) {
       element.scrollLeft = actualLeft;
     }
   }
-  viewportTop.value = actualTop;
-  viewportLeft.value = actualLeft;
+  updateViewportOffsets(actualTop, actualLeft);
   const loaded = await loadRegion(
     Math.floor(actualTop / rowHeight.value) + 1,
     columnAtOffset(actualLeft)
@@ -490,6 +631,59 @@ async function copySelection() {
     selection.value = savedSelection;
     activePoint.value = focus;
   }
+}
+
+async function runContextAction(action: () => Promise<Summary>) {
+  const focus = activePoint.value ? { ...activePoint.value } : null;
+  const savedSelection = selection.value ? { ...selection.value } : null;
+  contextMenu.value.visible = false;
+  const data = await guard(action);
+  if (!data) return;
+  await acceptSummary(data, sheet.value, false);
+  selection.value = savedSelection;
+  activePoint.value = focus;
+}
+
+async function copyContextCells() {
+  if (!selectionCoordinates.value.length || selectionCoordinates.value.length > 10000) return;
+  await runContextAction(() =>
+    backend.copyMany(sheet.value, selectionCoordinates.value)
+  );
+}
+
+async function copyContextRows() {
+  if (!contextRows.value.length) return;
+  await runContextAction(() =>
+    backend.copyRows(sheet.value, contextRows.value)
+  );
+}
+
+async function appendContextRowsAutomatically() {
+  if (!contextRows.value.length || !automaticIDLabel.value) return;
+  await runContextAction(() =>
+    backend.appendRows(sheet.value, contextRows.value, [])
+  );
+}
+
+function openSpecifiedIDDialog() {
+  idDialog.value = {
+    visible: true,
+    rows: [...contextRows.value],
+    values: contextRows.value.map(() => "")
+  };
+  contextMenu.value.visible = false;
+}
+
+async function confirmSpecifiedIDs() {
+  const current = {
+    rows: [...idDialog.value.rows],
+    values: [...idDialog.value.values]
+  };
+  if (!current.rows.length || current.values.some((value) => !value.trim())) return;
+  idDialog.value.visible = false;
+  await runContextAction(() =>
+    backend.appendRows(sheet.value, current.rows, current.values)
+  );
 }
 
 function startInlineEdit(cell: RegionCell) {
@@ -581,19 +775,96 @@ async function save(as = false) {
   if (data) await acceptSummary(data, sheet.value, false);
 }
 
-function cellClass(cell: RegionCell) {
+function rowStatus(row: number): RowStatus {
+  const classified = activeSheet.value?.rows?.find((item) => item.row === row)?.status;
+  if (classified) return classified;
+  const cells = region.value?.cells.filter((item) => item.row === row) ?? [];
+  const regionStatus = cells.find((item) => item.rowStatus !== "unchanged")?.rowStatus;
+  if (regionStatus) return regionStatus;
+  return cells.some((item) => item.status !== "unchanged") ? "modified" : "unchanged";
+}
+
+function rowStatusLabel(status: RowStatus) {
+  switch (status) {
+  case "added": return "增加";
+  case "deleted": return "删除";
+  case "modified": return "修改";
+  case "conflict": return "冲突";
+  default: return "无差异";
+  }
+}
+
+function rowResolution(
+  row: number,
+  side: "left" | "right"
+): RowResolution | null {
+  const items = summary.value?.resolutions ?? [];
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index];
+    if (item.sheet !== sheet.value) continue;
+    if (side === "right" && item.sourceRow === row) return item;
+    if (
+      side === "left" &&
+      item.targetRow === row &&
+      (item.kind === "append-auto" || item.kind === "append-specified")
+    ) return item;
+  }
+  return null;
+}
+
+function resolutionLabel(item: RowResolution) {
+  switch (item.kind) {
+  case "overwrite-row":
+    return "已覆盖整行到左侧";
+  case "overwrite-cells":
+    return `已覆盖 ${item.cellCount || 1} 个单元格`;
+  case "append-auto":
+    return `已自动新增为 ID ${item.targetId}`;
+  case "append-specified":
+    return `已新增为指定 ID ${item.targetId}`;
+  }
+}
+
+function cellClass(cell: RegionCell, side: "left" | "right") {
+  const rowState = cell.rowStatus || rowStatus(cell.row);
+  const appendedTarget = side === "left" ? rowResolution(cell.row, "left") : null;
+  let changeState: Exclude<RowStatus, "unchanged" | "conflict"> | "" = "";
+  if (appendedTarget && cell.left.present) {
+    changeState = "added";
+  } else {
+    switch (cell.status) {
+    case "right-added":
+    case "left-missing":
+      if (side === "right") changeState = "added";
+      break;
+    case "left-added":
+    case "right-missing":
+      if (side === "left") changeState = "deleted";
+      break;
+    case "modified":
+      changeState = side === "left" ? "deleted" : "added";
+      break;
+    }
+  }
   return {
     cell: true,
     difference: cell.status !== "unchanged",
+    [`cell-${changeState}`]: Boolean(changeState) && (rowState !== "conflict" || Boolean(appendedTarget)),
+    "row-conflict": rowState === "conflict" && !appendedTarget,
+    "resolution-added": Boolean(appendedTarget),
     selected: containsCell(selection.value, cell.row, cell.col),
     active: activePoint.value?.row === cell.row && activePoint.value?.col === cell.col,
-    missing: cell.status.includes("missing")
+    missing: cell.status !== "unchanged" && !cell[side].present
   };
 }
 
-function rowClass(row: number) {
+function rowClass(row: number, side: "left" | "right") {
+  const status = rowStatus(row);
+  const appendedTarget = side === "left" ? rowResolution(row, "left") : null;
   return {
     "row-header": true,
+    [`row-${appendedTarget ? "added" : status}`]: Boolean(appendedTarget) || status !== "unchanged",
+    resolved: side === "right" && Boolean(rowResolution(row, "right")),
     selected: Boolean(selection.value && row >= selection.value.startRow && row <= selection.value.endRow)
   };
 }
@@ -672,8 +943,7 @@ function onGridWheel(event: WheelEvent) {
         element.scrollTop = nextTop;
       }
     }
-    viewportLeft.value = nextLeft;
-    viewportTop.value = nextTop;
+    updateViewportOffsets(nextTop, nextLeft);
     loadRegion(Math.floor(nextTop / rowHeight.value) + 1, columnAtOffset(nextLeft));
   });
 }
@@ -715,33 +985,47 @@ function resizeRepositorySidebar(event: PointerEvent) {
   repository.value = { ...repository.value, sidebarWidth: width };
 }
 
-function openCellMenu(event: MouseEvent, cell: RegionCell) {
+function openCellMenu(event: MouseEvent, cell: RegionCell, side: "left" | "right") {
   event.preventDefault();
+  if ((cell.rowStatus || rowStatus(cell.row)) === "unchanged" && cell.status === "unchanged") {
+    contextMenu.value.visible = false;
+    return;
+  }
   if (!containsCell(selection.value, cell.row, cell.col)) {
     setSingleSelection(cell);
   }
   contextMenu.value = {
     visible: true,
-    x: Math.min(event.clientX, window.innerWidth - 210),
-    y: Math.min(event.clientY, window.innerHeight - 100)
+    x: Math.max(8, Math.min(event.clientX, window.innerWidth - 368)),
+    y: Math.max(8, Math.min(event.clientY, window.innerHeight - 300)),
+    row: cell.row,
+    side,
+    kind: "cell"
   };
 }
 
-function openRowMenu(event: MouseEvent, row: number) {
+function openRowMenu(event: MouseEvent, row: number, side: "left" | "right") {
   event.preventDefault();
+  if (rowStatus(row) === "unchanged") {
+    contextMenu.value.visible = false;
+    return;
+  }
   if (!selection.value || row < selection.value.startRow || row > selection.value.endRow) {
     beginRowSelection(row, event);
   }
   contextMenu.value = {
     visible: true,
-    x: Math.min(event.clientX, window.innerWidth - 210),
-    y: Math.min(event.clientY, window.innerHeight - 100)
+    x: Math.max(8, Math.min(event.clientX, window.innerWidth - 368)),
+    y: Math.max(8, Math.min(event.clientY, window.innerHeight - 300)),
+    row,
+    side,
+    kind: "row"
   };
 }
 
 function closeContextMenu(event: PointerEvent) {
   const target = event.target as HTMLElement | null;
-  if (!target?.closest(".context-menu")) contextMenu.value.visible = false;
+  if (!target?.closest(".context-menu, .id-dialog")) contextMenu.value.visible = false;
 }
 
 async function finishRepositoryResize() {
@@ -780,6 +1064,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.clearTimeout(loadingTimer);
+  window.clearTimeout(differenceIndexTimer);
   window.removeEventListener("pointermove", resizeColumn);
   window.removeEventListener("pointermove", resizeRepositorySidebar);
   window.removeEventListener("pointerup", finishPointerAction);
@@ -796,16 +1082,22 @@ onBeforeUnmount(() => {
       <button class="primary" :disabled="busy" @click="chooseRepository">打开本地仓库</button>
       <button :disabled="busy" @click="chooseFiles">打开左右文件</button>
       <span class="separator"></span>
-      <button :disabled="!diffs.length || busy || !comparisonActive" @click="navigate(-1)">上一处</button>
-      <button :disabled="!diffs.length || busy || !comparisonActive" @click="navigate(1)">下一处</button>
-      <span class="counter">{{ diffIndex >= 0 ? diffIndex + 1 : 0 }} / {{ diffs.length }}</span>
+      <button :disabled="!filteredDiffEntries.length || busy || !comparisonActive" @click="navigate(-1)">上一处</button>
+      <button :disabled="!filteredDiffEntries.length || busy || !comparisonActive" @click="navigate(1)">下一处</button>
+      <span class="counter">
+        {{ filteredDiffPosition >= 0 ? filteredDiffPosition + 1 : 0 }} / {{ filteredDiffEntries.length }}
+      </span>
       <button
         :disabled="!copyTargets.length || busy || summary?.options.readonlyLeft || !comparisonActive"
         class="primary"
         @click="copySelection"
       >复制{{ copyTargets.length > 1 ? ` ${copyTargets.length} 格` : "" }}到左侧</button>
       <button :disabled="!summary?.undoCount || busy" title="Ctrl/Command + Z" @click="undo">撤销</button>
-      <button class="zoom-button" title="按住 Ctrl 并滚动鼠标滚轮缩放" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button>
+      <button
+        class="zoom-button"
+        :title="`当前表格缩放为 ${Math.round(zoom * 100)}%；按住 Ctrl/Command 并滚动鼠标滚轮调整，点击恢复为 100%`"
+        @click="resetZoom"
+      >缩放 {{ Math.round(zoom * 100) }}%</button>
       <span class="grow"></span>
       <button
         :disabled="!summary || busy || summary.options.readonlyLeft || !!repository"
@@ -849,6 +1141,17 @@ onBeforeUnmount(() => {
           >仓库文件</button>
           <button
             role="tab"
+            :aria-selected="repositorySidebarTab === 'differences'"
+            :class="{ active: repositorySidebarTab === 'differences' }"
+            @click="repositorySidebarTab = 'differences'"
+          >
+            差异表
+            <span class="sidebar-tab-count">
+              {{ repository.differenceIndexing ? "…" : repository.differenceFiles.length }}
+            </span>
+          </button>
+          <button
+            role="tab"
             :aria-selected="repositorySidebarTab === 'sheets'"
             :class="{ active: repositorySidebarTab === 'sheets' }"
             @click="repositorySidebarTab = 'sheets'"
@@ -858,9 +1161,9 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <div v-if="repositorySidebarTab === 'files'" class="repository-files-pane" role="tabpanel">
+        <div v-if="repositorySidebarTab !== 'sheets'" class="repository-files-pane" role="tabpanel">
           <div class="repository-tree-header">
-            <strong>仓库文件</strong>
+            <strong>{{ repositorySidebarTab === "differences" ? "差异表" : "仓库文件" }}</strong>
             <button title="刷新目录树与分支" :disabled="busy" @click="refreshRepository">↻</button>
           </div>
           <label class="repository-search">
@@ -868,11 +1171,25 @@ onBeforeUnmount(() => {
             <input
               v-model="repositorySearch"
               type="search"
-              placeholder="筛选文件或目录"
-              aria-label="筛选仓库文件或目录"
+              :placeholder="repositorySidebarTab === 'differences' ? '筛选差异表或目录' : '筛选文件或目录'"
+              :aria-label="repositorySidebarTab === 'differences' ? '筛选差异表或目录' : '筛选仓库文件或目录'"
             />
           </label>
-          <div v-if="!repository.files.length" class="tree-empty">仓库中没有 XLSX 文件</div>
+          <div
+            v-if="repositorySidebarTab === 'differences' && !repository.differenceFiles.length"
+            class="tree-empty"
+          >
+            {{
+              repository.differenceIndexing
+                ? "正在后台建立差异表索引……"
+                : repository.selectedRef
+                  ? "当前工作区与所选分支没有差异表格"
+                  : "请选择一个用于对比的分支"
+            }}
+          </div>
+          <div v-else-if="repositorySidebarTab === 'files' && !repository.files.length" class="tree-empty">
+            仓库中没有 XLSX 文件
+          </div>
           <div v-else-if="!repositoryRows.length" class="tree-empty">没有匹配的文件或目录</div>
           <div v-else class="repository-tree" role="tree">
             <button
@@ -889,7 +1206,7 @@ onBeforeUnmount(() => {
                 <template v-if="row.kind === 'directory'">{{ expandedDirectories.has(row.path) ? "▾" : "▸" }}</template>
                 <template v-else>▧</template>
               </span>
-              <span>{{ row.name }}</span>
+              <span class="tree-row-name">{{ row.name }}</span>
             </button>
           </div>
         </div>
@@ -906,18 +1223,45 @@ onBeforeUnmount(() => {
             >
               <span class="sheet-name">{{ item.name }}</span>
               <span class="badge" :class="item.status">{{ item.differenceCount }}</span>
-              <small>{{ item.status }}<template v-if="item.orderDifferent"> · 顺序不同</template></small>
+              <small class="sheet-status-line">
+                <span v-if="item.addedRowCount" class="row-status-chip added">增加 {{ item.addedRowCount }}</span>
+                <span v-if="item.deletedRowCount" class="row-status-chip deleted">删除 {{ item.deletedRowCount }}</span>
+                <span v-if="item.modifiedRowCount" class="row-status-chip modified">修改 {{ item.modifiedRowCount }}</span>
+                <span v-if="item.conflictRowCount" class="row-status-chip conflict">冲突 {{ item.conflictRowCount }}</span>
+                <span v-if="item.orderDifferent">顺序不同</span>
+                <span v-if="!item.differenceCount">无差异</span>
+              </small>
             </button>
-            <label class="toggle"><input v-model="onlyDiffs" type="checkbox" /> 差异索引</label>
-            <div v-if="onlyDiffs" class="diff-list">
+            <div class="diff-index-title">差异索引</div>
+            <div class="diff-filter-tabs" role="tablist" aria-label="差异索引分类">
               <button
-                v-for="(item, index) in diffs"
-                :key="`${item.ref.row}:${item.ref.col}`"
-                @click="diffIndex = index; scrollTo(item.ref.row, item.ref.col)"
+                v-for="status in DIFF_FILTER_TABS"
+                :key="status"
+                role="tab"
+                :aria-selected="diffFilter === status"
+                :class="[status, { active: diffFilter === status }]"
+                :disabled="!diffFilterCounts[status]"
+                @click="selectDiffFilter(status)"
               >
+                {{ rowStatusLabel(status) }}
+                <span>{{ diffFilterCounts[status] }}</span>
+              </button>
+            </div>
+            <div class="diff-list">
+              <button
+                v-for="{ item, index } in filteredDiffEntries"
+                :key="`${item.ref.row}:${item.ref.col}`"
+                :class="{ active: diffIndex === index }"
+                @click="selectDiffEntry(index, item)"
+              >
+                <span class="diff-row-status" :class="item.rowStatus || 'modified'">
+                  {{ rowStatusLabel(item.rowStatus || "modified") }}
+                </span>
                 {{ item.ref.row }}:{{ columnName(item.ref.col) }} · {{ item.status }}
               </button>
-              <div v-if="!diffs.length" class="diff-list-empty">当前工作表没有单元格差异</div>
+              <div v-if="!filteredDiffEntries.length" class="diff-list-empty">
+                当前工作表没有“{{ rowStatusLabel(diffFilter) }}”差异
+              </div>
             </div>
           </template>
           <div v-else class="tree-empty">请先在“仓库文件”中选择一个 XLSX 表格</div>
@@ -936,13 +1280,45 @@ onBeforeUnmount(() => {
         >
           <span class="sheet-name">{{ item.name }}</span>
           <span class="badge" :class="item.status">{{ item.differenceCount }}</span>
-          <small>{{ item.status }}<template v-if="item.orderDifferent"> · 顺序不同</template></small>
+          <small class="sheet-status-line">
+            <span v-if="item.addedRowCount" class="row-status-chip added">增加 {{ item.addedRowCount }}</span>
+            <span v-if="item.deletedRowCount" class="row-status-chip deleted">删除 {{ item.deletedRowCount }}</span>
+            <span v-if="item.modifiedRowCount" class="row-status-chip modified">修改 {{ item.modifiedRowCount }}</span>
+            <span v-if="item.conflictRowCount" class="row-status-chip conflict">冲突 {{ item.conflictRowCount }}</span>
+            <span v-if="item.orderDifferent">顺序不同</span>
+            <span v-if="!item.differenceCount">无差异</span>
+          </small>
         </button>
-        <label class="toggle"><input v-model="onlyDiffs" type="checkbox" /> 差异索引</label>
-        <div v-if="onlyDiffs" class="diff-list">
-          <button v-for="(item, index) in diffs" :key="`${item.ref.row}:${item.ref.col}`" @click="diffIndex = index; scrollTo(item.ref.row, item.ref.col)">
+        <div class="diff-index-title">差异索引</div>
+        <div class="diff-filter-tabs" role="tablist" aria-label="差异索引分类">
+          <button
+            v-for="status in DIFF_FILTER_TABS"
+            :key="status"
+            role="tab"
+            :aria-selected="diffFilter === status"
+            :class="[status, { active: diffFilter === status }]"
+            :disabled="!diffFilterCounts[status]"
+            @click="selectDiffFilter(status)"
+          >
+            {{ rowStatusLabel(status) }}
+            <span>{{ diffFilterCounts[status] }}</span>
+          </button>
+        </div>
+        <div class="diff-list">
+          <button
+            v-for="{ item, index } in filteredDiffEntries"
+            :key="`${item.ref.row}:${item.ref.col}`"
+            :class="{ active: diffIndex === index }"
+            @click="selectDiffEntry(index, item)"
+          >
+            <span class="diff-row-status" :class="item.rowStatus || 'modified'">
+              {{ rowStatusLabel(item.rowStatus || "modified") }}
+            </span>
             {{ item.ref.row }}:{{ columnName(item.ref.col) }} · {{ item.status }}
           </button>
+          <div v-if="!filteredDiffEntries.length" class="diff-list-empty">
+            当前工作表没有“{{ rowStatusLabel(diffFilter) }}”差异
+          </div>
         </div>
       </aside>
 
@@ -998,42 +1374,46 @@ onBeforeUnmount(() => {
             <div v-else ref="leftScroll" class="grid-scroll" @scroll="onScroll('left')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
                 <template v-if="region">
-                  <div
-                    v-for="col in visibleColumns"
-                    :key="`lh${col}`"
-                    class="col-header"
-                    :style="{
-                      top: `${viewportTop}px`,
-                      left: `${columnLeft(col)}px`,
-                      width: `${columnWidth(col)}px`,
-                      height: `${rowHeight}px`,
-                      fontSize: `${scaledFontSize}px`
-                    }"
-                  >
-                    {{ columnName(col) }}
-                    <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
+                  <div class="col-header-layer">
+                    <div
+                      v-for="col in visibleColumns"
+                      :key="`lh${col}`"
+                      class="col-header"
+                      :style="{
+                        top: 0,
+                        left: `${columnLeft(col)}px`,
+                        width: `${columnWidth(col)}px`,
+                        height: `${rowHeight}px`,
+                        fontSize: `${scaledFontSize}px`
+                      }"
+                    >
+                      {{ columnName(col) }}
+                      <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
+                    </div>
                   </div>
-                  <div
-                    v-for="row in visibleRows"
-                    :key="`lr${row}`"
-                    :class="rowClass(row)"
-                    :style="{
-                      top: `${row * rowHeight}px`,
-                      left: `${viewportLeft}px`,
-                      width: `${rowHeaderWidth}px`,
-                      height: `${rowHeight}px`,
-                      fontSize: `${scaledFontSize}px`
-                    }"
-                    @pointerdown="beginRowSelection(row, $event)"
-                    @pointerenter="extendRowSelection(row)"
-                    @contextmenu="openRowMenu($event, row)"
-                  >
-                    {{ row }}
+                  <div class="row-header-layer" :style="{ width: `${rowHeaderWidth}px` }">
+                    <div
+                      v-for="row in visibleRows"
+                      :key="`lr${row}`"
+                      :class="rowClass(row, 'left')"
+                      :style="{
+                        top: `${row * rowHeight}px`,
+                        left: 0,
+                        width: `${rowHeaderWidth}px`,
+                        height: `${rowHeight}px`,
+                        fontSize: `${scaledFontSize}px`
+                      }"
+                      @pointerdown="beginRowSelection(row, $event)"
+                      @pointerenter="extendRowSelection(row)"
+                      @contextmenu="openRowMenu($event, row, 'left')"
+                    >
+                      {{ row }}
+                    </div>
                   </div>
                   <div
                     v-for="cell in visibleCells"
                     :key="`l${cell.row}:${cell.col}`"
-                    :class="cellClass(cell)"
+                    :class="cellClass(cell, 'left')"
                     :style="{
                       top: `${cell.row * rowHeight}px`,
                       left: `${columnLeft(cell.col)}px`,
@@ -1044,7 +1424,7 @@ onBeforeUnmount(() => {
                     :title="cell.left.formula ? `=${cell.left.formula}` : cell.left.raw"
                     @pointerdown="beginCellSelection(cell, $event)"
                     @pointerenter="extendCellSelection(cell)"
-                    @contextmenu="openCellMenu($event, cell)"
+                    @contextmenu="openCellMenu($event, cell, 'left')"
                     @dblclick.stop="startInlineEdit(cell)"
                   >
                     <input
@@ -1074,42 +1454,52 @@ onBeforeUnmount(() => {
             <div v-else ref="rightScroll" class="grid-scroll" @scroll="onScroll('right')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
                 <template v-if="region">
-                  <div
-                    v-for="col in visibleColumns"
-                    :key="`rh${col}`"
-                    class="col-header"
-                    :style="{
-                      top: `${viewportTop}px`,
-                      left: `${columnLeft(col)}px`,
-                      width: `${columnWidth(col)}px`,
-                      height: `${rowHeight}px`,
-                      fontSize: `${scaledFontSize}px`
-                    }"
-                  >
-                    {{ columnName(col) }}
-                    <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
+                  <div class="col-header-layer">
+                    <div
+                      v-for="col in visibleColumns"
+                      :key="`rh${col}`"
+                      class="col-header"
+                      :style="{
+                        top: 0,
+                        left: `${columnLeft(col)}px`,
+                        width: `${columnWidth(col)}px`,
+                        height: `${rowHeight}px`,
+                        fontSize: `${scaledFontSize}px`
+                      }"
+                    >
+                      {{ columnName(col) }}
+                      <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
+                    </div>
                   </div>
-                  <div
-                    v-for="row in visibleRows"
-                    :key="`rr${row}`"
-                    :class="rowClass(row)"
-                    :style="{
-                      top: `${row * rowHeight}px`,
-                      left: `${viewportLeft}px`,
-                      width: `${rowHeaderWidth}px`,
-                      height: `${rowHeight}px`,
-                      fontSize: `${scaledFontSize}px`
-                    }"
-                    @pointerdown="beginRowSelection(row, $event)"
-                    @pointerenter="extendRowSelection(row)"
-                    @contextmenu="openRowMenu($event, row)"
-                  >
-                    {{ row }}
+                  <div class="row-header-layer" :style="{ width: `${rowHeaderWidth}px` }">
+                    <div
+                      v-for="row in visibleRows"
+                      :key="`rr${row}`"
+                      :class="rowClass(row, 'right')"
+                      :style="{
+                        top: `${row * rowHeight}px`,
+                        left: 0,
+                        width: `${rowHeaderWidth}px`,
+                        height: `${rowHeight}px`,
+                        fontSize: `${scaledFontSize}px`
+                      }"
+                      @pointerdown="beginRowSelection(row, $event)"
+                      @pointerenter="extendRowSelection(row)"
+                      @contextmenu="openRowMenu($event, row, 'right')"
+                    >
+                      {{ row }}
+                      <span
+                        v-if="rowResolution(row, 'right')"
+                        class="resolution-marker"
+                        :class="rowResolution(row, 'right')!.kind"
+                        :title="resolutionLabel(rowResolution(row, 'right')!)"
+                      >{{ resolutionLabel(rowResolution(row, "right")!) }}</span>
+                    </div>
                   </div>
                   <div
                     v-for="cell in visibleCells"
                     :key="`r${cell.row}:${cell.col}`"
-                    :class="cellClass(cell)"
+                    :class="cellClass(cell, 'right')"
                     :style="{
                       top: `${cell.row * rowHeight}px`,
                       left: `${columnLeft(cell.col)}px`,
@@ -1120,7 +1510,7 @@ onBeforeUnmount(() => {
                     :title="cell.right.formula ? `=${cell.right.formula}` : cell.right.raw"
                     @pointerdown="beginCellSelection(cell, $event)"
                     @pointerenter="extendCellSelection(cell)"
-                    @contextmenu="openCellMenu($event, cell)"
+                    @contextmenu="openCellMenu($event, cell, 'right')"
                   >{{ cell.right.formula ? `=${cell.right.formula}` : cell.right.display }}</div>
                 </template>
               </div>
@@ -1172,11 +1562,59 @@ onBeforeUnmount(() => {
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
       @pointerdown.stop
     >
-      <button
-        :disabled="!copyTargets.length || busy || summary?.options.readonlyLeft || !comparisonActive"
-        @click="copySelection"
-      >复制{{ copyTargets.length > 1 ? ` ${copyTargets.length} 个差异` : "" }}到左侧</button>
-      <span v-if="selectionSize > 1">当前选区：{{ selectionSize }} 格</span>
+      <template v-if="contextIsConflict">
+        <button
+          v-if="contextMenu.kind === 'cell'"
+          :disabled="!selectionCoordinates.length || selectionCoordinates.length > 10000 || contextActionDisabled"
+          @click="copyContextCells"
+        >覆盖单元格到左侧</button>
+        <button :disabled="contextActionDisabled" @click="copyContextRows">覆盖整行到左侧</button>
+        <button
+          v-if="automaticIDLabel"
+          :disabled="contextActionDisabled"
+          @click="appendContextRowsAutomatically"
+        >将整行新增为 {{ automaticIDLabel }} 到左侧</button>
+        <button
+          v-if="activeSheet?.idColumn"
+          :disabled="contextActionDisabled"
+          @click="openSpecifiedIDDialog"
+        >将整行新增到指定 id 到左侧</button>
+      </template>
+      <template v-else-if="contextIsActionable">
+        <button
+          v-if="contextMenu.kind === 'cell'"
+          :disabled="!selectionCoordinates.length || selectionCoordinates.length > 10000 || contextActionDisabled"
+          @click="copyContextCells"
+        >复制单元格到左侧</button>
+        <button :disabled="contextActionDisabled" @click="copyContextRows">复制整行到左侧</button>
+      </template>
+      <span>
+        {{ contextRows.length > 1 ? `已选 ${contextRows.length} 行` : `第 ${contextMenu.row} 行` }}
+        · {{ contextIsConflict ? "冲突" : rowStatusLabel(contextRowStatuses[0] || "modified") }}
+      </span>
+    </div>
+    <div v-if="idDialog.visible" class="id-dialog-overlay" @pointerdown.self="idDialog.visible = false">
+      <form class="id-dialog" @submit.prevent="confirmSpecifiedIDs">
+        <strong>为新增行指定 ID</strong>
+        <span>每个来源行需要一个在左侧尚未使用的 ID。</span>
+        <label v-for="(row, index) in idDialog.rows" :key="row">
+          <span>右侧第 {{ row }} 行</span>
+          <input
+            v-model="idDialog.values[index]"
+            :aria-label="`右侧第 ${row} 行的指定 ID`"
+            placeholder="输入 ID"
+            autocomplete="off"
+          />
+        </label>
+        <div class="id-dialog-actions">
+          <button type="button" @click="idDialog.visible = false">取消</button>
+          <button
+            type="submit"
+            class="primary"
+            :disabled="busy || idDialog.values.some((value) => !value.trim())"
+          >新增到左侧</button>
+        </div>
+      </form>
     </div>
     <div v-if="startupLoading" class="loading-overlay" role="status" aria-live="polite">
       <div class="loading-dialog">

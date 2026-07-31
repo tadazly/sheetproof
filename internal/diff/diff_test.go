@@ -58,6 +58,66 @@ func TestCompareIdentical(t *testing.T) {
 	}
 }
 
+func TestCompareClassifiesAddedDeletedModifiedAndConflictRows(t *testing.T) {
+	left := book("left.xlsx", sheet("配置", 0, map[workbook.CellKey]workbook.CellValue{
+		{Row: 1, Col: 1}: value("id", "string"),
+		{Row: 1, Col: 2}: value("name", "string"),
+		{Row: 1, Col: 3}: value("value", "string"),
+		{Row: 2, Col: 1}: value("1", "number"),
+		{Row: 2, Col: 2}: value("left-a", "string"),
+		{Row: 2, Col: 3}: value("left-b", "string"),
+		{Row: 3, Col: 1}: value("2", "number"),
+		{Row: 3, Col: 2}: value("same", "string"),
+		{Row: 3, Col: 3}: value("left", "string"),
+		{Row: 5, Col: 1}: value("4", "number"),
+		{Row: 5, Col: 2}: value("deleted", "string"),
+	}))
+	right := book("right.xlsx", sheet("配置", 0, map[workbook.CellKey]workbook.CellValue{
+		{Row: 1, Col: 1}: value("ID", "string"),
+		{Row: 1, Col: 2}: value("name", "string"),
+		{Row: 1, Col: 3}: value("value", "string"),
+		{Row: 2, Col: 1}: value("1", "number"),
+		{Row: 2, Col: 2}: value("right-a", "string"),
+		{Row: 2, Col: 3}: value("right-b", "string"),
+		{Row: 3, Col: 1}: value("2", "number"),
+		{Row: 3, Col: 2}: value("same", "string"),
+		{Row: 3, Col: 3}: value("right", "string"),
+		{Row: 4, Col: 1}: value("3", "number"),
+		{Row: 4, Col: 2}: value("added", "string"),
+	}))
+
+	result := Compare(left, right)
+	data := result.Sheets[0]
+	if data.IDColumn != 1 || data.NextID != 5 {
+		t.Fatalf("id metadata = column %d next %d", data.IDColumn, data.NextID)
+	}
+	if data.AddedRowCount != 1 || data.DeletedRowCount != 1 ||
+		data.ModifiedRowCount != 1 || data.ConflictRowCount != 1 {
+		t.Fatalf("row counts = added %d deleted %d modified %d conflict %d",
+			data.AddedRowCount, data.DeletedRowCount,
+			data.ModifiedRowCount, data.ConflictRowCount)
+	}
+	want := []RowDiff{
+		{Row: 2, ID: "1", Status: RowConflict},
+		{Row: 3, ID: "2", Status: RowModified},
+		{Row: 4, ID: "3", Status: RowAdded},
+		{Row: 5, ID: "4", Status: RowDeleted},
+	}
+	if len(data.Rows) != len(want) {
+		t.Fatalf("rows = %+v", data.Rows)
+	}
+	for index := range want {
+		if data.Rows[index] != want[index] {
+			t.Fatalf("row %d = %+v, want %+v", index, data.Rows[index], want[index])
+		}
+	}
+	for _, item := range data.Differences {
+		if item.Ref.Row == 2 && item.RowStatus != RowConflict {
+			t.Fatalf("conflict cell row status = %s", item.RowStatus)
+		}
+	}
+}
+
 func value(raw, kind string) workbook.CellValue {
 	return workbook.CellValue{Present: true, Raw: raw, Display: raw, Type: kind}
 }

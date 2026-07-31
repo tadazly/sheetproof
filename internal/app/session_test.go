@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ug-tools/ugxlsx/internal/diff"
 	"github.com/ug-tools/ugxlsx/internal/testutil"
 	"github.com/ug-tools/ugxlsx/internal/workbook"
 	"github.com/xuri/excelize/v2"
@@ -23,6 +24,9 @@ func TestSessionEndToEndMergeEditUndoSaveAndReopen(t *testing.T) {
 	before := session.Summary().Diff.DifferenceCount
 	if session.Summary().Warnings == nil {
 		t.Fatal("warnings must serialize as an empty array, not null")
+	}
+	if session.Summary().Resolutions == nil {
+		t.Fatal("resolutions must serialize as an empty array, not null")
 	}
 	if before < 7 {
 		t.Fatalf("expected several fixture differences, got %d", before)
@@ -166,6 +170,197 @@ func TestSessionBatchCopyIsOneUndoCommand(t *testing.T) {
 			t.Fatalf("%s after undo and resave = %q, want %q (err=%v)", axis, got, before.Cells[index].Left.Raw, err)
 		}
 	}
+}
+
+func TestSessionCopiesAndAppendsConflictRowsWithUndo(t *testing.T) {
+	left, right := createIDWorkbookPair(t)
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	sheet := session.Summary().Diff.Sheets[0]
+	if sheet.ConflictRowCount != 1 || sheet.DeletedRowCount != 1 || sheet.NextID != 3 {
+		t.Fatalf("initial row summary = %+v", sheet)
+	}
+
+	if err := session.CopyRowsRightToLeft("配置", []int{2}); err != nil {
+		t.Fatal(err)
+	}
+	region, err := session.Region("配置", 2, 1, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[1].Left.Raw != "right-a" || region.Cells[2].Left.Raw != "right-b" {
+		t.Fatalf("copied row = %+v", region.Cells)
+	}
+	overwritten := session.Summary()
+	if overwritten.Diff.Sheets[0].ConflictRowCount != 0 {
+		t.Fatalf("conflict remained after overwrite: %+v", overwritten.Diff.Sheets[0])
+	}
+	for _, cell := range region.Cells {
+		if cell.Status != diff.Unchanged {
+			t.Fatalf("equal copied cell retained status %s: %+v", cell.Status, region.Cells)
+		}
+	}
+	if len(overwritten.Resolutions) != 1 ||
+		overwritten.Resolutions[0].Kind != ResolutionOverwriteRow ||
+		overwritten.Resolutions[0].SourceRow != 2 {
+		t.Fatalf("overwrite resolution = %+v", overwritten.Resolutions)
+	}
+	if err := session.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	undoneOverwrite := session.Summary()
+	if undoneOverwrite.Diff.Sheets[0].ConflictRowCount != 1 {
+		t.Fatal("undo did not restore conflict row")
+	}
+	if len(undoneOverwrite.Resolutions) != 0 {
+		t.Fatalf("undo retained overwrite resolution: %+v", undoneOverwrite.Resolutions)
+	}
+
+	assigned, err := session.AppendRowsRightToLeft("配置", []int{2}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(assigned) != 1 || assigned[0] != "3" {
+		t.Fatalf("automatic IDs = %#v", assigned)
+	}
+	appended, err := session.Region("配置", 4, 1, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appended.Cells[0].Left.Raw != "3" ||
+		appended.Cells[1].Left.Raw != "right-a" ||
+		appended.Cells[2].Left.Raw != "right-b" {
+		t.Fatalf("appended row = %+v", appended.Cells)
+	}
+	appendSummary := session.Summary()
+	if len(appendSummary.Resolutions) != 1 ||
+		appendSummary.Resolutions[0].Kind != ResolutionAppendAuto ||
+		appendSummary.Resolutions[0].SourceRow != 2 ||
+		appendSummary.Resolutions[0].TargetRow != 4 ||
+		appendSummary.Resolutions[0].TargetID != "3" {
+		t.Fatalf("automatic append resolution = %+v", appendSummary.Resolutions)
+	}
+	if err := session.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	undoneAppend := session.Summary()
+	if undoneAppend.Diff.Sheets[0].NextID != 3 {
+		t.Fatalf("next ID after undo = %d", undoneAppend.Diff.Sheets[0].NextID)
+	}
+	if len(undoneAppend.Resolutions) != 0 {
+		t.Fatalf("undo retained append resolution: %+v", undoneAppend.Resolutions)
+	}
+
+	assigned, err = session.AppendRowsRightToLeft("配置", []int{2}, []string{"10"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(assigned) != 1 || assigned[0] != "10" {
+		t.Fatalf("specified IDs = %#v", assigned)
+	}
+	specified := session.Summary().Resolutions
+	if len(specified) != 1 || specified[0].Kind != ResolutionAppendSpecified ||
+		specified[0].TargetID != "10" {
+		t.Fatalf("specified append resolution = %+v", specified)
+	}
+	appended, err = session.Region("配置", 4, 1, 1, 1)
+	if err != nil || appended.Cells[0].Left.Raw != "10" {
+		t.Fatalf("specified ID row = %+v, err=%v", appended.Cells, err)
+	}
+	if _, err := session.AppendRowsRightToLeft("配置", []int{2}, []string{"10"}); err == nil {
+		t.Fatal("duplicate specified ID was accepted")
+	}
+	assigned, err = session.AppendRowsRightToLeft("配置", []int{2}, []string{"custom-id"})
+	if err != nil || len(assigned) != 1 || assigned[0] != "custom-id" {
+		t.Fatalf("text specified ID = %#v, err=%v", assigned, err)
+	}
+	appended, err = session.Region("配置", 5, 1, 1, 1)
+	if err != nil || appended.Cells[0].Left.Raw != "custom-id" ||
+		appended.Cells[0].Left.Type != "string" {
+		t.Fatalf("text specified ID cell = %+v, err=%v", appended.Cells, err)
+	}
+}
+
+func TestSessionConflictCellOverwriteClearsOnlyTheCopiedCell(t *testing.T) {
+	left, right := createIDWorkbookPair(t)
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	if err := session.CopyRightToLeftMany("配置", []CellCoordinate{{Row: 2, Col: 2}}); err != nil {
+		t.Fatal(err)
+	}
+	region, err := session.Region("配置", 2, 1, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Status != diff.Unchanged ||
+		region.Cells[0].Left.Raw != region.Cells[0].Right.Raw {
+		t.Fatalf("copied cell still differs: %+v", region.Cells[0])
+	}
+	if region.Cells[1].Status != diff.Modified || region.Cells[1].RowStatus != diff.RowModified {
+		t.Fatalf("remaining cell/row status = %+v", region.Cells[1])
+	}
+	resolutions := session.Summary().Resolutions
+	if len(resolutions) != 1 ||
+		resolutions[0].Kind != ResolutionOverwriteCells ||
+		resolutions[0].CellCount != 1 {
+		t.Fatalf("cell overwrite resolution = %+v", resolutions)
+	}
+}
+
+func createIDWorkbookPair(t *testing.T) (string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	left := filepath.Join(dir, "id-left.xlsx")
+	right := filepath.Join(dir, "id-right.xlsx")
+	for path, rightSide := range map[string]bool{left: false, right: true} {
+		file := excelize.NewFile()
+		if err := file.SetSheetName("Sheet1", "配置"); err != nil {
+			t.Fatal(err)
+		}
+		for axis, value := range map[string]any{
+			"A1": "id", "B1": "name", "C1": "value",
+			"A2": 1,
+		} {
+			if err := file.SetCellValue("配置", axis, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if rightSide {
+			if err := file.SetCellValue("配置", "B2", "right-a"); err != nil {
+				t.Fatal(err)
+			}
+			if err := file.SetCellValue("配置", "C2", "right-b"); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			if err := file.SetCellValue("配置", "B2", "left-a"); err != nil {
+				t.Fatal(err)
+			}
+			if err := file.SetCellValue("配置", "C2", "left-b"); err != nil {
+				t.Fatal(err)
+			}
+			if err := file.SetCellValue("配置", "A3", 2); err != nil {
+				t.Fatal(err)
+			}
+			if err := file.SetCellValue("配置", "B3", "deleted"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := file.SaveAs(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return left, right
 }
 
 func TestSessionUndoStepsThroughSeparateCopies(t *testing.T) {

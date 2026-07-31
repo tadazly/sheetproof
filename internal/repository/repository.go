@@ -3,6 +3,7 @@ package repository
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -146,7 +147,7 @@ func (r *Repository) Refresh() (Info, error) {
 		GitDirectory:  gitDir,
 	}
 	if len(branches) > 0 {
-		info.DefaultRef = branches[0].FullName
+		info.DefaultRef = r.defaultReference(branch, detached, branches)
 	}
 	return info, nil
 }
@@ -215,6 +216,16 @@ func (r *Repository) ResolveReference(value string, branches []Branch) (Branch, 
 }
 
 func (r *Repository) ReadReferenceFile(ref Branch, relative string) (string, error) {
+	return r.ReadReferenceFileContext(context.Background(), ref, relative)
+}
+
+// ReadReferenceFileContext exports a validated Git object while allowing
+// background callers to cancel the Git processes during shutdown.
+func (r *Repository) ReadReferenceFileContext(
+	ctx context.Context,
+	ref Branch,
+	relative string,
+) (string, error) {
 	normalized, err := normalizeRelativePath(relative)
 	if err != nil {
 		return "", err
@@ -223,7 +234,10 @@ func (r *Repository) ReadReferenceFile(ref Branch, relative string) (string, err
 		return "", errors.New("无效的 Git 引用")
 	}
 	object := ref.FullName + ":" + normalized
-	if _, err := runGit(r.root, nil, "cat-file", "-e", object); err != nil {
+	if _, err := runGitContext(ctx, r.root, nil, "cat-file", "-e", object); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return "", err
+		}
 		return "", &MissingFileError{Ref: ref.Name, Path: normalized}
 	}
 	temp, err := os.CreateTemp("", "ugxlsx-repository-*.xlsx")
@@ -235,7 +249,7 @@ func (r *Repository) ReadReferenceFile(ref Branch, relative string) (string, err
 		_ = temp.Close()
 		_ = os.Remove(tempPath)
 	}
-	if _, err := runGit(r.root, temp, "show", "--no-textconv", "--no-ext-diff", object); err != nil {
+	if _, err := runGitContext(ctx, r.root, temp, "show", "--no-textconv", "--no-ext-diff", object); err != nil {
 		cleanup()
 		return "", fmt.Errorf("读取分支 %s 中的 %s 失败: %w", ref.Name, normalized, err)
 	}
@@ -262,6 +276,124 @@ func (r *Repository) FileModified(relative string) (bool, error) {
 	return len(bytes.TrimSpace(output)) > 0, nil
 }
 
+// ChangedCommonXLSX returns worktree XLSX paths which also exist in the
+// selected reference and whose Git content differs. It intentionally avoids
+// opening workbooks; exact cell differences are calculated only after a file
+// is selected.
+func (r *Repository) ChangedCommonXLSX(ref Branch, worktreeFiles []string) ([]string, error) {
+	return r.ChangedCommonXLSXContext(context.Background(), ref, worktreeFiles)
+}
+
+// ChangedCommonXLSXContext is the cancellable form used by the background
+// semantic difference index.
+func (r *Repository) ChangedCommonXLSXContext(
+	ctx context.Context,
+	ref Branch,
+	worktreeFiles []string,
+) ([]string, error) {
+	if ref.FullName == "" || (ref.Kind != LocalBranch && ref.Kind != RemoteBranch) {
+		return nil, errors.New("无效的 Git 引用")
+	}
+	files := make([]string, 0, len(worktreeFiles))
+	worktreeSet := make(map[string]struct{}, len(worktreeFiles))
+	for _, file := range worktreeFiles {
+		normalized, err := normalizeRelativePath(file)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := worktreeSet[normalized]; exists {
+			continue
+		}
+		worktreeSet[normalized] = struct{}{}
+		files = append(files, normalized)
+	}
+
+	diffOutput, err := runGitContext(
+		ctx, r.root, nil,
+		"diff", "--name-only", "-z", "--no-renames", "--no-textconv", "--no-ext-diff",
+		ref.FullName, "--",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("读取引用与工作区文件变化失败: %w", err)
+	}
+	changed := make(map[string]struct{}, len(files))
+	for _, path := range splitNULPaths(diffOutput) {
+		normalized := filepath.ToSlash(path)
+		if _, exists := worktreeSet[normalized]; exists {
+			changed[normalized] = struct{}{}
+		}
+	}
+
+	treeOutput, err := runGitContext(ctx, r.root, nil, "ls-tree", "-r", "-z", "--name-only", ref.FullName)
+	if err != nil {
+		return nil, fmt.Errorf("读取引用中的文件列表失败: %w", err)
+	}
+	referenceFiles := make(map[string]struct{})
+	for _, path := range splitNULPaths(treeOutput) {
+		if strings.EqualFold(filepath.Ext(path), ".xlsx") {
+			referenceFiles[filepath.ToSlash(path)] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(changed))
+	for _, file := range files {
+		_, changedInGit := changed[file]
+		_, existsInReference := referenceFiles[file]
+		if changedInGit && existsInReference {
+			result = append(result, file)
+		}
+	}
+	return result, nil
+}
+
+// DifferenceIndexSignature identifies the local and reference content used by
+// the exact semantic differing-workbook index. Worktree metadata keeps startup
+// cheap while still invalidating normal edits, saves, additions, and removals.
+func (r *Repository) DifferenceIndexSignature(ref Branch, worktreeFiles []string) (string, error) {
+	return r.DifferenceIndexSignatureContext(context.Background(), ref, worktreeFiles)
+}
+
+// DifferenceIndexSignatureContext is the cancellable form used to verify a
+// completed background index before it is cached.
+func (r *Repository) DifferenceIndexSignatureContext(
+	ctx context.Context,
+	ref Branch,
+	worktreeFiles []string,
+) (string, error) {
+	if ref.FullName == "" || (ref.Kind != LocalBranch && ref.Kind != RemoteBranch) {
+		return "", errors.New("无效的 Git 引用")
+	}
+	refOID, err := runGitContext(ctx, r.root, nil, "rev-parse", "--verify", ref.FullName+"^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("读取对比分支版本失败: %w", err)
+	}
+	headOID, err := runGitContext(ctx, r.root, nil, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("读取当前工作区版本失败: %w", err)
+	}
+	hash := sha256.New()
+	_, _ = fmt.Fprintf(hash, "ugxlsx-semantic-difference-index-v2\x00%s\x00%s\x00",
+		bytes.TrimSpace(headOID), bytes.TrimSpace(refOID))
+	for _, file := range worktreeFiles {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		normalized, normalizeErr := normalizeRelativePath(file)
+		if normalizeErr != nil {
+			return "", normalizeErr
+		}
+		absolute, resolveErr := r.ResolveRelativePath(normalized)
+		if resolveErr != nil {
+			return "", resolveErr
+		}
+		info, statErr := os.Stat(absolute)
+		if statErr != nil {
+			return "", fmt.Errorf("读取工作区表格状态失败 %s: %w", normalized, statErr)
+		}
+		_, _ = fmt.Fprintf(hash, "%s\x00%d\x00%d\x00", normalized, info.Size(), info.ModTime().UnixNano())
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
 func (r *Repository) currentBranch() (string, bool, error) {
 	output, err := runGit(r.root, nil, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err == nil {
@@ -272,6 +404,32 @@ func (r *Repository) currentBranch() (string, bool, error) {
 		return "", false, fmt.Errorf("读取当前 Git 分支失败: %w", headErr)
 	}
 	return strings.TrimSpace(string(head)), true, nil
+}
+
+func (r *Repository) defaultReference(current string, detached bool, branches []Branch) string {
+	if !detached {
+		if output, err := runGit(r.root, nil, "rev-parse", "--symbolic-full-name", "@{upstream}"); err == nil {
+			upstream := strings.TrimSpace(string(output))
+			for _, branch := range branches {
+				if branch.Kind == RemoteBranch && branch.FullName == upstream {
+					return branch.FullName
+				}
+			}
+		}
+		for _, branch := range branches {
+			if branch.Kind != RemoteBranch {
+				continue
+			}
+			parts := strings.SplitN(branch.Name, "/", 2)
+			if len(parts) == 2 && parts[1] == current {
+				return branch.FullName
+			}
+		}
+	}
+	if len(branches) > 0 {
+		return branches[0].FullName
+	}
+	return ""
 }
 
 func (r *Repository) branches(current string, detached bool) ([]Branch, error) {
@@ -313,6 +471,17 @@ func (r *Repository) branches(current string, detached bool) ([]Branch, error) {
 	return append(locals, remotes...), nil
 }
 
+func splitNULPaths(output []byte) []string {
+	parts := bytes.Split(output, []byte{0})
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if len(part) > 0 {
+			result = append(result, string(part))
+		}
+	}
+	return result
+}
+
 func normalizeRelativePath(value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
 		return "", errors.New("表格相对路径不能为空")
@@ -351,7 +520,11 @@ func operationAt(gitDir string) string {
 }
 
 func runGit(directory string, stdout io.Writer, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	return runGitContext(context.Background(), directory, stdout, args...)
+}
+
+func runGitContext(parent context.Context, directory string, stdout io.Writer, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(parent, commandTimeout)
 	defer cancel()
 	commandArgs := append([]string{"-C", directory}, args...)
 	command := exec.CommandContext(ctx, "git", commandArgs...)
@@ -366,6 +539,9 @@ func runGit(directory string, stdout io.Writer, args ...string) ([]byte, error) 
 	if err := command.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, fmt.Errorf("Git 命令超时")
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {

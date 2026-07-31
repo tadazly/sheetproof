@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -31,19 +32,40 @@ type Options struct {
 type Summary struct {
 	Options       Options            `json:"options"`
 	Diff          *diff.WorkbookDiff `json:"diff"`
+	Resolutions   []RowResolution    `json:"resolutions"`
 	Dirty         bool               `json:"dirty"`
 	UndoCount     int                `json:"undoCount"`
 	Warnings      []string           `json:"warnings"`
 	SelectedSheet string             `json:"selectedSheet"`
 }
 
+type ResolutionKind string
+
+const (
+	ResolutionOverwriteCells  ResolutionKind = "overwrite-cells"
+	ResolutionOverwriteRow    ResolutionKind = "overwrite-row"
+	ResolutionAppendAuto      ResolutionKind = "append-auto"
+	ResolutionAppendSpecified ResolutionKind = "append-specified"
+)
+
+type RowResolution struct {
+	Sheet     string         `json:"sheet"`
+	SourceRow int            `json:"sourceRow"`
+	TargetRow int            `json:"targetRow,omitempty"`
+	TargetID  string         `json:"targetId,omitempty"`
+	Kind      ResolutionKind `json:"kind"`
+	CellCount int            `json:"cellCount,omitempty"`
+	stateID   uint64
+}
+
 type RegionCell struct {
-	Row    int                `json:"row"`
-	Col    int                `json:"col"`
-	Axis   string             `json:"axis"`
-	Left   workbook.CellValue `json:"left"`
-	Right  workbook.CellValue `json:"right"`
-	Status diff.CellStatus    `json:"status"`
+	Row       int                `json:"row"`
+	Col       int                `json:"col"`
+	Axis      string             `json:"axis"`
+	Left      workbook.CellValue `json:"left"`
+	Right     workbook.CellValue `json:"right"`
+	Status    diff.CellStatus    `json:"status"`
+	RowStatus diff.RowStatus     `json:"rowStatus"`
 }
 
 type Region struct {
@@ -74,9 +96,17 @@ type Session struct {
 	stateID     uint64
 	savedState  uint64
 	nextState   uint64
+	resolutions []RowResolution
 }
 
 func Open(leftPath, rightPath string, options Options) (*Session, error) {
+	return OpenContext(context.Background(), leftPath, rightPath, options)
+}
+
+// OpenContext builds a comparison session with a cancellable workbook scan.
+// It is used by background repository indexing; normal interactive callers use
+// Open and retain the existing behavior.
+func OpenContext(ctx context.Context, leftPath, rightPath string, options Options) (*Session, error) {
 	same, err := workbook.SamePath(leftPath, rightPath)
 	if err != nil {
 		return nil, err
@@ -85,21 +115,51 @@ func Open(leftPath, rightPath string, options Options) (*Session, error) {
 		return nil, &workbook.Error{Code: workbook.ErrSameFile, Path: leftPath, Err: fmt.Errorf("left and right paths refer to the same file")}
 	}
 	reader := workbook.Reader{}
-	leftFile, left, err := reader.Open(leftPath)
+	leftFile, left, err := reader.OpenContext(ctx, leftPath)
 	if err != nil {
 		return nil, err
 	}
-	rightFile, right, err := reader.Open(rightPath)
+	rightFile, right, err := reader.OpenContext(ctx, rightPath)
 	if err != nil {
+		_ = leftFile.Close()
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		_ = rightFile.Close()
+		_ = leftFile.Close()
+		return nil, err
+	}
+	currentDiff, err := compareContext(ctx, left, right)
+	if err != nil {
+		_ = rightFile.Close()
 		_ = leftFile.Close()
 		return nil, err
 	}
 	options = defaultOptions(options)
 	return &Session{
 		leftFile: leftFile, rightFile: rightFile,
-		left: left, right: right, currentDiff: diff.Compare(left, right),
+		left: left, right: right, currentDiff: currentDiff,
 		options: options, stateID: 1, savedState: 1, nextState: 2,
 	}, nil
+}
+
+func compareContext(
+	ctx context.Context,
+	left, right *workbook.WorkbookSnapshot,
+) (*diff.WorkbookDiff, error) {
+	if ctx.Done() == nil {
+		return diff.Compare(left, right), nil
+	}
+	result := make(chan *diff.WorkbookDiff, 1)
+	go func() {
+		result <- diff.Compare(left, right)
+	}()
+	select {
+	case currentDiff := <-result:
+		return currentDiff, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // OpenLeft opens the editable workbook without manufacturing an empty right
@@ -141,6 +201,7 @@ func (s *Session) ReplaceRight(rightPath, rightLabel string) error {
 	s.rightFile = rightFile
 	s.right = right
 	s.currentDiff = diff.Compare(s.left, right)
+	s.resolutions = nil
 	if rightLabel != "" {
 		s.options.RightLabel = rightLabel
 	}
@@ -159,6 +220,7 @@ func (s *Session) DetachRight(rightLabel string) error {
 	s.rightFile = nil
 	s.right = nil
 	s.currentDiff = nil
+	s.resolutions = nil
 	if rightLabel != "" {
 		s.options.RightLabel = rightLabel
 	}
@@ -192,7 +254,8 @@ func (s *Session) Summary() Summary {
 	}
 	return Summary{
 		Options: s.options, Diff: compactDiff(presentation),
-		Dirty: s.dirty, UndoCount: s.history.Len(),
+		Resolutions: append([]RowResolution{}, s.resolutions...),
+		Dirty:       s.dirty, UndoCount: s.history.Len(),
 		Warnings: append([]string{}, s.warnings...), SelectedSheet: selected,
 	}
 }
@@ -268,11 +331,15 @@ func (s *Session) Region(sheet string, fromRow, rowCount, fromCol, colCount int)
 		return Region{}, fmt.Errorf("worksheet %q not found", sheet)
 	}
 	statuses := make(map[workbook.CellKey]diff.CellStatus)
+	rowStatuses := make(map[int]diff.RowStatus)
 	if s.currentDiff != nil {
 		for _, sheetDiff := range s.currentDiff.Sheets {
 			if sheetDiff.Name == sheet {
 				for _, cellDiff := range sheetDiff.Differences {
 					statuses[workbook.CellKey{Row: cellDiff.Ref.Row, Col: cellDiff.Ref.Col}] = cellDiff.Status
+				}
+				for _, rowDiff := range sheetDiff.Rows {
+					rowStatuses[rowDiff.Row] = rowDiff.Status
 				}
 				break
 			}
@@ -291,10 +358,14 @@ func (s *Session) Region(sheet string, fromRow, rowCount, fromCol, colCount int)
 			if status == "" {
 				status = diff.Unchanged
 			}
+			rowStatus := rowStatuses[row]
+			if rowStatus == "" {
+				rowStatus = diff.RowUnchanged
+			}
 			region.Cells = append(region.Cells, RegionCell{
 				Row: row, Col: col, Axis: ref.Axis(),
 				Left: leftSheet.Cell(row, col), Right: rightSheet.Cell(row, col),
-				Status: status,
+				Status: status, RowStatus: rowStatus,
 			})
 		}
 	}
@@ -308,6 +379,14 @@ func (s *Session) CopyRightToLeft(ref workbook.CellRef) error {
 func (s *Session) CopyRightToLeftMany(sheet string, cells []CellCoordinate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.copyRightToLeftManyLocked(sheet, cells, "copy")
+}
+
+func (s *Session) copyRightToLeftManyLocked(
+	sheet string,
+	cells []CellCoordinate,
+	kind string,
+) error {
 	if s.options.ReadonlyLeft {
 		return fmt.Errorf("left workbook is read-only")
 	}
@@ -323,6 +402,7 @@ func (s *Session) CopyRightToLeftMany(sheet string, cells []CellCoordinate) erro
 	if len(cells) > 10000 {
 		return fmt.Errorf("too many cells selected (maximum 10000)")
 	}
+	conflictCells := make(map[int]int)
 	operations := make([]merge.Operation, 0, len(cells))
 	seen := make(map[workbook.CellKey]struct{}, len(cells))
 	for _, cell := range cells {
@@ -334,6 +414,9 @@ func (s *Session) CopyRightToLeftMany(sheet string, cells []CellCoordinate) erro
 			continue
 		}
 		seen[key] = struct{}{}
+		if s.rowStatusLocked(sheet, cell.Row) == diff.RowConflict {
+			conflictCells[cell.Row]++
+		}
 		ref := workbook.CellRef{Sheet: sheet, Row: cell.Row, Col: cell.Col}
 		before, err := merge.Capture(s.leftFile, ref)
 		if err != nil {
@@ -343,8 +426,34 @@ func (s *Session) CopyRightToLeftMany(sheet string, cells []CellCoordinate) erro
 		if err != nil {
 			return err
 		}
-		operations = append(operations, merge.Operation{Ref: ref, Before: before, After: after, Kind: "copy"})
+		operations = append(operations, merge.Operation{Ref: ref, Before: before, After: after, Kind: kind})
 	}
+	if err := s.applyOperationsLocked(sheet, operations); err != nil {
+		return err
+	}
+	conflictRows := make([]int, 0, len(conflictCells))
+	for row := range conflictCells {
+		conflictRows = append(conflictRows, row)
+	}
+	sort.Ints(conflictRows)
+	if kind == "copy-row" {
+		for _, row := range conflictRows {
+			s.recordResolutionLocked(RowResolution{
+				Sheet: sheet, SourceRow: row, TargetRow: row, Kind: ResolutionOverwriteRow,
+			})
+		}
+	} else {
+		for _, row := range conflictRows {
+			s.recordResolutionLocked(RowResolution{
+				Sheet: sheet, SourceRow: row, TargetRow: row,
+				Kind: ResolutionOverwriteCells, CellCount: conflictCells[row],
+			})
+		}
+	}
+	return nil
+}
+
+func (s *Session) applyOperationsLocked(sheet string, operations []merge.Operation) error {
 	appliedCount := 0
 	for index, operation := range operations {
 		warnings, err := merge.Apply(s.leftFile, operation.Ref, operation.After)
@@ -364,8 +473,179 @@ func (s *Session) CopyRightToLeftMany(sheet string, cells []CellCoordinate) erro
 		s.warnings = append(s.warnings, warnings...)
 		appliedCount++
 	}
+	if err := s.reclassifyRowsLocked(sheet); err != nil {
+		s.rollbackCopiesLocked(operations[:appliedCount])
+		return err
+	}
 	s.recordHistoryLocked(operations)
 	return nil
+}
+
+func (s *Session) CopyRowsRightToLeft(sheet string, rows []int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(rows) == 0 {
+		return errors.New("no rows selected")
+	}
+	if s.right == nil || s.rightFile == nil {
+		return errors.New("当前没有可用于合并的右侧工作簿")
+	}
+	leftSheet, rightSheet := s.left.ByName[sheet], s.right.ByName[sheet]
+	if leftSheet == nil || rightSheet == nil {
+		return fmt.Errorf("worksheet %q must exist on both sides", sheet)
+	}
+	unique, err := normalizeRows(rows)
+	if err != nil {
+		return err
+	}
+	maxCol := max(leftSheet.MaxCol, rightSheet.MaxCol)
+	if len(unique)*maxCol > 10000 {
+		return errors.New("too many cells selected (maximum 10000)")
+	}
+	cells := make([]CellCoordinate, 0, len(unique)*maxCol)
+	for _, row := range unique {
+		for col := 1; col <= maxCol; col++ {
+			cells = append(cells, CellCoordinate{Row: row, Col: col})
+		}
+	}
+	return s.copyRightToLeftManyLocked(sheet, cells, "copy-row")
+}
+
+func (s *Session) AppendRowsRightToLeft(
+	sheet string,
+	rows []int,
+	requestedIDs []string,
+) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.options.ReadonlyLeft {
+		return nil, errors.New("left workbook is read-only")
+	}
+	if s.right == nil || s.rightFile == nil {
+		return nil, errors.New("当前没有可用于合并的右侧工作簿")
+	}
+	leftSheet, rightSheet := s.left.ByName[sheet], s.right.ByName[sheet]
+	if leftSheet == nil || rightSheet == nil {
+		return nil, fmt.Errorf("worksheet %q must exist on both sides", sheet)
+	}
+	unique, err := normalizeRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(requestedIDs) != 0 && len(requestedIDs) != len(unique) {
+		return nil, errors.New("指定 ID 数量必须与所选行数一致")
+	}
+	sheetDiff := s.sheetDiffLocked(sheet)
+	if sheetDiff == nil || sheetDiff.IDColumn == 0 {
+		return nil, errors.New("当前工作表首行没有 id 列")
+	}
+	maxCol := max(leftSheet.MaxCol, rightSheet.MaxCol)
+	if len(unique)*maxCol > 10000 {
+		return nil, errors.New("too many cells selected (maximum 10000)")
+	}
+	existingIDs := make(map[string]struct{})
+	for row := 2; row <= leftSheet.MaxRow; row++ {
+		id := strings.TrimSpace(leftSheet.Cell(row, sheetDiff.IDColumn).Raw)
+		if id != "" {
+			existingIDs[id] = struct{}{}
+		}
+	}
+	assigned := make([]string, len(unique))
+	if len(requestedIDs) == 0 {
+		if sheetDiff.NextID <= 0 {
+			return nil, errors.New("无法从左侧 id 列计算下一个整数 ID")
+		}
+		for index := range assigned {
+			assigned[index] = strconv.FormatInt(sheetDiff.NextID+int64(index), 10)
+		}
+	} else {
+		for index, id := range requestedIDs {
+			assigned[index] = strings.TrimSpace(id)
+			if assigned[index] == "" {
+				return nil, fmt.Errorf("第 %d 行的指定 ID 不能为空", index+1)
+			}
+		}
+	}
+	for _, id := range assigned {
+		if _, exists := existingIDs[id]; exists {
+			return nil, fmt.Errorf("左侧已存在 ID %s", id)
+		}
+		existingIDs[id] = struct{}{}
+	}
+
+	operations := make([]merge.Operation, 0, len(unique)*maxCol)
+	targetStart := leftSheet.MaxRow + 1
+	for index, sourceRow := range unique {
+		hasSource := false
+		for col := 1; col <= maxCol; col++ {
+			if rightSheet.Cell(sourceRow, col).Present {
+				hasSource = true
+				break
+			}
+		}
+		if !hasSource {
+			return nil, fmt.Errorf("右侧第 %d 行没有可新增的数据", sourceRow)
+		}
+		targetRow := targetStart + index
+		for col := 1; col <= maxCol; col++ {
+			targetRef := workbook.CellRef{Sheet: sheet, Row: targetRow, Col: col}
+			sourceRef := workbook.CellRef{Sheet: sheet, Row: sourceRow, Col: col}
+			before, captureErr := merge.Capture(s.leftFile, targetRef)
+			if captureErr != nil {
+				return nil, captureErr
+			}
+			after, captureErr := merge.Capture(s.rightFile, sourceRef)
+			if captureErr != nil {
+				return nil, captureErr
+			}
+			if col == sheetDiff.IDColumn {
+				after.Value.Present = true
+				after.Value.Raw = assigned[index]
+				after.Value.Display = assigned[index]
+				after.Value.Formula = ""
+				if after.Value.Type == "number" {
+					if _, parseErr := strconv.ParseFloat(assigned[index], 64); parseErr != nil {
+						after.Value.Type = "string"
+					}
+				} else {
+					after.Value.Type = "string"
+				}
+			}
+			operations = append(operations, merge.Operation{
+				Ref: targetRef, Before: before, After: after, Kind: "append-row",
+			})
+		}
+	}
+	if err := s.applyOperationsLocked(sheet, operations); err != nil {
+		return nil, err
+	}
+	resolutionKind := ResolutionAppendAuto
+	if len(requestedIDs) > 0 {
+		resolutionKind = ResolutionAppendSpecified
+	}
+	for index, sourceRow := range unique {
+		s.recordResolutionLocked(RowResolution{
+			Sheet: sheet, SourceRow: sourceRow, TargetRow: targetStart + index,
+			TargetID: assigned[index], Kind: resolutionKind,
+		})
+	}
+	return assigned, nil
+}
+
+func normalizeRows(rows []int) ([]int, error) {
+	result := make([]int, 0, len(rows))
+	seen := make(map[int]struct{}, len(rows))
+	for _, row := range rows {
+		if row < 1 {
+			return nil, fmt.Errorf("invalid row %d", row)
+		}
+		if _, exists := seen[row]; exists {
+			continue
+		}
+		seen[row] = struct{}{}
+		result = append(result, row)
+	}
+	return result, nil
 }
 
 func (s *Session) rollbackCopiesLocked(operations []merge.Operation) {
@@ -427,6 +707,9 @@ func (s *Session) EditLeft(ref workbook.CellRef, value, valueType string) error 
 	if err := s.updateCellLocked(ref, applied); err != nil {
 		return err
 	}
+	if err := s.reclassifyRowsLocked(ref.Sheet); err != nil {
+		return err
+	}
 	s.recordHistoryLocked([]merge.Operation{{Ref: ref, Before: before, After: after, Kind: "edit"}})
 	return nil
 }
@@ -440,6 +723,7 @@ func (s *Session) Undo() error {
 	}
 	commands := entry.Operations
 	undone := make([]merge.Operation, 0, len(commands))
+	changedSheets := make(map[string]struct{})
 	for index := len(commands) - 1; index >= 0; index-- {
 		command := commands[index]
 		warnings, err := merge.Apply(s.leftFile, command.Ref, command.Before)
@@ -461,7 +745,16 @@ func (s *Session) Undo() error {
 			return err
 		}
 		undone = append(undone, command)
+		changedSheets[command.Ref.Sheet] = struct{}{}
 	}
+	for sheet := range changedSheets {
+		if err := s.reclassifyRowsLocked(sheet); err != nil {
+			s.restoreUndoneLocked(undone)
+			s.history.PushEntry(entry)
+			return err
+		}
+	}
+	s.removeResolutionsForStateLocked(entry.AfterState)
 	s.stateID = entry.BeforeState
 	s.dirty = s.stateID != s.savedState
 	return nil
@@ -531,6 +824,53 @@ func (s *Session) recordHistoryLocked(operations []merge.Operation) {
 	s.dirty = s.stateID != s.savedState
 }
 
+func (s *Session) sheetDiffLocked(name string) *diff.SheetDiff {
+	if s.currentDiff == nil {
+		return nil
+	}
+	for _, sheet := range s.currentDiff.Sheets {
+		if sheet.Name == name {
+			return sheet
+		}
+	}
+	return nil
+}
+
+func (s *Session) rowStatusLocked(sheet string, row int) diff.RowStatus {
+	item := s.sheetDiffLocked(sheet)
+	if item == nil {
+		return diff.RowUnchanged
+	}
+	for _, candidate := range item.Rows {
+		if candidate.Row == row {
+			return candidate.Status
+		}
+	}
+	return diff.RowUnchanged
+}
+
+func (s *Session) recordResolutionLocked(resolution RowResolution) {
+	resolution.stateID = s.stateID
+	s.resolutions = append(s.resolutions, resolution)
+}
+
+func (s *Session) removeResolutionsForStateLocked(stateID uint64) {
+	filtered := s.resolutions[:0]
+	for _, resolution := range s.resolutions {
+		if resolution.stateID != stateID {
+			filtered = append(filtered, resolution)
+		}
+	}
+	s.resolutions = filtered
+}
+
+func (s *Session) reclassifyRowsLocked(name string) error {
+	if s.currentDiff == nil || s.right == nil {
+		return nil
+	}
+	return s.currentDiff.ReclassifyRows(name, s.left.ByName[name], s.right.ByName[name])
+}
+
 func (s *Session) updateCellLocked(ref workbook.CellRef, state merge.CellState) error {
 	sheet := s.left.ByName[ref.Sheet]
 	if sheet == nil {
@@ -562,9 +902,21 @@ func (s *Session) updateCellLocked(ref workbook.CellRef, state merge.CellState) 
 				sheet.CellList = append(sheet.CellList[:index], sheet.CellList[index+1:]...)
 			}
 		}
+		if ref.Row == sheet.MaxRow || ref.Col == sheet.MaxCol {
+			recalculateSheetBounds(sheet)
+		}
 	}
 	if s.currentDiff == nil || s.right == nil {
 		return nil
 	}
 	return s.currentDiff.UpdateCell(ref, state.Value, s.right.ByName[ref.Sheet].Cell(ref.Row, ref.Col))
+}
+
+func recalculateSheetBounds(sheet *workbook.SheetSnapshot) {
+	sheet.MaxRow = 0
+	sheet.MaxCol = 0
+	for _, key := range sheet.CellList {
+		sheet.MaxRow = max(sheet.MaxRow, key.Row)
+		sheet.MaxCol = max(sheet.MaxCol, key.Col)
+	}
 }

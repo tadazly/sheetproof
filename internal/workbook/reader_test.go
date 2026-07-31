@@ -1,6 +1,8 @@
 package workbook
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +11,14 @@ import (
 	"github.com/ug-tools/ugxlsx/internal/testutil"
 	"github.com/xuri/excelize/v2"
 )
+
+func TestReaderOpenContextStopsBeforeCancelledScan(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := (Reader{}).OpenContext(ctx, filepath.Join(t.TempDir(), "ignored.xlsx")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("OpenContext error = %v, want context canceled", err)
+	}
+}
 
 func TestReaderPreservesEmptyZeroFormulaAndUnicode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "类型 中文.xlsx")

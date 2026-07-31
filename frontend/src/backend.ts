@@ -31,6 +31,10 @@ export const backend = {
     controller().CopyRightToLeft(sheet, row, col),
   copyMany: (sheet: string, cells: Array<{ row: number; col: number }>): Promise<Summary> =>
     controller().CopyRightToLeftMany(sheet, cells),
+  copyRows: (sheet: string, rows: number[]): Promise<Summary> =>
+    controller().CopyRowsRightToLeft(sheet, rows),
+  appendRows: (sheet: string, rows: number[], ids: string[]): Promise<Summary> =>
+    controller().AppendRowsRightToLeft(sheet, rows, ids),
   edit: (sheet: string, row: number, col: number, value: string, type: string): Promise<Summary> =>
     controller().EditLeft(sheet, row, col, value, type),
   undo: (): Promise<Summary> => controller().Undo(),

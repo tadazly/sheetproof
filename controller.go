@@ -22,27 +22,29 @@ const (
 )
 
 type RepositoryView struct {
-	Name             string              `json:"name"`
-	Path             string              `json:"path"`
-	CurrentBranch    string              `json:"currentBranch"`
-	Detached         bool                `json:"detached"`
-	WorkspaceDirty   bool                `json:"workspaceDirty"`
-	Operation        string              `json:"operation"`
-	Files            []string            `json:"files"`
-	Branches         []repository.Branch `json:"branches"`
-	DefaultRef       string              `json:"defaultRef"`
-	SelectedFile     string              `json:"selectedFile"`
-	SelectedRef      string              `json:"selectedRef"`
-	LeftState        string              `json:"leftState"`
-	RightState       string              `json:"rightState"`
-	LeftMessage      string              `json:"leftMessage"`
-	RightMessage     string              `json:"rightMessage"`
-	FileModified     bool                `json:"fileModified"`
-	SidebarWidth     int                 `json:"sidebarWidth"`
-	Notice           string              `json:"notice"`
-	Loading          bool                `json:"loading"`
-	LoadGeneration   uint64              `json:"loadGeneration"`
-	ComparisonActive bool                `json:"comparisonActive"`
+	Name               string              `json:"name"`
+	Path               string              `json:"path"`
+	CurrentBranch      string              `json:"currentBranch"`
+	Detached           bool                `json:"detached"`
+	WorkspaceDirty     bool                `json:"workspaceDirty"`
+	Operation          string              `json:"operation"`
+	Files              []string            `json:"files"`
+	DifferenceFiles    []string            `json:"differenceFiles"`
+	DifferenceIndexing bool                `json:"differenceIndexing"`
+	Branches           []repository.Branch `json:"branches"`
+	DefaultRef         string              `json:"defaultRef"`
+	SelectedFile       string              `json:"selectedFile"`
+	SelectedRef        string              `json:"selectedRef"`
+	LeftState          string              `json:"leftState"`
+	RightState         string              `json:"rightState"`
+	LeftMessage        string              `json:"leftMessage"`
+	RightMessage       string              `json:"rightMessage"`
+	FileModified       bool                `json:"fileModified"`
+	SidebarWidth       int                 `json:"sidebarWidth"`
+	Notice             string              `json:"notice"`
+	Loading            bool                `json:"loading"`
+	LoadGeneration     uint64              `json:"loadGeneration"`
+	ComparisonActive   bool                `json:"comparisonActive"`
 }
 
 type RepositoryResult struct {
@@ -51,23 +53,27 @@ type RepositoryResult struct {
 }
 
 type Controller struct {
-	mu             sync.Mutex
-	loadMu         sync.Mutex
-	wg             sync.WaitGroup
-	ctx            context.Context
-	session        *coreapp.Session
-	left           string
-	right          string
-	options        coreapp.Options
-	loading        bool
-	loadErr        string
-	mode           string
-	prefs          preferences.Store
-	repo           *repository.Repository
-	repositoryView RepositoryView
-	tempRight      string
-	loadGeneration uint64
-	switchPrompt   func() (string, error)
+	mu                        sync.Mutex
+	loadMu                    sync.Mutex
+	prefsMu                   sync.Mutex
+	wg                        sync.WaitGroup
+	ctx                       context.Context
+	session                   *coreapp.Session
+	left                      string
+	right                     string
+	options                   coreapp.Options
+	loading                   bool
+	loadErr                   string
+	mode                      string
+	prefs                     preferences.Store
+	repo                      *repository.Repository
+	repositoryView            RepositoryView
+	tempRight                 string
+	loadGeneration            uint64
+	differenceIndexGeneration uint64
+	differenceIndexCancel     context.CancelFunc
+	shuttingDown              bool
+	switchPrompt              func() (string, error)
 }
 
 func NewController(left, right string, options coreapp.Options) *Controller {
@@ -82,7 +88,9 @@ func (c *Controller) startup(ctx context.Context) {
 	c.ctx = ctx
 	repositoryPath := c.options.RepositoryPath
 	if repositoryPath == "" && c.left == "" && c.right == "" {
+		c.prefsMu.Lock()
 		repositoryPath = c.prefs.LastRepository()
+		c.prefsMu.Unlock()
 	}
 	shouldLoadFiles := c.left != "" && c.right != ""
 	shouldLoadRepository := !shouldLoadFiles && repositoryPath != ""
@@ -163,6 +171,15 @@ func (c *Controller) Bootstrap() BootstrapState {
 }
 
 func (c *Controller) shutdown(_ context.Context) {
+	c.mu.Lock()
+	c.shuttingDown = true
+	c.differenceIndexGeneration++
+	cancelDifferenceIndex := c.differenceIndexCancel
+	c.differenceIndexCancel = nil
+	c.mu.Unlock()
+	if cancelDifferenceIndex != nil {
+		cancelDifferenceIndex()
+	}
 	c.wg.Wait()
 	c.mu.Lock()
 	session, temp := c.session, c.tempRight
@@ -282,10 +299,36 @@ func (c *Controller) openRepositoryInternal(
 	c.loadMu.Lock()
 	defer c.loadMu.Unlock()
 
-	view := viewFromInfo(info, c.prefs.RepositoryWidth())
+	c.prefsMu.Lock()
+	repositoryWidth := c.prefs.RepositoryWidth()
+	preferredRef := c.prefs.RepositoryRef(info.Root)
+	c.prefsMu.Unlock()
+	view := viewFromInfo(info, repositoryWidth)
 	if selectedRef != "" {
 		branch, _ := repo.ResolveReference(selectedRef, info.Branches)
 		view.SelectedRef = branch.FullName
+	} else if preferredRef != "" {
+		if branch, resolveErr := repo.ResolveReference(preferredRef, info.Branches); resolveErr == nil {
+			view.SelectedRef = branch.FullName
+		}
+	}
+	if view.SelectedRef == "" {
+		view.SelectedRef = view.DefaultRef
+	}
+	var differenceBranch repository.Branch
+	var differenceSignature string
+	if view.SelectedRef != "" {
+		differenceBranch, _ = repo.ResolveReference(view.SelectedRef, info.Branches)
+		differenceFiles, signature, cached, diffErr := c.prepareRepositoryDifferenceIndex(
+			repo, differenceBranch, view.Files, true,
+		)
+		if diffErr != nil {
+			view.Notice = fmt.Sprintf("仓库已打开，但差异表加载失败：%v", diffErr)
+		} else {
+			view.DifferenceFiles = differenceFiles
+			view.DifferenceIndexing = !cached
+			differenceSignature = signature
+		}
 	}
 	c.mu.Lock()
 	old, oldTemp := c.session, c.tempRight
@@ -303,11 +346,18 @@ func (c *Controller) openRepositoryInternal(
 	}
 	removeTemporary(oldTemp)
 	if remember {
-		if err := c.prefs.RecordRepository(info.Root); err != nil {
+		c.prefsMu.Lock()
+		preferenceErr := c.prefs.RecordRepository(info.Root)
+		c.prefsMu.Unlock()
+		if preferenceErr != nil {
 			c.mu.Lock()
-			c.repositoryView.Notice = "仓库已打开，但无法记录为最近仓库"
+			c.repositoryView.Notice = appendNotice(c.repositoryView.Notice, "仓库已打开，但无法记录为最近仓库")
 			c.mu.Unlock()
 		}
+		c.recordRepositoryRef(info.Root, view.SelectedRef)
+	}
+	if view.DifferenceIndexing {
+		c.startRepositoryDifferenceIndex(repo, differenceBranch, view.Files, differenceSignature)
 	}
 	if selectedFile != "" {
 		return c.selectRepositoryFileLocked(filepath.ToSlash(selectedFile), selectedRef)
@@ -323,7 +373,8 @@ func viewFromInfo(info repository.Info, width int) RepositoryView {
 	return RepositoryView{
 		Name: info.Name, Path: info.Root, CurrentBranch: info.CurrentBranch,
 		Detached: info.Detached, WorkspaceDirty: info.Dirty, Operation: info.Operation,
-		Files: append([]string{}, info.Files...), Branches: append([]repository.Branch{}, info.Branches...),
+		Files: append([]string{}, info.Files...), DifferenceFiles: []string{},
+		Branches:   append([]repository.Branch{}, info.Branches...),
 		DefaultRef: info.DefaultRef, LeftState: "no-file", RightState: rightState,
 		LeftMessage:  "请先在左侧目录树中选择一个 XLSX 表格",
 		RightMessage: "请先在左侧目录树中选择一个 XLSX 表格",
@@ -512,8 +563,31 @@ func (c *Controller) SelectRepositoryRef(refValue string) (RepositoryResult, err
 			c.mu.Unlock()
 			return RepositoryResult{}, err
 		}
-		c.repositoryView.SelectedRef = branch.FullName
 		c.mu.Unlock()
+		differenceFiles, signature, cached, diffErr := c.prepareRepositoryDifferenceIndex(
+			repo, branch, view.Files, true,
+		)
+		c.mu.Lock()
+		if repo != c.repo {
+			c.mu.Unlock()
+			return RepositoryResult{}, errors.New("加载结果已被新的选择替代")
+		}
+		c.repositoryView.SelectedRef = branch.FullName
+		if diffErr != nil {
+			c.repositoryView.Notice = appendNotice(
+				c.repositoryView.Notice,
+				fmt.Sprintf("已切换对比分支，但差异表加载失败：%v", diffErr),
+			)
+		} else {
+			c.repositoryView.DifferenceFiles = differenceFiles
+			c.repositoryView.DifferenceIndexing = !cached
+		}
+		root := c.repositoryView.Path
+		c.mu.Unlock()
+		c.recordRepositoryRef(root, branch.FullName)
+		if diffErr == nil && !cached {
+			c.startRepositoryDifferenceIndex(repo, branch, view.Files, signature)
+		}
 		return c.Repository()
 	}
 	c.loadGeneration++
@@ -548,6 +622,9 @@ func (c *Controller) SelectRepositoryRef(refValue string) (RepositoryResult, err
 		message = fmt.Sprintf("该分支中的文件无法作为 XLSX 工作簿打开\n%v", err)
 		_ = session.DetachRight(branch.Name + "（只读）")
 	}
+	differenceFiles, signature, cached, diffErr := c.prepareRepositoryDifferenceIndex(
+		repo, branch, view.Files, true,
+	)
 	c.mu.Lock()
 	if generation != c.loadGeneration || session != c.session {
 		c.mu.Unlock()
@@ -561,8 +638,22 @@ func (c *Controller) SelectRepositoryRef(refValue string) (RepositoryResult, err
 	c.repositoryView.RightMessage = message
 	c.repositoryView.Loading = false
 	c.repositoryView.ComparisonActive = state == "ready"
+	if diffErr != nil {
+		c.repositoryView.Notice = appendNotice(
+			c.repositoryView.Notice,
+			fmt.Sprintf("已切换对比分支，但差异表加载失败：%v", diffErr),
+		)
+	} else {
+		c.repositoryView.DifferenceFiles = differenceFiles
+		c.repositoryView.DifferenceIndexing = !cached
+	}
+	root := c.repositoryView.Path
 	c.mu.Unlock()
 	removeTemporary(oldTemp)
+	c.recordRepositoryRef(root, branch.FullName)
+	if diffErr == nil && !cached {
+		c.startRepositoryDifferenceIndex(repo, branch, view.Files, signature)
+	}
 	return c.Repository()
 }
 
@@ -591,22 +682,52 @@ func (c *Controller) RefreshRepository() (RepositoryResult, error) {
 	view.ComparisonActive = oldView.ComparisonActive
 	if view.SelectedFile != "" && !slices.Contains(view.Files, view.SelectedFile) {
 		view.SelectedFile = ""
-		view.SelectedRef = ""
 		view.LeftState = "no-file"
 		view.RightState = "no-file"
 		view.LeftMessage = "请先在左侧目录树中选择一个 XLSX 表格"
 		view.RightMessage = view.LeftMessage
 		view.ComparisonActive = false
+		if view.SelectedRef != "" {
+			if _, err := repo.ResolveReference(view.SelectedRef, view.Branches); err != nil {
+				view.SelectedRef = view.DefaultRef
+			}
+		}
+		if view.SelectedRef == "" {
+			view.SelectedRef = view.DefaultRef
+		}
+		var differenceBranch repository.Branch
+		var differenceSignature string
+		startDifferenceIndex := false
+		if view.SelectedRef != "" {
+			differenceBranch, _ = repo.ResolveReference(view.SelectedRef, view.Branches)
+			differenceFiles, signature, _, diffErr := c.prepareRepositoryDifferenceIndex(
+				repo, differenceBranch, view.Files, false,
+			)
+			if diffErr != nil {
+				view.Notice = appendNotice(view.Notice, fmt.Sprintf("刷新成功，但差异表加载失败：%v", diffErr))
+			} else {
+				view.DifferenceFiles = differenceFiles
+				view.DifferenceIndexing = true
+				differenceSignature = signature
+				startDifferenceIndex = true
+			}
+		}
 		c.mu.Lock()
 		old, oldTemp := c.session, c.tempRight
 		c.session, c.tempRight = nil, ""
 		c.repositoryView = view
 		c.loadGeneration++
+		c.repositoryView.LoadGeneration = c.loadGeneration
+		root, selectedRef := c.repositoryView.Path, c.repositoryView.SelectedRef
 		c.mu.Unlock()
 		if old != nil {
 			_ = old.Close()
 		}
 		removeTemporary(oldTemp)
+		c.recordRepositoryRef(root, selectedRef)
+		if startDifferenceIndex {
+			c.startRepositoryDifferenceIndex(repo, differenceBranch, view.Files, differenceSignature)
+		}
 		return c.Repository()
 	}
 	if view.SelectedRef != "" {
@@ -614,16 +735,44 @@ func (c *Controller) RefreshRepository() (RepositoryResult, error) {
 			view.SelectedRef = view.DefaultRef
 		}
 	}
+	if view.SelectedRef == "" {
+		view.SelectedRef = view.DefaultRef
+	}
+	var differenceBranch repository.Branch
+	var differenceSignature string
+	startDifferenceIndex := false
+	if view.SelectedRef != "" {
+		differenceBranch, _ = repo.ResolveReference(view.SelectedRef, view.Branches)
+		differenceFiles, signature, _, diffErr := c.prepareRepositoryDifferenceIndex(
+			repo, differenceBranch, view.Files, false,
+		)
+		if diffErr != nil {
+			view.Notice = appendNotice(view.Notice, fmt.Sprintf("刷新成功，但差异表加载失败：%v", diffErr))
+		} else {
+			view.DifferenceFiles = differenceFiles
+			view.DifferenceIndexing = true
+			differenceSignature = signature
+			startDifferenceIndex = true
+		}
+	}
 	c.mu.Lock()
 	c.repositoryView = view
 	c.loadGeneration++
 	c.repositoryView.LoadGeneration = c.loadGeneration
+	root, selectedRef := c.repositoryView.Path, c.repositoryView.SelectedRef
 	c.mu.Unlock()
+	c.recordRepositoryRef(root, selectedRef)
+	if startDifferenceIndex {
+		c.startRepositoryDifferenceIndex(repo, differenceBranch, view.Files, differenceSignature)
+	}
 	return c.Repository()
 }
 
 func (c *Controller) SetRepositorySidebarWidth(width int) error {
-	if err := c.prefs.RecordRepositoryWidth(width); err != nil {
+	c.prefsMu.Lock()
+	err := c.prefs.RecordRepositoryWidth(width)
+	c.prefsMu.Unlock()
+	if err != nil {
 		return err
 	}
 	c.mu.Lock()
@@ -675,6 +824,32 @@ func (c *Controller) CopyRightToLeftMany(sheet string, cells []coreapp.CellCoord
 		return coreapp.Summary{}, err
 	}
 	if err := session.CopyRightToLeftMany(sheet, cells); err != nil {
+		return coreapp.Summary{}, err
+	}
+	return session.Summary(), nil
+}
+
+func (c *Controller) CopyRowsRightToLeft(sheet string, rows []int) (coreapp.Summary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	if err := session.CopyRowsRightToLeft(sheet, rows); err != nil {
+		return coreapp.Summary{}, err
+	}
+	return session.Summary(), nil
+}
+
+func (c *Controller) AppendRowsRightToLeft(
+	sheet string,
+	rows []int,
+	ids []string,
+) (coreapp.Summary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	if _, err := session.AppendRowsRightToLeft(sheet, rows, ids); err != nil {
 		return coreapp.Summary{}, err
 	}
 	return session.Summary(), nil
@@ -732,6 +907,27 @@ func (c *Controller) Save() (coreapp.Summary, error) {
 		info, refreshErr := repo.Refresh()
 		modified, statusErr := repo.FileModified(view.SelectedFile)
 		if refreshErr == nil && statusErr == nil {
+			selectedRef := view.SelectedRef
+			if selectedRef != "" {
+				if _, resolveErr := repo.ResolveReference(selectedRef, info.Branches); resolveErr != nil {
+					selectedRef = info.DefaultRef
+				}
+			}
+			if selectedRef == "" {
+				selectedRef = info.DefaultRef
+			}
+			differenceFiles := []string{}
+			var differenceBranch repository.Branch
+			var differenceSignature string
+			startDifferenceIndex := false
+			var diffErr error
+			if selectedRef != "" {
+				differenceBranch, _ = repo.ResolveReference(selectedRef, info.Branches)
+				var cached bool
+				differenceFiles, differenceSignature, cached, diffErr =
+					c.prepareRepositoryDifferenceIndex(repo, differenceBranch, info.Files, false)
+				startDifferenceIndex = diffErr == nil && !cached
+			}
 			c.mu.Lock()
 			if repo == c.repo {
 				c.repositoryView.FileModified = modified
@@ -742,8 +938,24 @@ func (c *Controller) Save() (coreapp.Summary, error) {
 				c.repositoryView.Files = append([]string{}, info.Files...)
 				c.repositoryView.Branches = append([]repository.Branch{}, info.Branches...)
 				c.repositoryView.DefaultRef = info.DefaultRef
+				c.repositoryView.SelectedRef = selectedRef
+				if diffErr != nil {
+					c.repositoryView.Notice = appendNotice(
+						c.repositoryView.Notice,
+						fmt.Sprintf("保存成功，但差异表刷新失败：%v", diffErr),
+					)
+				} else {
+					c.repositoryView.DifferenceFiles = differenceFiles
+					c.repositoryView.DifferenceIndexing = startDifferenceIndex
+				}
 			}
 			c.mu.Unlock()
+			c.recordRepositoryRef(info.Root, selectedRef)
+			if startDifferenceIndex {
+				c.startRepositoryDifferenceIndex(
+					repo, differenceBranch, info.Files, differenceSignature,
+				)
+			}
 		}
 	}
 	return session.Summary(), nil
@@ -768,9 +980,12 @@ func (c *Controller) SaveAs() (coreapp.Summary, error) {
 	c.mu.Lock()
 	ctx := c.ctx
 	c.mu.Unlock()
+	c.prefsMu.Lock()
+	defaultDirectory := c.prefs.SaveDirectory()
+	c.prefsMu.Unlock()
 	target, err := runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{
 		Title:                "另存为 Excel 工作簿",
-		DefaultDirectory:     c.prefs.SaveDirectory(),
+		DefaultDirectory:     defaultDirectory,
 		DefaultFilename:      defaultFilename,
 		Filters:              []runtime.FileFilter{{DisplayName: "Excel 工作簿 (*.xlsx)", Pattern: "*.xlsx"}},
 		CanCreateDirectories: true,
@@ -784,8 +999,11 @@ func (c *Controller) SaveAs() (coreapp.Summary, error) {
 	if err := session.Save(target); err != nil {
 		return coreapp.Summary{}, err
 	}
-	if err := c.prefs.RecordSaveTarget(target); err != nil {
-		runtime.LogWarningf(ctx, "record last Save As directory: %v", err)
+	c.prefsMu.Lock()
+	preferenceErr := c.prefs.RecordSaveTarget(target)
+	c.prefsMu.Unlock()
+	if preferenceErr != nil {
+		runtime.LogWarningf(ctx, "record last Save As directory: %v", preferenceErr)
 	}
 	return session.Summary(), nil
 }
@@ -895,8 +1113,180 @@ func workspaceLabel(view RepositoryView) string {
 func cloneRepositoryView(source RepositoryView) RepositoryView {
 	copy := source
 	copy.Files = append([]string{}, source.Files...)
+	copy.DifferenceFiles = append([]string{}, source.DifferenceFiles...)
 	copy.Branches = append([]repository.Branch{}, source.Branches...)
 	return copy
+}
+
+func (c *Controller) prepareRepositoryDifferenceIndex(
+	repo *repository.Repository,
+	branch repository.Branch,
+	files []string,
+	useCache bool,
+) ([]string, string, bool, error) {
+	signature, err := repo.DifferenceIndexSignature(branch, files)
+	if err != nil {
+		return nil, "", false, err
+	}
+	if useCache {
+		c.prefsMu.Lock()
+		cached, exists := c.prefs.RepositoryIndex(repo.Root(), branch.FullName, signature)
+		c.prefsMu.Unlock()
+		if exists {
+			return cached, signature, true, nil
+		}
+	}
+	return nil, signature, false, nil
+}
+
+func (c *Controller) startRepositoryDifferenceIndex(
+	repo *repository.Repository,
+	branch repository.Branch,
+	files []string,
+	signature string,
+) {
+	c.mu.Lock()
+	if c.repo != repo || c.repositoryView.SelectedRef != branch.FullName {
+		c.mu.Unlock()
+		return
+	}
+	if c.shuttingDown {
+		c.mu.Unlock()
+		return
+	}
+	if c.differenceIndexCancel != nil {
+		c.differenceIndexCancel()
+	}
+	parent := c.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	indexContext, cancel := context.WithCancel(parent)
+	c.differenceIndexCancel = cancel
+	c.differenceIndexGeneration++
+	generation := c.differenceIndexGeneration
+	c.repositoryView.DifferenceFiles = []string{}
+	c.repositoryView.DifferenceIndexing = true
+	c.wg.Add(1)
+	c.mu.Unlock()
+	go func() {
+		defer func() {
+			cancel()
+			c.wg.Done()
+		}()
+		result, err := exactRepositoryDifferenceFiles(indexContext, repo, branch, files)
+		cacheWarning := ""
+		if err == nil {
+			currentSignature, signatureErr := repo.DifferenceIndexSignatureContext(indexContext, branch, files)
+			if signatureErr != nil {
+				err = signatureErr
+			} else if currentSignature != signature {
+				err = errors.New("建立差异表索引期间仓库内容发生变化，请刷新后重试")
+			}
+		}
+		if err == nil && indexContext.Err() == nil {
+			c.prefsMu.Lock()
+			cacheErr := c.prefs.RecordRepositoryIndex(
+				repo.Root(), branch.FullName, signature, result,
+			)
+			c.prefsMu.Unlock()
+			if cacheErr != nil {
+				cacheWarning = fmt.Sprintf("差异表索引已建立，但无法缓存：%v", cacheErr)
+			}
+		}
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if generation != c.differenceIndexGeneration ||
+			c.repo != repo ||
+			c.repositoryView.SelectedRef != branch.FullName {
+			return
+		}
+		c.differenceIndexCancel = nil
+		c.repositoryView.DifferenceIndexing = false
+		if err != nil {
+			c.repositoryView.DifferenceFiles = []string{}
+			c.repositoryView.Notice = appendNotice(
+				c.repositoryView.Notice,
+				fmt.Sprintf("差异表索引建立失败：%v", err),
+			)
+			return
+		}
+		c.repositoryView.DifferenceFiles = result
+		if cacheWarning != "" {
+			c.repositoryView.Notice = appendNotice(
+				c.repositoryView.Notice,
+				cacheWarning,
+			)
+		}
+	}()
+}
+
+func exactRepositoryDifferenceFiles(
+	ctx context.Context,
+	repo *repository.Repository,
+	branch repository.Branch,
+	files []string,
+) ([]string, error) {
+	candidates, err := repo.ChangedCommonXLSXContext(ctx, branch, files)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]string, 0, len(candidates))
+	for _, relative := range candidates {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		left, resolveErr := repo.ResolveRelativePath(relative)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		right, readErr := repo.ReadReferenceFileContext(ctx, branch, relative)
+		if readErr != nil {
+			return nil, readErr
+		}
+		session, openErr := coreapp.OpenContext(ctx, left, right, coreapp.Options{ReadonlyLeft: true})
+		if openErr != nil {
+			removeTemporary(right)
+			return nil, fmt.Errorf("比较 %s 失败: %w", relative, openErr)
+		}
+		summary := session.Summary()
+		closeErr := session.Close()
+		removeTemporary(right)
+		if closeErr != nil {
+			return nil, fmt.Errorf("关闭 %s 失败: %w", relative, closeErr)
+		}
+		if !summary.Diff.Equal {
+			result = append(result, relative)
+		}
+	}
+	return result, nil
+}
+
+func (c *Controller) recordRepositoryRef(root, ref string) {
+	if root == "" || ref == "" {
+		return
+	}
+	c.prefsMu.Lock()
+	err := c.prefs.RecordRepositoryRef(root, ref)
+	c.prefsMu.Unlock()
+	if err != nil {
+		c.mu.Lock()
+		if c.repo != nil && c.repositoryView.Path == root {
+			c.repositoryView.Notice = appendNotice(
+				c.repositoryView.Notice,
+				"已选择对比分支，但无法记录该分支偏好",
+			)
+		}
+		c.mu.Unlock()
+	}
+}
+
+func appendNotice(current, addition string) string {
+	if current == "" {
+		return addition
+	}
+	return current + "；" + addition
 }
 
 func removeTemporary(path string) {

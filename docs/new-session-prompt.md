@@ -23,9 +23,9 @@ git log -5 --oneline --decorate
 GOCACHE=/tmp/ugxlsx-go-cache go test ./...
 cd frontend && npm run test && npm run typecheck
 
-重要：当前 main 可能只有第一轮提交，第二轮仓库模式及后续 UI 优化仍是工作树
-中的未提交有效成果。不要 reset、checkout、覆盖或清理这些改动；保留用户的
-全部现有修改。
+重要：当前 main 的 `058f437` 已包含第二轮基线；第三轮目录树/分支偏好优化
+及后续 UI 改动仍可能是工作树中的未提交有效成果。不要 reset、checkout、覆盖
+或清理这些改动；保留用户的全部现有修改。
 
 以 docs/iteration-2-handoff.md 记录的已实现且已验证行为作为兼容基线。必须
 保留仓库模式和直接双文件模式，共用现有 Go 差异、合并、撤销和安全保存逻辑。
