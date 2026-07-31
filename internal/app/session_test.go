@@ -172,6 +172,117 @@ func TestSessionBatchCopyIsOneUndoCommand(t *testing.T) {
 	}
 }
 
+func TestSessionRowCopyKeepsStyleOnlyBlankCellsUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "blank-left.xlsx")
+	right := filepath.Join(dir, "blank-right.xlsx")
+	for path, rightSide := range map[string]bool{left: false, right: true} {
+		file := excelize.NewFile()
+		if err := file.SetCellValue("Sheet1", "A1", "name"); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.SetCellValue("Sheet1", "C1", "limit"); err != nil {
+			t.Fatal(err)
+		}
+		value := "old"
+		if rightSide {
+			value = "new"
+		}
+		if err := file.SetCellValue("Sheet1", "A2", value); err != nil {
+			t.Fatal(err)
+		}
+		if rightSide {
+			styleID, err := file.NewStyle(&excelize.Style{
+				Fill: excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{"F3F4F6"}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := file.SetCellStyle("Sheet1", "B2", "B2", styleID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := file.SaveAs(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if got := session.Summary().Diff.DifferenceCount; got != 1 {
+		t.Fatalf("style-only blank produced an initial difference count of %d, want 1", got)
+	}
+	if err := session.CopyRowsRightToLeft("Sheet1", []int{2}); err != nil {
+		t.Fatal(err)
+	}
+	if got := session.Summary().Diff.DifferenceCount; got != 0 {
+		t.Fatalf("blank cells retained differences after row copy: %d", got)
+	}
+	region, err := session.Region("Sheet1", 2, 1, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cell := range region.Cells {
+		if cell.Status != diff.Unchanged {
+			t.Fatalf("%s retained status %s after row copy: %+v", cell.Axis, cell.Status, cell)
+		}
+		if cell.Col > 1 && (cell.Left.Present || cell.Right.Present) {
+			t.Fatalf("%s should remain a true blank on both sides: %+v", cell.Axis, cell)
+		}
+	}
+}
+
+func TestSessionExportKeepsOriginalTargetAndDirtyState(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := Open(pair.Left, pair.Right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if err := session.EditLeft(
+		workbook.CellRef{Sheet: "数据 表", Row: 1, Col: 1},
+		"导出副本",
+		"text",
+	); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "exported.xlsx")
+	if err := session.Export(target); err != nil {
+		t.Fatal(err)
+	}
+	if !session.Dirty() {
+		t.Fatal("export incorrectly marked the worktree session as saved")
+	}
+	if got := session.Summary().Diff.LeftFile; filepath.Clean(got) != filepath.Clean(pair.Left) {
+		t.Fatalf("export changed the session target to %q", got)
+	}
+	exported, err := excelize.OpenFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer exported.Close()
+	if value, err := exported.GetCellValue("数据 表", "A1"); err != nil || value != "导出副本" {
+		t.Fatalf("exported A1 = %q, err=%v", value, err)
+	}
+	original, err := excelize.OpenFile(pair.Left)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer original.Close()
+	if value, err := original.GetCellValue("数据 表", "A1"); err != nil || value == "导出副本" {
+		t.Fatalf("export modified the original workbook: value=%q err=%v", value, err)
+	}
+}
+
 func TestSessionCopiesAndAppendsConflictRowsWithUndo(t *testing.T) {
 	left, right := createIDWorkbookPair(t)
 	session, err := Open(left, right, Options{})

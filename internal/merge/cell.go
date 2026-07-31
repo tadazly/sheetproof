@@ -83,13 +83,17 @@ func Capture(f *excelize.File, ref workbook.CellRef) (CellState, error) {
 			break
 		}
 	}
-	present := cellType != excelize.CellTypeUnset || raw != "" || formula != ""
-	return CellState{
-		Value: workbook.CellValue{
-			Present: present,
+	present := workbook.CellPresent(cellType, raw, formula)
+	value := workbook.CellValue{}
+	if present {
+		value = workbook.CellValue{
+			Present: true,
 			Raw:     raw, Display: display, Formula: formula,
 			Type: workbook.ClassifyCellType(f, cellType, formula, raw, styleID), StyleID: styleID,
-		},
+		}
+	}
+	return CellState{
+		Value: value,
 		Style: style, Hyperlink: link, LinkType: linkType, Comment: comment,
 	}, nil
 }

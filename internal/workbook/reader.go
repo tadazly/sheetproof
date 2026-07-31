@@ -188,7 +188,7 @@ func snapshotSheet(ctx context.Context, f *excelize.File, name string, index int
 				return nil, err
 			}
 			raw := columns[colIndex-1]
-			present := cellType != excelize.CellTypeUnset || raw != "" || formula != ""
+			present := CellPresent(cellType, raw, formula)
 			if !present {
 				continue
 			}
@@ -246,6 +246,17 @@ func contextError(ctx context.Context) error {
 	default:
 		return nil
 	}
+}
+
+// CellPresent keeps snapshot reads and incremental merge captures consistent.
+// A style-only/default-typed empty cell is visually and semantically absent,
+// while an explicitly stored empty string remains present.
+func CellPresent(cellType excelize.CellType, raw, formula string) bool {
+	if raw != "" || formula != "" {
+		return true
+	}
+	return cellType == excelize.CellTypeInlineString ||
+		cellType == excelize.CellTypeSharedString
 }
 
 func ClassifyCellType(f *excelize.File, t excelize.CellType, formula, raw string, styleID int) string {

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/ug-tools/ugxlsx/internal/diff"
 	"github.com/ug-tools/ugxlsx/internal/repository"
 	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/xuri/excelize/v2"
 )
 
 const (
@@ -191,21 +193,141 @@ func runCompare(args []string, stderr io.Writer, launch Launcher) int {
 		fmt.Fprintln(stderr, "--left and --right must be provided together")
 		return ExitRuntime
 	}
+	preparedLeft, preparedRight := *left, *right
+	cleanup := func() {}
 	if *left != "" {
-		if err := validateComparePaths(*left, *right); err != nil {
+		var err error
+		preparedLeft, preparedRight, cleanup, err = prepareComparePaths(*left, *right)
+		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return exitCode(err)
 		}
+		defer cleanup()
 	}
+	gitDiff := isGitDiffToolInvocation()
+	resolvedLeftLabel, resolvedRightLabel := resolveCompareLabels(*leftLabel, *rightLabel)
 	options := app.Options{
-		Title: *title, LeftLabel: *leftLabel, RightLabel: *rightLabel,
-		ReadonlyLeft: *readonly, Output: *output,
+		Title: *title, LeftLabel: resolvedLeftLabel, RightLabel: resolvedRightLabel,
+		ReadonlyLeft: *readonly || gitDiff, GitDiff: gitDiff, Output: *output,
 	}
-	if err := launch(*left, *right, options); err != nil {
+	if err := launch(preparedLeft, preparedRight, options); err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitCode(err)
 	}
 	return ExitOK
+}
+
+// resolveCompareLabels uses UGit's per-invocation reference titles when the
+// caller has not supplied an explicit display label. These variables are
+// display-only metadata; Git itself does not define them.
+func resolveCompareLabels(leftLabel, rightLabel string) (string, string) {
+	if strings.TrimSpace(leftLabel) == "" {
+		leftLabel = strings.TrimSpace(os.Getenv("LOCAL_TITLE"))
+	}
+	if strings.TrimSpace(rightLabel) == "" {
+		rightLabel = strings.TrimSpace(os.Getenv("REMOTE_TITLE"))
+	}
+	return leftLabel, rightLabel
+}
+
+func isGitDiffToolInvocation() bool {
+	counter := strings.TrimSpace(os.Getenv("GIT_DIFF_PATH_COUNTER"))
+	total := strings.TrimSpace(os.Getenv("GIT_DIFF_PATH_TOTAL"))
+	return counter != "" && total != ""
+}
+
+// prepareComparePaths adapts the null device used by Git difftool for an added
+// or deleted file into a real, temporary XLSX workbook. The placeholder mirrors
+// the existing workbook's sheet names but contains no cells, so the normal
+// session/diff/merge code can represent every present cell as added or deleted.
+func prepareComparePaths(left, right string) (preparedLeft, preparedRight string, cleanup func(), err error) {
+	leftMissing := isNullDevice(left)
+	rightMissing := isNullDevice(right)
+	if !leftMissing && !rightMissing {
+		if err := validateComparePaths(left, right); err != nil {
+			return "", "", func() {}, err
+		}
+		return left, right, func() {}, nil
+	}
+	if leftMissing && rightMissing {
+		return "", "", func() {}, errors.New("left and right paths cannot both be the null device")
+	}
+
+	existing := left
+	missingSide := "right"
+	if leftMissing {
+		existing = right
+		missingSide = "left"
+	}
+	if err := workbook.ValidateXLSXPath(existing); err != nil {
+		return "", "", func() {}, err
+	}
+
+	tempDir, err := os.MkdirTemp("", "ugxlsx-git-null-*")
+	if err != nil {
+		return "", "", func() {}, fmt.Errorf("create Git diff placeholder: %w", err)
+	}
+	cleanup = func() { _ = os.RemoveAll(tempDir) }
+	placeholder := filepath.Join(tempDir, "missing-"+missingSide+".xlsx")
+	if err := createEmptyWorkbookLike(existing, placeholder); err != nil {
+		cleanup()
+		return "", "", func() {}, err
+	}
+	preparedLeft, preparedRight = left, right
+	if leftMissing {
+		preparedLeft = placeholder
+	} else {
+		preparedRight = placeholder
+	}
+	if err := validateComparePaths(preparedLeft, preparedRight); err != nil {
+		cleanup()
+		return "", "", func() {}, err
+	}
+	return preparedLeft, preparedRight, cleanup, nil
+}
+
+func isNullDevice(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "/dev/null" {
+		return true
+	}
+	switch strings.ToUpper(trimmed) {
+	case "NUL", "NUL:":
+		return true
+	default:
+		return false
+	}
+}
+
+func createEmptyWorkbookLike(sourcePath, targetPath string) error {
+	sourceFile, snapshot, err := (workbook.Reader{}).Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	if err := sourceFile.Close(); err != nil {
+		return err
+	}
+
+	placeholder := excelize.NewFile()
+	defer placeholder.Close()
+	defaultSheet := placeholder.GetSheetName(0)
+	for index, sheet := range snapshot.Sheets {
+		if index == 0 {
+			if sheet.Name != defaultSheet {
+				if err := placeholder.SetSheetName(defaultSheet, sheet.Name); err != nil {
+					return fmt.Errorf("create Git diff placeholder: %w", err)
+				}
+			}
+			continue
+		}
+		if _, err := placeholder.NewSheet(sheet.Name); err != nil {
+			return fmt.Errorf("create Git diff placeholder: %w", err)
+		}
+	}
+	if err := placeholder.SaveAs(targetPath); err != nil {
+		return fmt.Errorf("create Git diff placeholder: %w", err)
+	}
+	return nil
 }
 
 func validateComparePaths(left, right string) error {

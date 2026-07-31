@@ -7,11 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	coreapp "github.com/ug-tools/ugxlsx/internal/app"
 	"github.com/ug-tools/ugxlsx/internal/preferences"
 	"github.com/ug-tools/ugxlsx/internal/repository"
+	"github.com/ug-tools/ugxlsx/internal/ugit"
 	"github.com/ug-tools/ugxlsx/internal/workbook"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -157,6 +159,14 @@ type BootstrapState struct {
 	Repository *RepositoryView `json:"repository,omitempty"`
 }
 
+type UGitConfigurationResult struct {
+	Configured     bool   `json:"configured"`
+	Changed        bool   `json:"changed"`
+	Cancelled      bool   `json:"cancelled"`
+	ExecutablePath string `json:"executablePath"`
+	Message        string `json:"message"`
+}
+
 func (c *Controller) Bootstrap() BootstrapState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -168,6 +178,66 @@ func (c *Controller) Bootstrap() BootstrapState {
 		state.Repository = &view
 	}
 	return state
+}
+
+func (c *Controller) ConfigureUGit() (UGitConfigurationResult, error) {
+	executablePath, err := ugit.CurrentExecutablePath()
+	if err != nil {
+		return UGitConfigurationResult{}, err
+	}
+	c.mu.Lock()
+	ctx := c.ctx
+	c.mu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	inspection, err := ugit.Inspect(ctx, executablePath)
+	if err != nil {
+		return UGitConfigurationResult{}, err
+	}
+	if inspection.Configured {
+		return UGitConfigurationResult{
+			Configured: true, ExecutablePath: executablePath,
+			Message: "UGit 的 *.xlsx 差异与合并工具已经指向当前应用，无需更新。",
+		}, nil
+	}
+	if ctx.Value("frontend") == nil {
+		return UGitConfigurationResult{}, errors.New("无法在无界面模式下确认修改 UGit 配置")
+	}
+
+	message := fmt.Sprintf(
+		"将把 UGit 的 *.xlsx 差异工具和合并工具配置为当前应用：\n%s\n\n只会替换 *.xlsx 相关配置，不影响其他文件类型。",
+		executablePath,
+	)
+	if inspection.NeedsUpdate {
+		if len(inspection.ExistingPaths) > 0 {
+			message += "\n\n检测到需要覆盖的旧路径：\n• " + strings.Join(inspection.ExistingPaths, "\n• ")
+		} else {
+			message += "\n\n检测到已有但不完整或不兼容的 *.xlsx 工具配置，将一并修复。"
+		}
+	}
+	answer, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		Type: runtime.QuestionDialog, Title: "配置 UGit",
+		Message: message, Buttons: []string{"取消", "配置 UGit"},
+		DefaultButton: "配置 UGit", CancelButton: "取消",
+	})
+	if err != nil {
+		return UGitConfigurationResult{}, err
+	}
+	if answer != "配置 UGit" {
+		return UGitConfigurationResult{
+			Cancelled: true, ExecutablePath: executablePath,
+			Message: "未修改 UGit 配置。",
+		}, nil
+	}
+	updated, err := ugit.Configure(ctx, executablePath)
+	if err != nil {
+		return UGitConfigurationResult{}, err
+	}
+	return UGitConfigurationResult{
+		Configured: updated.Configured, Changed: true, ExecutablePath: executablePath,
+		Message: "UGit 的 *.xlsx 差异与合并工具已更新。若 UGit 正在运行，请重启 UGit 后再测试。",
+	}, nil
 }
 
 func (c *Controller) shutdown(_ context.Context) {
@@ -700,16 +770,16 @@ func (c *Controller) RefreshRepository() (RepositoryResult, error) {
 		startDifferenceIndex := false
 		if view.SelectedRef != "" {
 			differenceBranch, _ = repo.ResolveReference(view.SelectedRef, view.Branches)
-			differenceFiles, signature, _, diffErr := c.prepareRepositoryDifferenceIndex(
-				repo, differenceBranch, view.Files, false,
+			differenceFiles, signature, cached, diffErr := c.prepareRepositoryDifferenceIndex(
+				repo, differenceBranch, view.Files, true,
 			)
 			if diffErr != nil {
 				view.Notice = appendNotice(view.Notice, fmt.Sprintf("刷新成功，但差异表加载失败：%v", diffErr))
 			} else {
 				view.DifferenceFiles = differenceFiles
-				view.DifferenceIndexing = true
+				view.DifferenceIndexing = !cached
 				differenceSignature = signature
-				startDifferenceIndex = true
+				startDifferenceIndex = !cached
 			}
 		}
 		c.mu.Lock()
@@ -743,16 +813,16 @@ func (c *Controller) RefreshRepository() (RepositoryResult, error) {
 	startDifferenceIndex := false
 	if view.SelectedRef != "" {
 		differenceBranch, _ = repo.ResolveReference(view.SelectedRef, view.Branches)
-		differenceFiles, signature, _, diffErr := c.prepareRepositoryDifferenceIndex(
-			repo, differenceBranch, view.Files, false,
+		differenceFiles, signature, cached, diffErr := c.prepareRepositoryDifferenceIndex(
+			repo, differenceBranch, view.Files, true,
 		)
 		if diffErr != nil {
 			view.Notice = appendNotice(view.Notice, fmt.Sprintf("刷新成功，但差异表加载失败：%v", diffErr))
 		} else {
 			view.DifferenceFiles = differenceFiles
-			view.DifferenceIndexing = true
+			view.DifferenceIndexing = !cached
 			differenceSignature = signature
-			startDifferenceIndex = true
+			startDifferenceIndex = !cached
 		}
 	}
 	c.mu.Lock()
@@ -887,6 +957,21 @@ func (c *Controller) Save() (coreapp.Summary, error) {
 	repo := c.repo
 	inRepository := repo != nil
 	c.mu.Unlock()
+	incrementalRef := ""
+	stableInputsBefore := ""
+	if inRepository &&
+		view.SelectedFile != "" &&
+		view.SelectedRef != "" &&
+		!view.DifferenceIndexing {
+		if branch, resolveErr := repo.ResolveReference(view.SelectedRef, view.Branches); resolveErr == nil {
+			if signature, signatureErr := repo.DifferenceIndexSignatureExcluding(
+				branch, view.Files, view.SelectedFile,
+			); signatureErr == nil {
+				incrementalRef = branch.FullName
+				stableInputsBefore = signature
+			}
+		}
+	}
 	if inRepository && view.Operation != "" && ctx != nil && ctx.Value("frontend") != nil {
 		answer, dialogErr := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 			Type: runtime.WarningDialog, Title: "Git 操作进行中",
@@ -903,6 +988,7 @@ func (c *Controller) Save() (coreapp.Summary, error) {
 	if err := session.Save(""); err != nil {
 		return coreapp.Summary{}, err
 	}
+	savedSummary := session.Summary()
 	if inRepository && view.SelectedFile != "" {
 		info, refreshErr := repo.Refresh()
 		modified, statusErr := repo.FileModified(view.SelectedFile)
@@ -921,11 +1007,42 @@ func (c *Controller) Save() (coreapp.Summary, error) {
 			var differenceSignature string
 			startDifferenceIndex := false
 			var diffErr error
+			cacheWarning := ""
 			if selectedRef != "" {
 				differenceBranch, _ = repo.ResolveReference(selectedRef, info.Branches)
 				var cached bool
 				differenceFiles, differenceSignature, cached, diffErr =
-					c.prepareRepositoryDifferenceIndex(repo, differenceBranch, info.Files, false)
+					c.prepareRepositoryDifferenceIndex(repo, differenceBranch, info.Files, true)
+				if diffErr == nil &&
+					!cached &&
+					incrementalRef == differenceBranch.FullName &&
+					stableInputsBefore != "" &&
+					!view.DifferenceIndexing {
+					stableInputsAfter, stableErr := repo.DifferenceIndexSignatureExcluding(
+						differenceBranch, info.Files, view.SelectedFile,
+					)
+					if stableErr == nil && stableInputsAfter == stableInputsBefore {
+						selectedDiffers := view.RightState == "ready" && !savedSummary.Diff.Equal
+						differenceFiles = updateDifferenceFileMembership(
+							info.Files,
+							view.DifferenceFiles,
+							view.SelectedFile,
+							selectedDiffers,
+						)
+						c.prefsMu.Lock()
+						cacheErr := c.prefs.RecordRepositoryIndex(
+							repo.Root(),
+							differenceBranch.FullName,
+							differenceSignature,
+							differenceFiles,
+						)
+						c.prefsMu.Unlock()
+						if cacheErr != nil {
+							cacheWarning = fmt.Sprintf("当前表格的差异表结果已更新，但无法缓存：%v", cacheErr)
+						}
+						cached = true
+					}
+				}
 				startDifferenceIndex = diffErr == nil && !cached
 			}
 			c.mu.Lock()
@@ -947,6 +1064,12 @@ func (c *Controller) Save() (coreapp.Summary, error) {
 				} else {
 					c.repositoryView.DifferenceFiles = differenceFiles
 					c.repositoryView.DifferenceIndexing = startDifferenceIndex
+					if cacheWarning != "" {
+						c.repositoryView.Notice = appendNotice(
+							c.repositoryView.Notice,
+							cacheWarning,
+						)
+					}
 				}
 			}
 			c.mu.Unlock()
@@ -958,16 +1081,13 @@ func (c *Controller) Save() (coreapp.Summary, error) {
 			}
 		}
 	}
-	return session.Summary(), nil
+	return savedSummary, nil
 }
 
 func (c *Controller) SaveAs() (coreapp.Summary, error) {
 	c.mu.Lock()
 	inRepository := c.repo != nil
 	c.mu.Unlock()
-	if inRepository {
-		return coreapp.Summary{}, errors.New("仓库模式下请使用“保存到当前工作区”")
-	}
 	session, err := c.getSession()
 	if err != nil {
 		return coreapp.Summary{}, err
@@ -996,8 +1116,22 @@ func (c *Controller) SaveAs() (coreapp.Summary, error) {
 	if target == "" {
 		return session.Summary(), nil
 	}
-	if err := session.Save(target); err != nil {
-		return coreapp.Summary{}, err
+	if inRepository {
+		if err := session.Export(target); err != nil {
+			return coreapp.Summary{}, err
+		}
+		c.mu.Lock()
+		if c.repo != nil {
+			c.repositoryView.Notice = appendNotice(
+				c.repositoryView.Notice,
+				"已导出副本："+target,
+			)
+		}
+		c.mu.Unlock()
+	} else {
+		if err := session.Save(target); err != nil {
+			return coreapp.Summary{}, err
+		}
 	}
 	c.prefsMu.Lock()
 	preferenceErr := c.prefs.RecordSaveTarget(target)
@@ -1287,6 +1421,30 @@ func appendNotice(current, addition string) string {
 		return addition
 	}
 	return current + "；" + addition
+}
+
+func updateDifferenceFileMembership(
+	repositoryFiles []string,
+	current []string,
+	selected string,
+	differs bool,
+) []string {
+	included := make(map[string]struct{}, len(current)+1)
+	for _, relative := range current {
+		if relative != selected {
+			included[relative] = struct{}{}
+		}
+	}
+	if differs {
+		included[selected] = struct{}{}
+	}
+	result := make([]string, 0, len(included))
+	for _, relative := range repositoryFiles {
+		if _, exists := included[relative]; exists {
+			result = append(result, relative)
+		}
+	}
+	return result
 }
 
 func removeTemporary(path string) {

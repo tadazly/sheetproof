@@ -1,7 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.vue";
-import type { Region, RepositoryResult, RepositoryView, Summary } from "./types";
+import type { CellDiff, Region, RepositoryResult, RepositoryView, Summary } from "./types";
 
 const emptySummary: Summary = {
   options: {
@@ -9,6 +9,7 @@ const emptySummary: Summary = {
     leftLabel: "本地（可编辑）",
     rightLabel: "对比来源（只读）",
     readonlyLeft: false,
+    gitDiff: false,
     output: ""
   },
   diff: {
@@ -84,6 +85,64 @@ describe("App", () => {
     expect(selectAndOpen).toHaveBeenCalledOnce();
     expect(wrapper.text()).toContain("/tmp/左侧 文件.xlsx");
     expect(wrapper.text()).toContain("/tmp/右侧 文件.xlsx");
+  });
+
+  it("configures UGit from the persistent low-frequency action and reports success", async () => {
+    const configureUGit = vi.fn(async () => ({
+      configured: true,
+      changed: true,
+      cancelled: false,
+      executablePath: "/Applications/ugxlsx.app/Contents/MacOS/ugxlsx",
+      message: "UGit 的 *.xlsx 差异与合并工具已更新。"
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: false, error: "" }),
+          ConfigureUGit: configureUGit
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const button = wrapper.get('button[aria-label="配置 UGit"]');
+    expect(button.attributes("title")).toContain("*.xlsx");
+    await button.trigger("click");
+    await flushPromises();
+
+    expect(configureUGit).toHaveBeenCalledOnce();
+    expect(wrapper.get(".success-banner").text()).toContain("*.xlsx 差异与合并工具已更新");
+  });
+
+  it("renders Git difftool snapshots as read-only without exposing temporary directories", async () => {
+    const gitDiff = structuredClone(emptySummary);
+    gitDiff.options.gitDiff = true;
+    gitDiff.options.readonlyLeft = true;
+    gitDiff.diff.leftFile = "/var/folders/random/git-blob-a/配置.xlsx";
+    gitDiff.diff.rightFile = "/var/folders/random/ugxlsx-git-null/missing-right.xlsx";
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => gitDiff
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Git 差异快照 · 只读");
+    expect(wrapper.text()).toContain("配置.xlsx");
+    expect(wrapper.text()).toContain("Git 快照 · 该版本不存在");
+    expect(wrapper.text()).not.toContain("missing-right.xlsx");
+    expect(wrapper.text()).not.toContain("/var/folders/random");
+    expect(wrapper.findAll(".file-strip .readonly-source")).toHaveLength(2);
+    expect(wrapper.findAll(".grid-panel")[0].get(".panel-permission").text()).toBe("只读");
+    expect(wrapper.text()).not.toContain("双击单元格编辑");
+    for (const button of wrapper.findAll(".save-actions button")) {
+      expect(button.attributes("disabled")).toBeDefined();
+    }
+    expect(wrapper.get(".merge-action").attributes("disabled")).toBeDefined();
   });
 
   it("opens a repository and shows the tree plus two explicit no-file states", async () => {
@@ -196,7 +255,7 @@ describe("App", () => {
     const wrapper = mount(App);
     await flushPromises();
     const configDirectory = wrapper.findAll(".tree-row").find((row) => row.attributes("title") === "config");
-    expect(configDirectory?.text()).toContain("▾");
+    expect(configDirectory?.attributes("aria-expanded")).toBe("true");
     await configDirectory!.trigger("click");
     expect(wrapper.get(".repository-tree").text()).not.toContain("reward.xlsx");
 
@@ -205,7 +264,7 @@ describe("App", () => {
 
     expect(repository).toHaveBeenCalledOnce();
     const collapsedDirectory = wrapper.findAll(".tree-row").find((row) => row.attributes("title") === "config");
-    expect(collapsedDirectory?.text()).toContain("▸");
+    expect(collapsedDirectory?.attributes("aria-expanded")).toBe("false");
     expect(wrapper.get(".repository-tree").text()).not.toContain("reward.xlsx");
     const differenceTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("差异表"));
     expect(differenceTab?.text()).toContain("1");
@@ -355,6 +414,67 @@ describe("App", () => {
     expect(saveAs).toHaveBeenCalledOnce();
   });
 
+  it("saves the current workbook with Ctrl+S", async () => {
+    const dirty = structuredClone(emptySummary);
+    dirty.dirty = true;
+    const save = vi.fn(async () => ({ ...dirty, dirty: false }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => dirty,
+          Save: save
+        }
+      }
+    };
+    mount(App);
+    await flushPromises();
+    window.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "s"
+    }));
+    await flushPromises();
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it("allows Save As to export a repository workbook copy", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.dirty = true;
+    const repository = {
+      ...structuredClone(repositoryView),
+      selectedFile: "config/activity/reward.xlsx",
+      leftState: "ready",
+      rightState: "ready",
+      comparisonActive: true
+    };
+    const saveAs = vi.fn(async () => loaded);
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({
+            loading: false,
+            hasSession: true,
+            error: "",
+            mode: "repository",
+            repository
+          }),
+          Summary: async () => loaded,
+          SaveAs: saveAs
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+    const button = wrapper.get('button[aria-label="另存为"]');
+    expect(button.attributes("disabled")).toBeUndefined();
+    expect(button.text()).toContain("导出副本");
+    await button.trigger("click");
+    await flushPromises();
+    expect(saveAs).toHaveBeenCalledOnce();
+  });
+
   it("renders a loaded worksheet region and difference navigation", async () => {
     const loaded = structuredClone(emptySummary);
     loaded.diff.equal = false;
@@ -455,6 +575,83 @@ describe("App", () => {
     expect(wrapper.find(".inline-cell-editor").exists()).toBe(false);
     expect(editLeft).toHaveBeenCalledTimes(1);
     expect(wrapper.find(".editor").exists()).toBe(false);
+  });
+
+  it("opens the first differing sheet at its first prioritized difference", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.equal = false;
+    loaded.diff.sheetCount = 2;
+    loaded.diff.differentSheetCount = 1;
+    loaded.diff.differenceCount = 2;
+    loaded.diff.sheets = [
+      {
+        name: "说明", status: "equal", orderDifferent: false,
+        differenceCount: 0, maxRow: 8, maxCol: 2, idColumn: 0, nextId: 0,
+        addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 0,
+        rows: []
+      },
+      {
+        name: "数据", status: "modified", orderDifferent: false,
+        differenceCount: 2, maxRow: 200, maxCol: 6, idColumn: 1, nextId: 0,
+        addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 1, conflictRowCount: 1,
+        rows: [
+          { row: 5, id: "5", status: "modified" },
+          { row: 120, id: "120", status: "conflict" }
+        ]
+      }
+    ];
+    loaded.selectedSheet = "说明";
+    const empty = { present: false, raw: "", display: "", type: "unset" };
+    const differences: CellDiff[] = [
+      {
+        ref: { sheet: "数据", row: 5, col: 1 },
+        status: "modified", rowStatus: "modified",
+        left: { ...empty, present: true, raw: "旧", display: "旧", type: "string" },
+        right: { ...empty, present: true, raw: "新", display: "新", type: "string" }
+      },
+      {
+        ref: { sheet: "数据", row: 120, col: 4 },
+        status: "modified", rowStatus: "conflict",
+        left: { ...empty, present: true, raw: "左", display: "左", type: "string" },
+        right: { ...empty, present: true, raw: "右", display: "右", type: "string" }
+      }
+    ];
+    const differencesCall = vi.fn(async (name: string) => name === "数据" ? differences : []);
+    const regionCall = vi.fn(async (
+      name: string, fromRow: number, rowCount: number, fromCol: number, colCount: number
+    ): Promise<Region> => ({
+      sheet: name,
+      fromRow,
+      toRow: fromRow + rowCount - 1,
+      fromCol,
+      toCol: fromCol + colCount - 1,
+      cells: name === "数据" ? [{
+        row: 120, col: 4, axis: "D120", status: "modified", rowStatus: "conflict",
+        left: differences[1].left,
+        right: differences[1].right
+      }] : []
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: differencesCall,
+          Region: regionCall
+        }
+      }
+    };
+
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(differencesCall).toHaveBeenCalledWith("数据", 0, 10000);
+    expect(regionCall).toHaveBeenCalledWith("数据", 119, 48, 2, 20);
+    expect(wrapper.get(".sheet-item.active").text()).toContain("数据");
+    expect(wrapper.text()).toContain("D120");
+    const activeFilter = wrapper.findAll(".diff-filter-tabs button")
+      .find((button) => button.attributes("aria-selected") === "true");
+    expect(activeFilter?.text()).toContain("冲突");
   });
 
   it("keeps headers pinned and ignores stale regions during rapid bottom navigation", async () => {

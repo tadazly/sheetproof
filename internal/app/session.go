@@ -23,6 +23,7 @@ type Options struct {
 	LeftLabel      string `json:"leftLabel"`
 	RightLabel     string `json:"rightLabel"`
 	ReadonlyLeft   bool   `json:"readonlyLeft"`
+	GitDiff        bool   `json:"gitDiff"`
 	Output         string `json:"output"`
 	RepositoryPath string `json:"repositoryPath,omitempty"`
 	RepositoryFile string `json:"repositoryFile,omitempty"`
@@ -804,6 +805,29 @@ func (s *Session) Save(target string) error {
 	s.savedState = s.stateID
 	s.dirty = false
 	return nil
+}
+
+// Export writes the current left workbook state to a separate file without
+// changing the session save target or marking worktree edits as saved.
+func (s *Session) Export(target string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.options.ReadonlyLeft {
+		return fmt.Errorf("left workbook is read-only")
+	}
+	if strings.TrimSpace(target) == "" {
+		return errors.New("导出路径不能为空")
+	}
+	abs, err := filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	leftAbs, _ := filepath.Abs(s.left.Path)
+	if filepath.Clean(abs) == filepath.Clean(leftAbs) {
+		return errors.New("导出路径与当前工作区文件相同，请使用保存到当前工作区")
+	}
+	_, err = (storage.SafeWriter{}).Save(s.leftFile, abs, nil)
+	return err
 }
 
 func (s *Session) Dirty() bool {

@@ -349,7 +349,7 @@ func (r *Repository) ChangedCommonXLSXContext(
 // the exact semantic differing-workbook index. Worktree metadata keeps startup
 // cheap while still invalidating normal edits, saves, additions, and removals.
 func (r *Repository) DifferenceIndexSignature(ref Branch, worktreeFiles []string) (string, error) {
-	return r.DifferenceIndexSignatureContext(context.Background(), ref, worktreeFiles)
+	return r.differenceIndexSignatureContext(context.Background(), ref, worktreeFiles, "")
 }
 
 // DifferenceIndexSignatureContext is the cancellable form used to verify a
@@ -358,6 +358,33 @@ func (r *Repository) DifferenceIndexSignatureContext(
 	ctx context.Context,
 	ref Branch,
 	worktreeFiles []string,
+) (string, error) {
+	return r.differenceIndexSignatureContext(ctx, ref, worktreeFiles, "")
+}
+
+// DifferenceIndexSignatureExcluding fingerprints every input except one
+// worktree path. Controllers use it around an in-app save to prove that no
+// other workbook, HEAD, or comparison ref changed before incrementally
+// updating the cached differing-workbook list.
+func (r *Repository) DifferenceIndexSignatureExcluding(
+	ref Branch,
+	worktreeFiles []string,
+	excluded string,
+) (string, error) {
+	normalized, err := normalizeRelativePath(excluded)
+	if err != nil {
+		return "", err
+	}
+	return r.differenceIndexSignatureContext(
+		context.Background(), ref, worktreeFiles, normalized,
+	)
+}
+
+func (r *Repository) differenceIndexSignatureContext(
+	ctx context.Context,
+	ref Branch,
+	worktreeFiles []string,
+	excluded string,
 ) (string, error) {
 	if ref.FullName == "" || (ref.Kind != LocalBranch && ref.Kind != RemoteBranch) {
 		return "", errors.New("无效的 Git 引用")
@@ -380,6 +407,9 @@ func (r *Repository) DifferenceIndexSignatureContext(
 		normalized, normalizeErr := normalizeRelativePath(file)
 		if normalizeErr != nil {
 			return "", normalizeErr
+		}
+		if normalized == excluded {
+			continue
 		}
 		absolute, resolveErr := r.ResolveRelativePath(normalized)
 		if resolveErr != nil {

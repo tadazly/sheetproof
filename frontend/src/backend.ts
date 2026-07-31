@@ -1,4 +1,11 @@
-import type { BootstrapState, CellDiff, Region, RepositoryResult, Summary } from "./types";
+import type {
+  BootstrapState,
+  CellDiff,
+  Region,
+  RepositoryResult,
+  Summary,
+  UGitConfigurationResult
+} from "./types";
 
 function controller(): Record<string, (...args: any[]) => Promise<any>> {
   const value = window.go?.main?.Controller;
@@ -9,6 +16,8 @@ function controller(): Record<string, (...args: any[]) => Promise<any>> {
 export const backend = {
   bootstrap: (): Promise<BootstrapState> =>
     controller().Bootstrap(),
+  configureUGit: (): Promise<UGitConfigurationResult> =>
+    controller().ConfigureUGit(),
   selectAndOpen: (): Promise<Summary> => controller().SelectAndOpen(),
   openFiles: (left: string, right: string): Promise<Summary> =>
     controller().OpenFiles(left, right),

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none"
+  xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="background" x1="170" y1="126" x2="850" y2="914"
+      gradientUnits="userSpaceOnUse">
+      <stop stop-color="#183B67"/>
+      <stop offset="1" stop-color="#0B1D36"/>
+    </linearGradient>
+    <linearGradient id="action" x1="435" y1="421" x2="600" y2="610"
+      gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <filter id="shadow" x="112" y="126" width="800" height="788"
+      filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#020617"
+        flood-opacity=".3"/>
+    </filter>
+  </defs>
+
+  <!-- Transparent outer padding follows macOS and Windows icon safe areas. -->
+  <rect x="64" y="64" width="896" height="896" rx="224"
+    fill="url(#background)"/>
+  <path d="M176 150C272 82 397 64 512 64H736C860 64 960 164 960 288V350
+    C844 231 704 168 540 160C407 154 286 178 176 228V150Z"
+    fill="#FFFFFF" fill-opacity=".055"/>
+
+  <g filter="url(#shadow)">
+    <!-- Left and right sheets deliberately overlap the action badge. -->
+    <rect x="176" y="190" width="306" height="644" rx="58" fill="#F8FAFC"/>
+    <rect x="542" y="190" width="306" height="644" rx="58" fill="#F8FAFC"/>
+
+    <path d="M176 248C176 216 202 190 234 190H424C456 190 482 216 482 248V306
+      H176V248Z" fill="#DCE8F5"/>
+    <path d="M542 248C542 216 568 190 600 190H790C822 190 848 216 848 248V306
+      H542V248Z" fill="#DCE8F5"/>
+
+    <!-- Spreadsheet grids. Broad cells stay legible at 16–32 px. -->
+    <rect x="222" y="354" width="214" height="82" rx="20" fill="#E5EDF6"/>
+    <rect x="222" y="460" width="214" height="82" rx="20" fill="#FBD7D7"/>
+    <rect x="222" y="566" width="214" height="82" rx="20" fill="#E5EDF6"/>
+    <rect x="222" y="672" width="214" height="82" rx="20" fill="#E5EDF6"/>
+
+    <rect x="588" y="354" width="214" height="82" rx="20" fill="#E5EDF6"/>
+    <rect x="588" y="460" width="214" height="82" rx="20" fill="#D1F3DF"/>
+    <rect x="588" y="566" width="214" height="82" rx="20" fill="#E5EDF6"/>
+    <rect x="588" y="672" width="214" height="82" rx="20" fill="#E5EDF6"/>
+
+    <rect x="222" y="460" width="16" height="82" rx="8" fill="#DC4C4C"/>
+    <rect x="786" y="460" width="16" height="82" rx="8" fill="#22A864"/>
+
+    <circle cx="512" cy="512" r="112" fill="url(#action)"/>
+    <circle cx="512" cy="512" r="92" stroke="#FFFFFF" stroke-opacity=".16"
+      stroke-width="4"/>
+
+    <!-- Two-way comparison above; converging merge/check below. -->
+    <path d="M452 482H548L524 458M548 482L524 506"
+      stroke="#FFFFFF" stroke-width="24" stroke-linecap="round"
+      stroke-linejoin="round"/>
+    <path d="M572 542H476L500 518M476 542L500 566"
+      stroke="#FFFFFF" stroke-width="24" stroke-linecap="round"
+      stroke-linejoin="round"/>
+  </g>
+</svg>

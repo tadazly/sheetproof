@@ -132,13 +132,24 @@ func TestRepositoryDiscoveryBranchesScanAndObjectRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	stableBefore, err := repo.DifferenceIndexSignatureExcluding(develop, info.Files, relative)
+	if err != nil {
+		t.Fatal(err)
+	}
 	writeWorkbook(t, filepath.Join(root, filepath.FromSlash(relative)), "uncommitted")
 	signatureAfter, err := repo.DifferenceIndexSignature(develop, info.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
+	stableAfter, err := repo.DifferenceIndexSignatureExcluding(develop, info.Files, relative)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if signatureBefore == signatureAfter {
 		t.Fatal("difference index signature did not change after worktree edit")
+	}
+	if stableBefore != stableAfter {
+		t.Fatal("signature excluding the saved workbook changed after only that workbook was edited")
 	}
 	modified, err := repo.FileModified(relative)
 	if err != nil || !modified {

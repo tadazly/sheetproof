@@ -5,10 +5,16 @@
 ## 已实现
 
 - 以本地 Git 工作区为入口的三栏界面：仓库 XLSX 目录树、当前工作区、其他本地/远端分支
+- 现代化桌面生产力界面：统一设计 Token、线性 SVG 图标、分层工具栏、紧凑来源卡与结果摘要，
+  并针对最小窗口、高 DPI、键盘焦点和减少动态效果进行适配
+- 独立应用图标使用左右表格、红绿差异和双向合并语义，macOS 与 Windows
+  共享同一 SVG 设计源，不再使用 Wails 默认 “W” 占位图标
 - 从仓库子目录自动定位根目录，支持目录拖放、最近仓库自动恢复和可调目录树宽度
 - 仓库侧栏提供“仓库文件 / 差异表 / 工作表与差异”三页签；目录树仅展示 `.xlsx`，
   后台索引刷新不会改变用户已展开或收起的目录
 - 差异表使用可持久化的语义索引：Git 先筛出双方共有的变化候选，后台再按 Go 核心相等语义精确过滤
+- 手工刷新会先校验索引签名，仓库内容未变化时直接复用；工具内保存只增量更新
+  当前表格的索引成员，不重复比较其他未变化表格
 - 仓库打开不等待逐表解析；缓存未命中时先显示索引中状态，未验证表不会出现，精确单元格差异数只在打开该表后显示
 - 关闭窗口会取消正在执行的差异表索引，不等待剩余工作簿全部比较完成
 - 其他分支通过 Git 对象读取到系统临时目录，不 checkout、switch、fetch 或修改工作区
@@ -27,23 +33,32 @@
   “工作表与差异”同时显示四类行数量
 - 差异索引提供“增加 / 删除 / 修改 / 冲突”筛选页签，并按“冲突 > 修改 > 删除
   > 增加”自动选择首个有内容的分类和索引项
+- 打开表格时若当前摘要工作表没有差异，会自动进入首个有差异的工作表，并让
+  左右视口同步定位到上述优先分类的第一处；编辑和保存后的局部刷新保留当前视口
 - 右键可复制/覆盖单元格或整行；冲突行还可按左侧最大数字 ID 自动续号，或逐行指定新 ID 后追加到左侧
 - 冲突覆盖或追加后，右侧来源行显示处理方式；追加到左侧的新行保持新增色，撤销
   同时移除处理标记
 - 左侧文本、数字、公式和清空编辑
 - 左侧双击原位编辑，底部两行显示左右值、类型和差异状态
 - 选中差异保留语义底色及蓝色边框；复制后真正相等的单元格立即取消差异色
+- 无值但带样式或默认类型元数据的单元格统一视为真正空白，复制单元格或整行后
+  不会出现左右都空却仍显示红/绿色的虚假差异；显式空字符串仍完整保留
 - 会话级复制/批量复制/编辑撤销；支持 Ctrl/Command+Z，保存后仍保留历史
-- 默认保存左侧；`Ctrl/Command + Shift + S` 另存为
+- 默认保存左侧；`Ctrl/Command + S` 保存当前文件，`Ctrl/Command + Shift + S` 另存为
 - 另存为默认沿用左侧文件名，首次打开系统下载目录，并记住上次成功保存目录
+- 仓库模式“另存为”导出独立副本，不改变工作区文件保存目标，也不把未保存的
+  工作区编辑误标为已保存
 - 直接文件模式启动读取时显示居中的加载窗口；仓库差异索引在目录界面中后台更新
+- 所有主要操作具备 hover、active、focus、disabled 和 busy 反馈；错误、空状态、
+  缺失来源、无差异和后台索引使用一致的状态语言
 - 同目录临时文件、写盘同步、临时文件校验、原子替换、保存后重开校验
 - 基于大小、纳秒 mtime 和 SHA-256 的外部修改检测
 - JSON/文本 CLI 差异报告
 
 ## 快速开始
 
-要求 Go 1.24+、Node.js 20+。macOS 桌面构建还需要 Xcode Command Line Tools。
+要求 Go 1.24+、Node.js 20+。macOS 桌面构建还需要 Xcode Command Line Tools；
+在 macOS 交叉构建 Windows `amd64` 版本还需要 `mingw-w64`。
 
 ```bash
 cd frontend
@@ -60,6 +75,21 @@ open build/bin/ugxlsx.app
 ```bash
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 ```
+
+只生成用于分发测试的最小桌面产物（不生成安装器或 zip）：
+
+```bash
+# 当前 Mac 架构
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
+
+# Windows 11 amd64；macOS 交叉构建前先安装 brew install mingw-w64
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build \
+  -platform windows/amd64
+```
+
+产物分别为 `build/bin/ugxlsx.app` 和 `build/bin/ugxlsx.exe`。
+应用图标的可维护源文件是 `build/appicon.svg`；`build/appicon.png` 用于
+Wails/macOS 图标生成，`build/windows/icon.ico` 是 Windows 多尺寸资源。
 
 macOS 上，Wails GUI 必须使用桌面构建产物：
 
@@ -100,17 +130,30 @@ ugxlsx repo \
 
 ### UGit 配置
 
-UGit 有两种常见使用方式。要把结果保存回工作区文件时，`$LOCAL` 必须是
-真实工作区路径，并且不要添加 `--readonly-left`：
+将应用放到准备长期使用的固定位置后，可以直接点击顶部工具栏的“配置 UGit”。
+应用会显示原生确认对话框，然后把 UGit 的全局 `*.xlsx` 差异工具和合并工具
+注册为当前正在运行的 ugxlsx：
 
-在 UGit 的“设置 → 工具 → 差异工具”中添加：
+- 只替换 `*.xlsx` 对应的 `difftool` / `mergetool` 项，不修改其他后缀；
+- 自动写入差异、合并和 `trustExitCode=false` 配置，并在写入后重新读取校验；
+- 如果应用被移动，再次点击会检测当前可执行文件路径并覆盖旧路径；
+- 如果任一步失败，会尝试恢复配置前的全部 `*.xlsx` 工具项；
+- 已经正确配置时不会重复写入；UGit 正在运行时，配置后应重启 UGit。
+
+macOS 注册 `.app/Contents/MacOS/ugxlsx`，Windows 注册当前 `ugxlsx.exe`。
+macOS App Translocation 或其他系统临时目录中的程序不会被注册；应先把应用移动
+到固定目录。应用优先使用系统 `PATH` 中的 Git，并兼容常见的 macOS 和 Windows
+UGit/Git 安装路径。
+
+如需手工配置，在 UGit 的“设置 → 工具 → 差异工具”中添加：
 
 | 字段 | 内容 |
 |---|---|
 | 后缀 | `*.xlsx` |
 | 工具 | `Custom` |
 | 路径（macOS） | `/绝对路径/ugxlsx/build/bin/ugxlsx.app/Contents/MacOS/ugxlsx` |
-| Args | `compare --left "$LOCAL" --right "$REMOTE" --left-label "当前分支" --right-label "对比版本"` |
+| 路径（Windows） | `C:\绝对路径\ugxlsx.exe` |
+| Args | `compare --left "$LOCAL" --right "$REMOTE"` |
 
 例如当前仓库的实际路径是：
 
@@ -118,15 +161,39 @@ UGit 有两种常见使用方式。要把结果保存回工作区文件时，`$L
 /Users/luyi/splan-git/ugxlsx/build/bin/ugxlsx.app/Contents/MacOS/ugxlsx
 ```
 
-部分 UGit 的提交/历史对比会把左右两个版本都导出为临时文件。这种场景
-只适合查看，建议在 Args 中增加 `--readonly-left`，避免用户误以为保存
-临时文件会修改工作区。配置后在 `.xlsx` 文件上选择“使用差异工具查看”，
-UGit 会启动 GUI，并在窗口关闭后继续。
+Git difftool 会设置标准的 `GIT_DIFF_PATH_COUNTER` 和
+`GIT_DIFF_PATH_TOTAL` 环境变量。`ugxlsx` 检测到这些变量后自动把整个差异
+会话设为只读，不依赖 Args 是否显式带 `--readonly-left`。界面两侧显示
+“Git 差异快照 · 只读”，隐藏冗长临时目录，并禁用编辑、复制合并、撤销、
+另存和保存。配置后在 `.xlsx` 文件上选择“使用差异工具查看”，UGit 会启动
+GUI，并在窗口关闭后继续。
 
-使用前应先确认 UGit 对当前命令提供的 `$LOCAL` 含义：
+UGit 5.51.0 还会为每次调用设置 `LOCAL_TITLE`、`REMOTE_TITLE` 和
+`WORKSPACE_PATH`。未显式传入 `--left-label` 或 `--right-label` 时，
+`ugxlsx` 自动使用前两个变量显示真实的两侧分支/引用名；UGit 常规双分支比较
+中分别对应命令里的左、右引用。显式 label 参数仍可逐侧覆盖自动值。它们是
+UGit 扩展变量，不是普通 `git difftool` 保证提供的标准变量。
 
-- `$LOCAL` 是工作区真实文件：可以使用可写配置，保存会修改该文件。
-- `$LOCAL` 是 UGit/Git 临时文件：使用 `--readonly-left`，或另存为到新文件。
+Git 对新增或删除的文件会把不存在的一侧传为 `/dev/null`（Windows 环境也可能
+使用 `NUL`）。`compare` 会在系统临时目录创建一个工作表结构相同、但不含数据的
+占位 `.xlsx`，继续使用正常差异会话显示新增/删除内容；窗口关闭后自动清理，
+不会向用户仓库写入临时文件。
+
+需要修改工作区文件时应使用 ugxlsx 自身的仓库模式，或直接以普通 `compare`
+命令打开真实文件；不要把 Git difftool 当作可写入口。
+
+在 UGit 的“合并工具”中应单独配置输出目标，不能直接复用上面的差异参数：
+
+| 字段 | 内容 |
+|---|---|
+| 后缀 | `*.xlsx` |
+| 工具 | `Custom` |
+| 路径 | 与差异工具相同 |
+| Args | `compare --left "$LOCAL" --right "$REMOTE" --output "$MERGED"` |
+
+当前是基于 `$LOCAL` 和 `$REMOTE` 的双向表格语义合并，不读取 `$BASE`。只有用户
+点击保存后，结果才通过安全保存流程写入 `$MERGED`；不要省略 `--output
+"$MERGED"`，否则 Git 提供的临时 `$LOCAL` 可能成为默认保存目标。
 
 如果点击后无窗口，先在终端检查桌面二进制：
 
@@ -152,9 +219,19 @@ UGit 会启动 GUI，并在窗口关闭后继续。
 --output FILE
 ```
 
-左侧文件是编辑和默认保存目标，右侧始终只读。只有用户点击“保存左侧”后才写回；未保存关闭时桌面端会要求确认。`--output` 将默认保存目标改为指定 `.xlsx` 路径。
+普通 `compare` 的左侧文件是编辑和默认保存目标，右侧始终只读。只有用户点击
+“保存左侧”后才写回；未保存关闭时桌面端会要求确认。`--output` 将默认保存
+目标改为指定 `.xlsx` 路径。Git difftool 启动的 `compare` 会自动覆盖为全局
+只读；Git mergetool 不带 difftool 环境标记，因此仍可编辑。
 
-“另存为”也可使用 `Ctrl+Shift+S`（macOS 为 `Command+Shift+S`）。默认文件名是左侧工作簿的原文件名；首次另存默认打开当前用户的“下载”目录，成功保存后会在系统用户配置目录中记录该目录，下一次另存从上次位置开始。macOS 使用用户配置目录和 `~/Downloads`，Windows 11 使用 AppData，并通过系统 Known Folder 获取实际下载目录（包括被系统重定向的下载目录）。
+使用 `Ctrl+S`（macOS 为 `Command+S`）保存当前文件；“另存为”使用
+`Ctrl+Shift+S`（macOS 为 `Command+Shift+S`）。默认文件名是左侧工作簿的
+原文件名；首次另存默认打开当前用户的“下载”目录，成功保存后会在系统用户
+配置目录中记录该目录，下一次另存从上次位置开始。仓库模式下该操作是“导出
+副本”：不会改变当前工作区保存目标，导出后工作区中尚未保存的编辑仍保持
+未保存状态。macOS 使用用户配置目录和 `~/Downloads`，Windows 11 使用
+AppData，并通过系统 Known Folder 获取实际下载目录（包括被系统重定向的下载
+目录）。
 
 ### GUI 操作速查
 
@@ -170,6 +247,7 @@ UGit 会启动 GUI，并在窗口关闭后继续。
 | 处理冲突行 | 右键后覆盖单元格/整行，或用自动/指定 ID 将右侧整行追加到左侧 |
 | 编辑左侧 | 双击左侧单元格直接编辑；Enter 或失焦提交，Esc 取消 |
 | 撤销 | `Ctrl/Command + Z`；保存后撤销历史仍保留 |
+| 保存当前文件 | `Ctrl/Command + S` |
 | 另存为 | `Ctrl/Command + Shift + S` |
 
 无界面对比：
@@ -236,9 +314,11 @@ internal/history    撤销栈
 internal/storage    安全写入
 internal/preferences 另存目录、最近仓库、侧栏宽度、对比分支偏好和语义差异索引
 internal/repository Git 工作区发现、XLSX 扫描、分支与对象读取
+internal/ugit       UGit *.xlsx 外部工具检测、事务式注册和路径更新
 internal/app        共享会话和视口 API
 internal/cli        命令、JSON/text 输出、退出码
 frontend            Vue 3 + TypeScript 窗口化双栏 UI
+build               跨平台应用图标源、平台资源和最小桌面产物
 cmd/gentestdata     验收工作簿生成器
 docs                架构和手工验收
 .agents/skills      项目级 Codex 接手与验证技能

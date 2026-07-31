@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { EventsOn } from "../wailsjs/runtime/runtime";
+import AppIcon from "./components/AppIcon.vue";
+import EmptyState from "./components/EmptyState.vue";
 import { backend } from "./backend";
 import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
@@ -37,6 +39,7 @@ const selectionAnchor = ref<CellPoint | null>(null);
 const selection = ref<SelectionRange | null>(null);
 const busy = ref(false);
 const error = ref("");
+const integrationNotice = ref("");
 const diffFilter = ref<DiffFilter>("modified");
 const leftScroll = ref<HTMLElement | null>(null);
 const rightScroll = ref<HTMLElement | null>(null);
@@ -66,6 +69,7 @@ const repoSidebar = ref<HTMLElement | null>(null);
 let loadingTimer = 0;
 let differenceIndexTimer = 0;
 let regionRequest = 0;
+let sheetRequest = 0;
 let repositoryRequest = 0;
 let pendingActions = 0;
 let syncing = false;
@@ -84,6 +88,7 @@ interface RepositoryTreeRow {
 }
 
 const activeSheet = computed(() => summary.value?.diff.sheets.find((item) => item.name === sheet.value));
+const leftReadonly = computed(() => Boolean(summary.value?.options.readonlyLeft));
 const totalRows = computed(() => Math.max(activeSheet.value?.maxRow ?? 0, 50) + 10);
 const totalCols = computed(() => Math.max(activeSheet.value?.maxCol ?? 0, 14) + 4);
 const visibleColumns = computed(() => {
@@ -97,6 +102,15 @@ const visibleRows = computed(() => {
   return Array.from({ length: Math.max(0, end - region.value.fromRow + 1) }, (_, index) => region.value!.fromRow + index);
 });
 const visibleCells = computed(() => region.value?.cells.filter((cell) => cell.row <= totalRows.value && cell.col <= totalCols.value) ?? []);
+
+function sourcePathLabel(path: string): string {
+  if (!summary.value?.options.gitDiff) return path;
+  const filename = path.split(/[\\/]/).filter(Boolean).at(-1);
+  if (filename === "missing-left.xlsx" || filename === "missing-right.xlsx") {
+    return "Git 快照 · 该版本不存在";
+  }
+  return filename ? `Git 快照 · ${filename}` : "Git 差异快照";
+}
 const rowHeight = computed(() => Math.round(BASE_ROW_HEIGHT * zoom.value));
 const rowHeaderWidth = computed(() => Math.round(BASE_ROW_HEADER_WIDTH * zoom.value));
 const scaledFontSize = computed(() => Math.max(9, Math.round(11 * zoom.value)));
@@ -126,6 +140,22 @@ const diffFilterCounts = computed(() => {
     if (status !== "unchanged") counts[status]++;
   }
   return counts;
+});
+const resultMetrics = computed(() => {
+  const metrics = { added: 0, deleted: 0, modified: 0, conflict: 0 };
+  for (const item of summary.value?.diff.sheets ?? []) {
+    metrics.added += item.addedRowCount;
+    metrics.deleted += item.deletedRowCount;
+    metrics.modified += item.modifiedRowCount;
+    metrics.conflict += item.conflictRowCount;
+  }
+  return metrics;
+});
+const currentTaskName = computed(() => {
+  const selectedFile = repository.value?.selectedFile;
+  if (selectedFile) return selectedFile.split("/").at(-1) ?? selectedFile;
+  if (summary.value?.options.title) return summary.value.options.title;
+  return "表格对比与合并";
 });
 const filteredDiffPosition = computed(() =>
   filteredDiffEntries.value.findIndex(({ index }) => index === diffIndex.value)
@@ -317,6 +347,8 @@ async function acceptRepositoryResult(result: RepositoryResult) {
 }
 
 function clearWorkbook() {
+  sheetRequest++;
+  regionRequest++;
   summary.value = null;
   region.value = null;
   sheet.value = "";
@@ -343,6 +375,14 @@ async function chooseFiles() {
   } else scheduleDifferenceIndexPoll();
 }
 
+async function configureUGit() {
+  integrationNotice.value = "";
+  const result = await guard(() => backend.configureUGit());
+  if (result && !result.cancelled) {
+    integrationNotice.value = result.message;
+  }
+}
+
 async function selectRepositoryFile(path: string) {
   window.clearTimeout(differenceIndexTimer);
   const request = ++repositoryRequest;
@@ -361,7 +401,6 @@ async function selectRepositoryFile(path: string) {
     return;
   }
   await acceptRepositoryResult(result);
-  diffIndex.value = -1;
 }
 
 async function selectRepositoryRef(value: string) {
@@ -382,7 +421,6 @@ async function selectRepositoryRef(value: string) {
     return;
   }
   await acceptRepositoryResult(result);
-  diffIndex.value = -1;
 }
 
 async function refreshRepository() {
@@ -410,11 +448,16 @@ function repositoryStateMessage(side: "left" | "right") {
 async function acceptSummary(data: Summary, preferredSheet = sheet.value, resetSelection = true) {
   summary.value = data;
   const fallback = data.diff.sheets[0]?.name ?? "";
-  const nextSheet = data.diff.sheets.some((item) => item.name === preferredSheet) ? preferredSheet : fallback;
+  const preferred = data.diff.sheets.find((item) => item.name === preferredSheet);
+  const firstDifferent = data.diff.sheets.find((item) => item.differenceCount > 0);
+  const nextSheet = resetSelection && preferred?.differenceCount === 0
+    ? (firstDifferent?.name ?? preferred.name)
+    : (preferred?.name ?? firstDifferent?.name ?? fallback);
   if (nextSheet) await loadSheet(nextSheet, resetSelection);
 }
 
 async function loadSheet(name: string, resetSelection = true) {
+  const request = ++sheetRequest;
   const changed = sheet.value !== name;
   sheet.value = name;
   if (changed || resetSelection) {
@@ -428,8 +471,18 @@ async function loadSheet(name: string, resetSelection = true) {
   }
   diffIndex.value = -1;
   const list = await guard(() => backend.differences(name, 0, 10000));
+  if (request !== sheetRequest || sheet.value !== name) return;
   diffs.value = list ?? [];
   selectDiffFilter(preferredDiffFilter(diffs.value));
+  if (changed || resetSelection) {
+    const target = filteredDiffEntries.value[0]?.item;
+    if (target) {
+      await nextTick();
+      if (request !== sheetRequest || sheet.value !== name) return;
+      await scrollTo(target.ref.row, target.ref.col);
+      return;
+    }
+  }
   const source = leftScroll.value ?? rightScroll.value;
   const fromRow = changed || resetSelection
     ? 1
@@ -438,8 +491,10 @@ async function loadSheet(name: string, resetSelection = true) {
     ? 1
     : columnAtOffset(source?.scrollLeft ?? viewportLeft.value);
   await loadRegion(fromRow, fromCol);
+  if (request !== sheetRequest || sheet.value !== name) return;
   if (changed || resetSelection) {
     await nextTick();
+    if (request !== sheetRequest || sheet.value !== name) return;
     for (const element of [leftScroll.value, rightScroll.value]) {
       if (element) {
         element.scrollTop = 0;
@@ -453,8 +508,9 @@ async function loadSheet(name: string, resetSelection = true) {
 async function loadRegion(fromRow: number, fromCol: number): Promise<boolean> {
   if (!sheet.value) return false;
   const request = ++regionRequest;
-  const data = await guard(() => backend.region(sheet.value, Math.max(1, fromRow), VIEW_ROWS, Math.max(1, fromCol), VIEW_COLS));
-  if (!data || request !== regionRequest) return false;
+  const requestedSheet = sheet.value;
+  const data = await guard(() => backend.region(requestedSheet, Math.max(1, fromRow), VIEW_ROWS, Math.max(1, fromCol), VIEW_COLS));
+  if (!data || request !== regionRequest || sheet.value !== requestedSheet) return false;
   region.value = data;
   return true;
 }
@@ -756,10 +812,14 @@ async function undo() {
 function onWindowKeyDown(event: KeyboardEvent) {
   if (!event.ctrlKey && !event.metaKey) return;
   const key = event.key.toLowerCase();
-  if (key === "s" && event.shiftKey) {
-    if (!summary.value || repository.value || summary.value.options.readonlyLeft || busy.value) return;
+  if (key === "s") {
+    if (!summary.value || summary.value.options.readonlyLeft || busy.value) return;
     event.preventDefault();
-    void save(true);
+    if (event.shiftKey) {
+      void saveFromShortcut(true);
+    } else if (summary.value.dirty || inlineEdit.value) {
+      void saveFromShortcut(false);
+    }
     return;
   }
   if (event.shiftKey || key !== "z") return;
@@ -768,6 +828,11 @@ function onWindowKeyDown(event: KeyboardEvent) {
   if (!summary.value?.undoCount || busy.value) return;
   event.preventDefault();
   undo();
+}
+
+async function saveFromShortcut(as: boolean) {
+  if (inlineEdit.value) await commitInlineEdit();
+  if (!busy.value) await save(as);
 }
 
 async function save(as = false) {
@@ -1078,52 +1143,136 @@ onBeforeUnmount(() => {
 <template>
   <div class="app-shell" :aria-busy="startupLoading">
     <header class="toolbar">
-      <div class="brand">ugxlsx</div>
-      <button class="primary" :disabled="busy" @click="chooseRepository">打开本地仓库</button>
-      <button :disabled="busy" @click="chooseFiles">打开左右文件</button>
-      <span class="separator"></span>
-      <button :disabled="!filteredDiffEntries.length || busy || !comparisonActive" @click="navigate(-1)">上一处</button>
-      <button :disabled="!filteredDiffEntries.length || busy || !comparisonActive" @click="navigate(1)">下一处</button>
-      <span class="counter">
-        {{ filteredDiffPosition >= 0 ? filteredDiffPosition + 1 : 0 }} / {{ filteredDiffEntries.length }}
-      </span>
-      <button
-        :disabled="!copyTargets.length || busy || summary?.options.readonlyLeft || !comparisonActive"
-        class="primary"
-        @click="copySelection"
-      >复制{{ copyTargets.length > 1 ? ` ${copyTargets.length} 格` : "" }}到左侧</button>
-      <button :disabled="!summary?.undoCount || busy" title="Ctrl/Command + Z" @click="undo">撤销</button>
-      <button
-        class="zoom-button"
-        :title="`当前表格缩放为 ${Math.round(zoom * 100)}%；按住 Ctrl/Command 并滚动鼠标滚轮调整，点击恢复为 100%`"
-        @click="resetZoom"
-      >缩放 {{ Math.round(zoom * 100) }}%</button>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">U</span>
+        <span class="brand-copy">
+          <strong>ugxlsx</strong>
+          <small :title="currentTaskName">{{ currentTaskName }}</small>
+        </span>
+      </div>
+
+      <div class="toolbar-group file-actions" aria-label="打开来源">
+        <button class="secondary" :disabled="busy" @click="chooseRepository">
+          <AppIcon name="repository" />
+          <span class="button-label">打开本地仓库</span>
+        </button>
+        <button class="ghost" :disabled="busy" @click="chooseFiles">
+          <AppIcon name="files" />
+          <span class="button-label">打开左右文件</span>
+        </button>
+      </div>
+
+      <div class="toolbar-group diff-navigation" aria-label="差异导航">
+        <button
+          class="icon-button"
+          :disabled="!filteredDiffEntries.length || busy || !comparisonActive"
+          title="上一处差异"
+          aria-label="上一处差异"
+          @click="navigate(-1)"
+        ><AppIcon name="chevron-left" /><span class="button-label">上一处</span></button>
+        <span class="counter" aria-live="polite">
+          {{ filteredDiffPosition >= 0 ? filteredDiffPosition + 1 : 0 }} / {{ filteredDiffEntries.length }}
+        </span>
+        <button
+          class="icon-button"
+          :disabled="!filteredDiffEntries.length || busy || !comparisonActive"
+          title="下一处差异"
+          aria-label="下一处差异"
+          @click="navigate(1)"
+        ><span class="button-label">下一处</span><AppIcon name="chevron-right" /></button>
+      </div>
+
       <span class="grow"></span>
-      <button
-        :disabled="!summary || busy || summary.options.readonlyLeft || !!repository"
-        title="Ctrl/Command + Shift + S"
-        @click="save(true)"
-      >另存为</button>
-      <button :disabled="!summary?.dirty || busy || summary.options.readonlyLeft" class="save" @click="save(false)">
-        {{ repository ? "保存到当前工作区" : "保存左侧" }}
-      </button>
+
+      <div class="toolbar-group edit-actions" aria-label="编辑与合并">
+        <button
+          :disabled="!copyTargets.length || busy || summary?.options.readonlyLeft || !comparisonActive"
+          class="primary merge-action"
+          @click="copySelection"
+        >
+          <AppIcon name="merge" />
+          <span>复制{{ copyTargets.length > 1 ? ` ${copyTargets.length} 格` : "" }}到左侧</span>
+        </button>
+        <button
+          class="icon-button"
+          :disabled="!summary?.undoCount || busy"
+          title="撤销（Ctrl/Command + Z）"
+          aria-label="撤销"
+          @click="undo"
+        ><AppIcon name="undo" /><span class="button-label">撤销</span></button>
+        <button
+          class="zoom-button ghost"
+          :title="`当前表格缩放为 ${Math.round(zoom * 100)}%；按住 Ctrl/Command 并滚动鼠标滚轮调整，点击恢复为 100%`"
+          @click="resetZoom"
+        ><AppIcon name="zoom" />缩放 {{ Math.round(zoom * 100) }}%</button>
+      </div>
+
+      <div class="toolbar-group save-actions" aria-label="保存结果">
+        <button
+          class="icon-button ghost"
+          :disabled="!summary || busy || summary.options.readonlyLeft"
+          :title="repository ? '导出副本（Ctrl/Command + Shift + S）' : '另存为（Ctrl/Command + Shift + S）'"
+          aria-label="另存为"
+          @click="save(true)"
+        ><AppIcon name="save-as" /><span class="button-label">{{ repository ? "导出副本" : "另存为" }}</span></button>
+        <button
+          :disabled="!summary?.dirty || busy || summary.options.readonlyLeft"
+          class="save"
+          @click="save(false)"
+        >
+          <AppIcon name="save" />
+          <span>{{ repository ? "保存到当前工作区" : "保存左侧" }}</span>
+        </button>
+      </div>
+      <div class="toolbar-group integration-actions" aria-label="外部工具配置">
+        <button
+          class="icon-button ghost"
+          :disabled="busy"
+          title="将当前应用配置为 UGit 的 *.xlsx 差异与合并工具"
+          aria-label="配置 UGit"
+          @click="configureUGit"
+        >
+          <AppIcon name="settings" />
+          <span class="button-label">配置 UGit</span>
+        </button>
+      </div>
+      <div v-if="busy" class="toolbar-progress" aria-hidden="true"></div>
     </header>
 
-    <div v-if="error" class="error-banner">{{ error }}</div>
+    <div v-if="error" class="error-banner" role="alert">
+      <AppIcon name="alert" />
+      <span>{{ error }}</span>
+      <button class="icon-button" title="关闭错误提示" aria-label="关闭错误提示" @click="error = ''">
+        <AppIcon name="x" />
+      </button>
+    </div>
+    <div v-if="integrationNotice" class="success-banner" role="status">
+      <AppIcon name="check" />
+      <span>{{ integrationNotice }}</span>
+      <button
+        class="icon-button"
+        title="关闭配置提示"
+        aria-label="关闭配置提示"
+        @click="integrationNotice = ''"
+      >
+        <AppIcon name="x" />
+      </button>
+    </div>
     <div v-if="repository" class="repository-bar">
       <div class="repository-identity">
-        <strong>{{ repository.name }}</strong>
+        <strong><AppIcon name="repository" />{{ repository.name }}</strong>
         <span :title="repository.path">{{ repository.path }}</span>
       </div>
       <span class="branch-status" :class="{ warning: repository.detached }">
+        <AppIcon name="branch" :size="13" />
         {{ repository.detached ? `Detached HEAD · ${repository.currentBranch}` : `当前分支 · ${repository.currentBranch}` }}
       </span>
-      <span v-if="repository.workspaceDirty" class="working-status">工作区有未提交修改</span>
-      <span v-if="repository.operation" class="operation-status">正在进行 {{ repository.operation }}</span>
+      <span v-if="repository.workspaceDirty" class="working-status"><span class="status-dot"></span>工作区有未提交修改</span>
+      <span v-if="repository.operation" class="operation-status"><span class="status-dot"></span>正在进行 {{ repository.operation }}</span>
       <span class="grow"></span>
-      <button :disabled="busy" @click="chooseRepository">切换仓库</button>
+      <button class="ghost compact-button" :disabled="busy" @click="chooseRepository">切换仓库</button>
     </div>
-    <div v-if="repository?.notice" class="notice-banner">{{ repository.notice }}</div>
+    <div v-if="repository?.notice" class="notice-banner"><AppIcon name="info" />{{ repository.notice }}</div>
 
     <main
       v-if="summary || repository"
@@ -1138,14 +1287,14 @@ onBeforeUnmount(() => {
             :aria-selected="repositorySidebarTab === 'files'"
             :class="{ active: repositorySidebarTab === 'files' }"
             @click="repositorySidebarTab = 'files'"
-          >仓库文件</button>
+          ><AppIcon name="folder" :size="14" />仓库文件</button>
           <button
             role="tab"
             :aria-selected="repositorySidebarTab === 'differences'"
             :class="{ active: repositorySidebarTab === 'differences' }"
             @click="repositorySidebarTab = 'differences'"
           >
-            差异表
+            <AppIcon name="files" :size="14" />差异表
             <span class="sidebar-tab-count">
               {{ repository.differenceIndexing ? "…" : repository.differenceFiles.length }}
             </span>
@@ -1156,7 +1305,7 @@ onBeforeUnmount(() => {
             :class="{ active: repositorySidebarTab === 'sheets' }"
             @click="repositorySidebarTab = 'sheets'"
           >
-            工作表/差异
+            <AppIcon name="selection" :size="14" />工作表/差异
             <span v-if="summary" class="sidebar-tab-count">{{ summary.diff.differenceCount }}</span>
           </button>
         </div>
@@ -1164,10 +1313,16 @@ onBeforeUnmount(() => {
         <div v-if="repositorySidebarTab !== 'sheets'" class="repository-files-pane" role="tabpanel">
           <div class="repository-tree-header">
             <strong>{{ repositorySidebarTab === "differences" ? "差异表" : "仓库文件" }}</strong>
-            <button title="刷新目录树与分支" :disabled="busy" @click="refreshRepository">↻</button>
+            <button
+              class="icon-button ghost"
+              title="刷新目录树与分支"
+              aria-label="刷新目录树与分支"
+              :disabled="busy"
+              @click="refreshRepository"
+            ><AppIcon name="refresh" /></button>
           </div>
           <label class="repository-search">
-            <span aria-hidden="true">⌕</span>
+            <AppIcon name="search" :size="14" />
             <input
               v-model="repositorySearch"
               type="search"
@@ -1200,11 +1355,14 @@ onBeforeUnmount(() => {
               :style="{ paddingLeft: `${10 + row.depth * 17}px` }"
               :title="row.path"
               role="treeitem"
+              :aria-expanded="row.kind === 'directory' ? expandedDirectories.has(row.path) : undefined"
               @click="row.kind === 'directory' ? toggleDirectory(row.path) : selectRepositoryFile(row.path)"
             >
               <span class="tree-icon">
-                <template v-if="row.kind === 'directory'">{{ expandedDirectories.has(row.path) ? "▾" : "▸" }}</template>
-                <template v-else>▧</template>
+                <template v-if="row.kind === 'directory'">
+                  <AppIcon :name="expandedDirectories.has(row.path) ? 'folder-open' : 'folder'" :size="14" />
+                </template>
+                <template v-else><AppIcon name="file" :size="14" /></template>
               </span>
               <span class="tree-row-name">{{ row.name }}</span>
             </button>
@@ -1324,17 +1482,41 @@ onBeforeUnmount(() => {
 
       <section class="content">
         <div v-if="repository" class="file-strip repository-file-strip">
-          <div>
-            <strong>{{ repository.detached ? "当前工作区 · Detached HEAD" : `当前工作区 · ${repository.currentBranch}` }}</strong>
-            <span>{{ repository.selectedFile || "尚未选择表格" }}</span>
+          <div class="source-card editable-source">
+            <div class="source-card-heading">
+              <span class="source-icon"><AppIcon name="edit" /></span>
+              <span>
+                <small>原始表格 · 可编辑</small>
+                <strong>{{ repository.detached ? "当前工作区 · Detached HEAD" : repository.currentBranch }}</strong>
+              </span>
+              <span class="source-state" :class="{ warning: repository.fileModified || summary?.dirty }">
+                <AppIcon
+                  :name="!repository.selectedFile ? 'info' : repository.fileModified || summary?.dirty ? 'alert' : 'check'"
+                  :size="12"
+                />
+                {{ !repository.selectedFile ? "待选择" : repository.fileModified || summary?.dirty ? "有修改" : "已就绪" }}
+              </span>
+            </div>
+            <span class="source-path" :title="repository.selectedFile">{{ repository.selectedFile || "尚未选择表格" }}</span>
             <small v-if="repository.fileModified">Git：该文件有未提交修改</small>
             <small v-if="summary?.dirty">工具内：有尚未保存的编辑</small>
           </div>
-          <div class="reference-header">
-            <strong>对比分支 · 只读</strong>
+          <div class="source-card readonly-source reference-header">
+            <div class="source-card-heading">
+              <span class="source-icon"><AppIcon name="branch" /></span>
+              <span>
+                <small>目标表格 · 只读</small>
+                <strong>对比分支</strong>
+              </span>
+              <span class="source-state">
+                <AppIcon name="check" :size="12" />
+                {{ comparisonActive ? "已就绪" : "待选择" }}
+              </span>
+            </div>
             <select
               :value="repository.selectedRef"
               :disabled="busy || !repository.branches.length"
+              aria-label="选择对比分支"
               @change="selectRepositoryRef(($event.target as HTMLSelectElement).value)"
             >
               <option value="" disabled>请选择一个用于对比的分支</option>
@@ -1353,23 +1535,77 @@ onBeforeUnmount(() => {
                 >{{ branch.name }}</option>
               </optgroup>
             </select>
-            <span>{{ repository.selectedFile || "尚未选择表格" }}</span>
+            <span class="source-path" :title="repository.selectedFile">{{ repository.selectedFile || "尚未选择表格" }}</span>
           </div>
         </div>
         <div v-else-if="summary" class="file-strip">
-          <div><strong>{{ summary.options.leftLabel }}</strong><span>{{ summary.diff.leftFile }}</span></div>
-          <div><strong>{{ summary.options.rightLabel }}</strong><span>{{ summary.diff.rightFile }}</span></div>
+          <div class="source-card" :class="leftReadonly ? 'readonly-source' : 'editable-source'">
+            <div class="source-card-heading">
+              <span class="source-icon"><AppIcon :name="leftReadonly ? 'files' : 'edit'" /></span>
+              <span>
+                <small>{{ summary.options.gitDiff ? "Git 差异快照 · 只读" : leftReadonly ? "原始表格 · 只读" : "原始表格 · 可编辑" }}</small>
+                <strong>{{ summary.options.leftLabel }}</strong>
+              </span>
+              <span class="source-state"><AppIcon name="check" :size="12" />{{ leftReadonly ? "只读" : "已解析" }}</span>
+            </div>
+            <span class="source-path" :title="summary.options.gitDiff ? '由 Git 提供的临时只读快照' : summary.diff.leftFile">
+              {{ sourcePathLabel(summary.diff.leftFile) }}
+            </span>
+          </div>
+          <div class="source-card readonly-source">
+            <div class="source-card-heading">
+              <span class="source-icon"><AppIcon name="files" /></span>
+              <span><small>{{ summary.options.gitDiff ? "Git 差异快照 · 只读" : "目标表格 · 只读" }}</small><strong>{{ summary.options.rightLabel }}</strong></span>
+              <span class="source-state"><AppIcon name="check" :size="12" />只读</span>
+            </div>
+            <span class="source-path" :title="summary.options.gitDiff ? '由 Git 提供的临时只读快照' : summary.diff.rightFile">
+              {{ sourcePathLabel(summary.diff.rightFile) }}
+            </span>
+          </div>
+        </div>
+
+        <div v-if="summary" class="result-summary" aria-label="对比结果摘要">
+          <div class="result-summary-title">
+            <AppIcon :name="summary.diff.equal ? 'check' : 'selection'" />
+            <span>
+              <small>对比结果</small>
+              <strong>{{ summary.diff.equal ? "两侧内容一致" : `${summary.diff.differenceCount} 处差异` }}</strong>
+            </span>
+          </div>
+          <span class="summary-metric added"><i></i>新增行 <strong>{{ resultMetrics.added }}</strong></span>
+          <span class="summary-metric deleted"><i></i>删除行 <strong>{{ resultMetrics.deleted }}</strong></span>
+          <span class="summary-metric modified"><i></i>修改行 <strong>{{ resultMetrics.modified }}</strong></span>
+          <span class="summary-metric conflict"><i></i>冲突行 <strong>{{ resultMetrics.conflict }}</strong></span>
+          <span class="summary-context">
+            当前筛选：{{ rowStatusLabel(diffFilter) }}
+            <template v-if="selectionSize > 0"> · 已选择 {{ selectionSize }} 格</template>
+          </span>
         </div>
 
         <div class="grids">
           <section class="grid-panel">
             <div class="panel-heading">
-              <strong>{{ repository ? "当前分支中的表格 · 可编辑" : "左侧 · 可编辑" }}</strong>
-              <small v-if="summary && !summary.options.readonlyLeft">双击单元格编辑</small>
+              <strong>
+                <span class="panel-indicator" :class="leftReadonly ? 'readonly' : 'editable'"></span>
+                {{ repository ? "当前分支中的表格" : summary?.options.gitDiff ? "原始快照" : "原始表格" }}
+              </strong>
+              <span class="panel-permission" :class="leftReadonly ? 'readonly' : 'editable'">
+                <AppIcon :name="leftReadonly ? 'files' : 'edit'" :size="12" />{{ leftReadonly ? "只读" : "可编辑" }}
+              </span>
+              <small v-if="summary?.options.gitDiff">由 Git 提供，不能编辑或保存</small>
+              <small v-else-if="summary && !summary.options.readonlyLeft">双击单元格编辑</small>
             </div>
             <div v-if="repository && repository.leftState !== 'ready'" class="panel-empty">
-              <div v-if="repository.leftState === 'loading' || repository.leftState === 'comparing'" class="loading-spinner small"></div>
-              <strong>{{ repositoryStateMessage("left") }}</strong>
+              <template v-if="repository.leftState === 'loading' || repository.leftState === 'comparing'">
+                <div class="loading-spinner small"></div>
+                <strong class="panel-loading-label">{{ repositoryStateMessage("left") }}</strong>
+              </template>
+              <EmptyState
+                v-else
+                icon="file"
+                :title="repositoryStateMessage('left')"
+                description="从左侧目录树选择一个 XLSX 表格开始对比。"
+              />
             </div>
             <div v-else ref="leftScroll" class="grid-scroll" @scroll="onScroll('left')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
@@ -1446,10 +1682,21 @@ onBeforeUnmount(() => {
           </section>
 
           <section class="grid-panel">
-            <div class="panel-heading"><strong>{{ repository ? "对比分支中的表格 · 只读" : "右侧 · 只读" }}</strong></div>
+            <div class="panel-heading">
+              <strong><span class="panel-indicator readonly"></span>{{ repository ? "对比分支中的表格" : "目标表格" }}</strong>
+              <span class="panel-permission readonly"><AppIcon name="branch" :size="12" />只读</span>
+            </div>
             <div v-if="repository && repository.rightState !== 'ready'" class="panel-empty">
-              <div v-if="repository.rightState === 'loading' || repository.rightState === 'comparing'" class="loading-spinner small"></div>
-              <strong>{{ repositoryStateMessage("right") }}</strong>
+              <template v-if="repository.rightState === 'loading' || repository.rightState === 'comparing'">
+                <div class="loading-spinner small"></div>
+                <strong class="panel-loading-label">{{ repositoryStateMessage("right") }}</strong>
+              </template>
+              <EmptyState
+                v-else
+                :icon="repository.rightState === 'missing' ? 'alert' : 'branch'"
+                :title="repositoryStateMessage('right')"
+                description="选择可用分支后，将通过 Git 对象只读加载同路径表格。"
+              />
             </div>
             <div v-else ref="rightScroll" class="grid-scroll" @scroll="onScroll('right')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
@@ -1547,13 +1794,35 @@ onBeforeUnmount(() => {
 
     <main v-else class="welcome">
       <div class="welcome-card">
-        <div class="logo">UG</div>
+        <div class="welcome-product">
+          <div class="logo">U</div>
+          <div>
+            <span class="welcome-kicker">UGXLSX DESKTOP</span>
+            <strong>表格对比与合并</strong>
+          </div>
+        </div>
         <h1>打开本地 Git 仓库</h1>
-        <p>选择一个本地 Git 仓库，或将仓库目录拖入此窗口。</p>
-        <button class="primary large" :disabled="busy" @click="chooseRepository">打开本地仓库</button>
-        <div class="welcome-divider"><span>也可以</span></div>
-        <button class="secondary-entry" :disabled="busy" @click="chooseFiles">选择两个表格进行对比</button>
-        <small>支持直接拖入仓库目录；拖入子目录时会自动定位仓库根目录。</small>
+        <p>从工作区选择原始表格，与任一本地或远端跟踪分支进行安全对比。</p>
+
+        <div class="workflow-steps" aria-label="工作流程">
+          <span><i>1</i>导入文件</span>
+          <span><i>2</i>检查差异</span>
+          <span><i>3</i>应用修改</span>
+          <span><i>4</i>保存结果</span>
+        </div>
+
+        <button class="primary large" :disabled="busy" @click="chooseRepository">
+          <AppIcon name="repository" />打开本地仓库
+        </button>
+        <div class="drop-hint">
+          <AppIcon name="folder" />
+          <span><strong>也可以拖入仓库目录</strong><small>支持子目录，将自动定位 Git 根目录</small></span>
+        </div>
+        <div class="welcome-divider"><span>直接文件模式</span></div>
+        <button class="secondary-entry" :disabled="busy" @click="chooseFiles">
+          <AppIcon name="files" />选择两个表格进行对比
+        </button>
+        <small>左侧为可编辑原始表格，右侧为只读目标表格；仅支持 .xlsx。</small>
       </div>
     </main>
     <div
@@ -1621,8 +1890,13 @@ onBeforeUnmount(() => {
         <div class="loading-spinner" aria-hidden="true"></div>
         <strong>{{ repository ? "正在加载仓库与表格" : "正在加载并比较工作簿" }}</strong>
         <span>正在读取数据并建立差异索引，请稍候…</span>
+        <div class="loading-track" aria-hidden="true"><i></i></div>
       </div>
     </div>
-    <footer class="statusbar"><span>{{ statusText }}</span><span v-if="busy">处理中…</span><span v-if="summary?.warnings?.length">⚠ {{ summary.warnings.at(-1) }}</span></footer>
+    <footer class="statusbar">
+      <span class="status-primary"><span class="status-dot" :class="{ busy }"></span>{{ statusText }}</span>
+      <span v-if="busy" class="status-busy"><span class="mini-spinner"></span>处理中…</span>
+      <span v-if="summary?.warnings?.length" class="status-warning"><AppIcon name="alert" :size="13" />{{ summary.warnings.at(-1) }}</span>
+    </footer>
   </div>
 </template>

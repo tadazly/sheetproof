@@ -1,4 +1,4 @@
-# 第二轮交付与第三轮当前进展交接
+# 第二、三轮交付与下一轮迭代交接
 
 更新时间：2026-07-31
 
@@ -11,14 +11,17 @@
 当前分支是 `main`，当前提交为：
 
 ```text
-058f437 优化
+6933f8a Implement repository comparison and spreadsheet editing workflows
 ```
 
-第二轮仓库模式及编辑体验改进已进入上述提交。第三轮目录树和分支偏好优化、
-相关测试、生产前端和本文档尚未形成新提交。
-`git status --short` 中的大量修改和新增文件是需要保留的有效成果，不是可以
-清理的临时内容。新会话不得执行 `git reset --hard`、`git checkout --` 或
-其他会丢失这些改动的操作。
+第二、三轮仓库模式、目录树和分支偏好、差异分类与冲突处理、后台索引及编辑
+体验改进均已进入上述提交。随后生成的
+`docs/iteration-2-handoff.md`、`docs/new-session-prompt.md` 交接更新，以及本轮
+现代化 UI 的 `frontend/src`、`frontend/dist`、README 和相关文档修改尚未提交，
+必须整体保留。`main` 相对 `origin/main` 领先 1 个提交，尚未推送。
+除非用户明确要求，不得自行 commit、push、改写提交或发布。新会话看到的工作
+树改动均应视为用户有效成果，不得执行 `git reset --hard`、
+`git checkout --` 或覆盖式清理。
 
 主要改动范围：
 
@@ -85,13 +88,31 @@ main.go
 - 切换文件/仓库时如有工具内未保存编辑，支持“保存并继续 / 不保存并继续 /
   取消”。仅切换右侧引用会保留左侧内存编辑并重新计算差异。
 - 仓库模式保存目标固定为 `<root>/<relative.xlsx>`；不执行 add、commit、
-  push 或任何 Git 恢复操作。保存后重新读取 Git 状态。
+  push 或任何 Git 恢复操作。保存后重新读取 Git 状态；若能证明 HEAD、引用、
+  文件列表和其他 XLSX 都未变化，只增量更新当前表格的差异表成员与缓存。手工
+  刷新在签名未变化时直接复用缓存，不再无条件重建。
+- 仓库模式“另存为”导出独立副本，不改变工作区保存目标，也不清除当前 dirty
+  状态；`Ctrl/Command+S` 保存当前工作区文件。
 - merge、rebase、cherry-pick 等操作进行中时可以查看，保存前显示警告。
 
 ### 直接文件模式
 
 第一轮直接选择两个 `.xlsx` 的能力完整保留，仍使用同一套 Session、差异、
-合并、撤销和安全保存逻辑。CLI `compare`、`diff`、UGit 集成约定不变。
+合并、撤销和安全保存逻辑。CLI `compare` 兼容 UGit/Git difftool 在新增或删除
+文件时传入的 `/dev/null`（Windows 兼容 `NUL`）：CLI 在系统临时目录建立同
+工作表结构的空白占位簿，窗口关闭后清理，不写入用户仓库。检测到 Git
+difftool 的成对路径计数环境变量时会强制整个会话只读，界面隐藏临时目录并
+明确显示两侧都是 Git 只读快照；普通双文件和 Git mergetool 不受影响。UGit
+5.51.0 注入的 `LOCAL_TITLE` / `REMOTE_TITLE` 会在未显式传 label 参数时
+自动成为两侧展示名，显式参数逐侧优先。UGit
+合并工具必须用 `--output "$MERGED"` 指定结果路径；当前仍是
+`$LOCAL`/`$REMOTE` 双向语义合并，不读取 `$BASE`。
+
+顶部低频操作“配置 UGit”可把当前 macOS `.app` 内部可执行文件或 Windows
+`.exe` 注册为全局 `*.xlsx` 差异/合并工具。它先检测现有 XLSX 项，经原生对话框
+确认后只替换该后缀，并保持 `trustExitCode=false`；写后精确校验，失败时恢复
+快照。应用移动后再次点击会覆盖旧路径；临时/App Translocation 路径不允许
+注册。UGit 运行中完成配置后需要重启 UGit。
 
 ### CLI 仓库入口
 
@@ -109,12 +130,23 @@ ugxlsx repo \
 
 ## 当前表格 UI 行为
 
+- 界面已使用统一的语义设计 Token 和同一套线性 SVG 图标；顶部按来源、差异导航、
+  编辑与合并、保存结果分组，文件来源卡明确区分可写原始表格与只读目标表格。
+- 网格上方新增紧凑结果摘要，显示总差异、增加、删除、修改、冲突、当前筛选和
+  选择数量；相等时明确显示“两侧内容一致”。
+- 按钮、输入框、页签、空状态、错误条、加载层、ID 弹窗和状态栏共享统一状态语言，
+  支持可见键盘焦点、disabled/busy 反馈、减少动态效果和最小窗口附近的响应式收缩。
 - 左右表格同步滚动、窗口化区域加载、同步列宽、缩放、差异导航、范围/整行
   选择和批量复制继续有效。
+- 打开表格时若摘要选中的工作表无差异，会自动切到首个有差异的工作表；初始
+  视口按“冲突、修改、删除、增加”优先级定位到首个差异。编辑、复制、撤销和
+  保存触发的摘要刷新保留用户当前视口，工作表请求也有独立代次避免旧结果回写。
 - 工具栏缩放按钮显示明确的“缩放 N%”；`Ctrl/Command + 滚轮` 调整比例，点击
   按钮恢复 100%。
 - 左侧双击单元格原位编辑；Enter 或失焦提交，Esc 取消。右侧始终只读。
-- 空字符串清空、`=` 开头作为公式、普通数字作为数字、其他内容作为文本。
+- 空字符串清空、`=` 开头作为公式、普通数字作为数字、其他内容作为文本。无值
+  但仅带样式或默认类型元数据的空白单元格统一归一为不存在，复制单格或整行后
+  不再产生左右都空的红/绿色；显式空字符串仍保留为真实单元格。
 - 当输入值与右侧原始值完全相同，会优先沿用右侧数字/文本类型。这解决了右侧
   是文本 `"123"`、左侧输入被误判为数字后肉眼相同但仍持续标黄的问题。
 - 底部旧编辑表单已移除，替换为两行差异栏，显示当前工作区值/类型、对比来源
@@ -141,12 +173,15 @@ ugxlsx repo \
 | `internal/repository/repository.go` | Git 根发现、XLSX 扫描、分支读取、变化候选、对象导出、状态检测 |
 | `internal/app/session.go` | 左侧会话、替换/卸载右侧、差异、编辑、撤销和保存 |
 | `internal/cli/cli.go` | `repo`、`compare`、`diff` 等参数和退出码 |
+| `internal/ugit/config.go` | UGit `*.xlsx` 工具检测、跨平台 Git 定位、路径更新和配置回滚 |
 | `internal/preferences/save_location.go` | 最近保存目录、最近仓库、侧栏宽度、对比引用和语义差异索引 |
 | `frontend/src/App.vue` | 两种入口、仓库状态、三类目录树页签、网格、内联编辑和差异栏 |
-| `frontend/src/style.css` | 三栏布局、目录树、内联编辑、选择/差异视觉层级 |
+| `frontend/src/style.css` | 设计 Token、响应式三栏布局、控件状态、目录树和选择/差异视觉层级 |
+| `frontend/src/components/` | 统一 SVG 图标和可复用空状态展示组件 |
 | `frontend/src/backend.ts` | Wails Controller 的前端适配 |
 | `frontend/src/types.ts` | Summary、Region 和 Repository 前端类型 |
 | `frontend/src/App.test.ts` | 仓库状态、竞态、页签/搜索、编辑和选择交互测试 |
+| `build/appicon.svg` | 跨平台应用图标设计源；派生 1024 PNG、macOS ICNS 和 Windows 多尺寸 ICO |
 
 ## 不得破坏的实现约束
 
@@ -177,26 +212,40 @@ Go 测试目前覆盖：
 - 未保存状态下切换的保存、丢弃和取消路径。
 - 目录拖放首项处理和文件拒绝。
 - 原有读取、差异、批量复制、撤销、外部修改检测和安全保存。
+- 样式-only 空白单元格归一、整行复制后不产生空白差异，以及仓库导出副本不
+  改变工作区保存目标和 dirty 状态。
+- 未变化手工刷新复用语义索引；保存当前表格时在其他索引输入稳定的前提下只
+  更新该表的成员和新签名缓存。
+- UGit/Git 外部差异工具 null device 适配、临时占位簿生命周期和双 null 拒绝。
+- Git difftool 成对环境标记识别、自动只读和单个环境变量防误判。
+- UGit `LOCAL_TITLE` / `REMOTE_TITLE` 自动标签及显式 label 覆盖。
+- UGit 自动注册只影响 `*.xlsx`、移动后更新路径、清理同后缀冲突项并保留其他
+  后缀配置。
 - 增加/删除/修改/冲突行分类、ID 元数据、整行覆盖、自动/指定 ID 多行追加及撤销。
 
-前端共有 17 个测试，覆盖：
+前端共有 24 个测试，覆盖：
 
 - 仓库优先空状态和直接双文件次入口。
 - 目录树、搜索、明确空状态和缺失引用状态，以及索引轮询期间保持目录收起状态。
 - 仓库侧栏三页签、后台索引状态、未验证候选隐藏、差异文件筛选，以及左右两侧
   分别作为滚动源时的同步与原生 sticky 行号/列标题图层。
 - 快速文件切换时忽略过期结果。
-- 加载提示、另存快捷键、差异导航和底部区域滚动。
+- 加载提示、`Ctrl/Command+S` 保存、另存快捷键、仓库导出副本、差异导航和
+  底部区域滚动。
+- 打开时跳过无差异工作表，按分类优先级定位首个差异，并拒绝旧工作表区域回写。
 - 拖选、右键批量复制和撤销。
 - 双击原位编辑、Enter 提交、Esc 取消。
 - 数字形文本跟随右侧文本类型。
 - 编辑到相等后差异 class 消失；选中差异保留 difference/selected/active 状态。
 - 冲突整行视觉、工作表冲突计数、四项右键操作、多行自动 ID 范围和逐行指定 ID。
 - Git 左红右绿修改配色、四类索引默认优先级/筛选、冲突处理标记和追加目标色。
+- 统一 SVG 图标尺寸/可访问属性和可复用空状态文案/操作插槽。
+- Git difftool 两侧只读标识、临时目录隐藏及编辑/合并/保存操作禁用。
+- “配置 UGit”低频按钮、后端调用和成功状态反馈。
 
 ## 最近验证快照
 
-2026-07-31 在第三轮当前源码状态执行：
+2026-07-31 在第三轮交付提交 `6933f8a` 的源码状态执行：
 
 ```text
 GOCACHE=/tmp/ugxlsx-go-cache go test ./...        PASS
@@ -210,6 +259,142 @@ git diff --check                                  PASS
 Wails v2.10.2 build（darwin/arm64）               PASS
 ```
 
+同日现代化 UI 工作树执行：
+
+```text
+GOCACHE=/tmp/ugxlsx-go-cache go test ./...        PASS
+cd frontend && npm run lint                       PASS
+cd frontend && npm run typecheck                  PASS
+cd frontend && npm run test                       PASS（19 tests）
+cd frontend && npm run build                      PASS
+git diff --check                                  PASS
+Wails v2.10.2 build（darwin/arm64）               PASS
+```
+
+同日修复 UGit/Git 新增/删除文件的 null device 启动兼容及 difftool 自动只读后执行：
+
+```text
+GOCACHE=/tmp/ugxlsx-go-cache go test ./...        PASS
+GOCACHE=/tmp/ugxlsx-go-cache go vet ./...         PASS
+cd frontend && npm run lint                       PASS
+cd frontend && npm run typecheck                  PASS
+cd frontend && npm run test                       PASS（20 tests）
+cd frontend && npm run build                      PASS
+git diff --check                                  PASS
+Wails v2.10.2 build（darwin/arm64）               PASS
+Wails v2.10.2 cross-build（windows/amd64）        PASS
+```
+
+同日增加 UGit `LOCAL_TITLE` / `REMOTE_TITLE` 自动分支标签后再次执行：
+
+```text
+GOCACHE=/tmp/ugxlsx-go-cache go test ./...        PASS
+GOCACHE=/tmp/ugxlsx-go-cache go vet ./...         PASS
+cd frontend && npm run lint                       PASS
+cd frontend && npm run typecheck                  PASS
+cd frontend && npm run test                       PASS（20 tests）
+cd frontend && npm run build                      PASS
+git diff --check                                  PASS
+Wails v2.10.2 build（darwin/arm64）               PASS
+macOS ad-hoc deep sign + strict verify            PASS
+Wails v2.10.2 cross-build（windows/amd64）        PASS
+```
+
+同日增加应用内“配置 UGit”及移动路径自动修复后执行：
+
+```text
+GOCACHE=/tmp/ugxlsx-go-cache go test ./...        PASS
+GOCACHE=/tmp/ugxlsx-go-cache go vet ./...         PASS
+GOCACHE=/tmp/ugxlsx-go-cache go test -race ./...  PASS
+cd frontend && npm run lint                       PASS
+cd frontend && npm run typecheck                  PASS
+cd frontend && npm run test                       PASS（21 tests）
+cd frontend && npm run build                      PASS
+git diff --check                                  PASS
+Wails v2.10.2 build（darwin/arm64）               PASS
+macOS ad-hoc deep sign + strict verify            PASS
+Wails v2.10.2 cross-build（windows/amd64）        PASS
+```
+
+同日替换 Wails 默认应用图标并重新交付两平台最小产物后执行：
+
+```text
+GOCACHE=/tmp/ugxlsx-go-cache go test ./...        PASS
+GOCACHE=/tmp/ugxlsx-go-cache go vet ./...         PASS
+GOCACHE=/tmp/ugxlsx-go-cache go test -race ./...  PASS
+cd frontend && npm run lint                       PASS
+cd frontend && npm run typecheck                  PASS
+cd frontend && npm run test                       PASS（21 tests）
+cd frontend && npm run build                      PASS
+git diff --check                                  PASS
+Wails v2.10.2 build（darwin/arm64）               PASS
+macOS ad-hoc deep sign + strict verify            PASS
+Wails v2.10.2 cross-build（windows/amd64）        PASS
+```
+
+macOS 实际启动新 `.app` 后确认业务窗口正常显示，并在 Finder 刷新后确认应用包
+显示新的表格对比/合并图标而非默认 “W”；内嵌 ICNS 为 1024 px。Windows ICO
+包含 16、32、48、64、128 和 256 px 六档，`.exe` 包含资源段并确认为 PE32+
+GUI x86-64。Windows 11 仍未实机启动或检查任务栏图标。
+
+同日修复空白单元格、保存/另存与索引重复建立问题后执行：
+
+```text
+GOCACHE=/tmp/ugxlsx-go-cache go test ./...        PASS
+GOCACHE=/tmp/ugxlsx-go-cache go vet ./...         PASS
+GOCACHE=/tmp/ugxlsx-go-cache go test -race ./...  PASS
+cd frontend && npm run lint                       PASS
+cd frontend && npm run typecheck                  PASS
+cd frontend && npm run test                       PASS（23 tests）
+cd frontend && npm run build                      PASS
+git diff --check                                  PASS
+Wails v2.10.2 build（darwin/arm64）               PASS
+macOS ad-hoc deep sign + strict verify            PASS
+Wails v2.10.2 cross-build（windows/amd64）        PASS
+```
+
+macOS 真实 GUI 使用系统临时目录中的左右工作簿验证：双击编辑 A1 后
+`Command+S` 将状态从“有未保存修改”变为“已保存”，磁盘工作簿包含新值；
+`Command+Shift+S` 正常打开原生另存为对话框，保存的副本可打开且包含同一新值。
+样式-only 空白单元格复制、仓库模式导出副本保持 dirty、未变化刷新命中缓存及
+保存后的当前文件增量索引已由 Go/前端自动化覆盖，但本轮没有在真实仓库 GUI
+逐项操作；Windows 11 的 `Ctrl+S`、原生保存对话框和索引表现也仍待实机确认。
+
+macOS 真实 GUI 使用独立的临时 `GIT_CONFIG_GLOBAL` 验证“配置 UGit”：确认框
+显示预置旧路径和当前 `.app` 内部可执行文件路径；确认后只替换 XLSX 差异/合并
+项，合并参数包含 `$MERGED`，`trustExitCode=false`，预置 CSV 工具保持不变。
+再次点击识别为已正确配置且不重复写入。验收后关闭应用并删除临时配置，用户
+真实 `~/.gitconfig` 未被修改。Windows 仍仅完成 macOS 上的交叉构建和 PE
+x86-64 格式检查，尚未在 Win11 实机点击该按钮。
+
+使用 UGit 日志中的真实命令和实际仓库重跑
+`git difftool --tool=*.xlsx_Custom ... autoOpenPanel.xlsx`：Git 将缺失侧传为
+`/dev/null`，修复前进程以 `unsupported_format` 在约 80ms 内退出；修复后
+macOS 窗口正常加载并显示 687 处差异，两侧均标为 Git 只读快照，左侧网格权限
+显示“只读”，复制合并、撤销、另存和保存按钮均禁用，界面未显示宿主临时目录；
+关闭窗口后 difftool 正常结束。该验证没有保存或修改测试仓库。Windows 产物仅
+完成 macOS 上的交叉构建和 PE x86-64 格式检查，尚未在 Windows 11 实机启动。
+
+同日增加打开表格自动定位首个差异后执行：
+
+```text
+GOCACHE=/tmp/ugxlsx-go-cache go test ./...        PASS
+cd frontend && npm run lint                       PASS
+cd frontend && npm run typecheck                  PASS
+cd frontend && npm run test                       PASS（24 tests）
+cd frontend && npm run build                      PASS
+git diff --check                                  PASS
+Wails v2.10.2 build（darwin/arm64）               PASS
+macOS ad-hoc deep sign + strict verify            PASS
+Wails v2.10.2 cross-build（windows/amd64）        PASS
+```
+
+前端回归覆盖“摘要默认工作表无差异、后续工作表同时含修改和冲突”的场景，
+确认自动切换到有差异的工作表并按默认优先级定位到冲突坐标 D120。macOS 真实
+GUI 另用 `cmd/gentestdata` 生成的临时左右文件启动桌面产物，确认加载完成后差异
+导航显示 `1 / 5`，状态栏和选中单元格定位到 A1。该次仅验收启动定位，没有重跑
+编辑、保存、仓库索引和冲突处理全流程；Windows 仍只有交叉构建，未完成实机验收。
+
 另用生产 CSS 和与应用一致的双网格 DOM 在真实浏览器滚动模型中验证：左右两侧
 分别横向滚动 600px 后，各自行号层的屏幕横坐标保持不变；两侧分别纵向滚动
 500px 后，列标题屏幕纵坐标保持不变。
@@ -219,13 +404,30 @@ Wails v2.10.2 build（darwin/arm64）               PASS
 ```text
 build/bin/ugxlsx.app
 build/bin/ugxlsx.app/Contents/MacOS/ugxlsx
+build/bin/ugxlsx.exe
 ```
 
-本次没有用真实 GUI 逐项重跑 `docs/manual-acceptance.md` 的全部仓库模式流程。
-发布前仍应补做，并与上述自动化、桌面构建结果分开记录。
+应用图标已从 Wails 默认 “W” 替换为独立的表格对比/合并图形：深蓝底、左右
+表格、红绿差异和中心双向箭头。`build/appicon.svg` 是设计源，
+`build/appicon.png` 和 `build/windows/icon.ico` 是构建输入；图标已检查
+256/64/32 px 缩放。仍需在 Windows 11 实机确认资源管理器和任务栏的图标缓存
+刷新与显示效果，不能用 macOS 上的交叉构建代替该项手工验收。
+
+现代化改造后实际启动了 Wails 桌面产物，检查了仓库未选表格状态和已加载、无差异
+双网格状态，并保存了前后截图。仍没有用真实 GUI 逐项重跑
+`docs/manual-acceptance.md` 的全部仓库模式流程；
+尤其“索引执行中关闭窗口”、冲突追加/覆盖后的双侧颜色及处理标记仍只有自动化
+覆盖和桌面构建，没有真实应用手工确认。发布前必须补做，并与上述自动化、桌面
+构建结果分开记录。
 
 ## 后续风险与建议
 
+- 下一轮开始时先确认 `git status --short` 包含本轮现代化 UI、生产前端和文档
+  修改；若出现其他改动也必须先查明并保留。确认是否需要由用户另行提交这些
+  成果或推送当前领先 `origin/main` 的提交；没有明确要求时不要 commit 或 push。
+- 优先补做 `docs/manual-acceptance.md` 的 macOS 真实 GUI 仓库模式主流程，
+  特别关注索引期间关闭是否即时、目录收起状态、左右滚动 sticky 图层、四类
+  配色及冲突处理后的标记与撤销。
 - `frontend/src/App.vue` 已包含较多状态机和 UI 逻辑；继续扩展前可评估拆分
   composable/组件，但拆分本身不能改变请求防乱序和选择语义。
 - 前端差异索引当前一次最多读取 10,000 条。

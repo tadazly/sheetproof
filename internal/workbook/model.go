@@ -32,6 +32,9 @@ type CellValue struct {
 }
 
 func (v CellValue) Equal(other CellValue) bool {
+	if !v.Present && !other.Present {
+		return true
+	}
 	return v.Present == other.Present &&
 		v.Raw == other.Raw &&
 		v.Formula == other.Formula &&

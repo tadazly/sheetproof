@@ -106,6 +106,15 @@ func TestControllerRepositoryWorkflowPreservesBranchAndSavesOnlyWorktreeFile(t *
 		result.Repository.DifferenceFiles[0] != relative {
 		t.Fatalf("exact repository difference index = %+v", result.Repository.DifferenceFiles)
 	}
+	refreshed, err := controller.RefreshRepository()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Repository.DifferenceIndexing ||
+		len(refreshed.Repository.DifferenceFiles) != 1 ||
+		refreshed.Repository.DifferenceFiles[0] != relative {
+		t.Fatalf("unchanged refresh rebuilt the cached difference index: %+v", refreshed.Repository)
+	}
 	reopenedRepo, info, err := repository.Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -188,6 +197,31 @@ func TestControllerRepositoryWorkflowPreservesBranchAndSavesOnlyWorktreeFile(t *
 	}
 	if _, err := controller.Save(); err != nil {
 		t.Fatal(err)
+	}
+	afterSave, err := controller.Repository()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterSave.Repository.DifferenceIndexing ||
+		len(afterSave.Repository.DifferenceFiles) != 1 ||
+		afterSave.Repository.DifferenceFiles[0] != relative {
+		t.Fatalf("save rebuilt the full difference index: %+v", afterSave.Repository)
+	}
+	reopenedRepo, info, err = repository.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	develop, err = reopenedRepo.ResolveReference("refs/heads/develop", info.Branches)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err = reopenedRepo.DifferenceIndexSignature(develop, info.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached, exists = controller.prefs.RepositoryIndex(reopenedRepo.Root(), develop.FullName, signature)
+	if !exists || len(cached) != 1 || cached[0] != relative {
+		t.Fatalf("incremental saved index = %#v, exists=%t", cached, exists)
 	}
 	if afterBranch := strings.TrimSpace(controllerGit(t, root, "branch", "--show-current")); afterBranch != beforeBranch {
 		t.Fatalf("repository workflow switched branch from %q to %q", beforeBranch, afterBranch)

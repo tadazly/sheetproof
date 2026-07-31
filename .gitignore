@@ -1,4 +1,11 @@
 /build/
+!/build/
+/build/*
+!/build/appicon.svg
+!/build/appicon.png
+!/build/windows/
+/build/windows/*
+!/build/windows/icon.ico
 /frontend/node_modules/
 /frontend/wailsjs/
 /frontend/package.json.md5

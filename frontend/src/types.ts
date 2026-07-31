@@ -59,6 +59,7 @@ export interface Summary {
     leftLabel: string;
     rightLabel: string;
     readonlyLeft: boolean;
+    gitDiff: boolean;
     output: string;
     repositoryPath?: string;
     repositoryFile?: string;
@@ -142,4 +143,12 @@ export interface BootstrapState {
   error: string;
   mode?: "" | "files" | "repository";
   repository?: RepositoryView;
+}
+
+export interface UGitConfigurationResult {
+  configured: boolean;
+  changed: boolean;
+  cancelled: boolean;
+  executablePath: string;
+  message: string;
 }
