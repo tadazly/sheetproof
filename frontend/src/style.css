@@ -1034,7 +1034,7 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 }
 .context-menu button { min-height: 31px; justify-content: flex-start; padding: 0 10px; border: 0; border-radius: var(--radius-sm); box-shadow: none; text-align: left; }
 .context-menu span { padding: 5px 10px 7px; color: var(--color-text-muted); font-size: 10px; }
-.id-dialog-overlay, .loading-overlay {
+.id-dialog-overlay, .repository-switch-overlay, .loading-overlay {
   position: fixed;
   z-index: 200;
   inset: 0;
@@ -1043,6 +1043,65 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   padding: 20px;
   background: rgb(28 36 46 / 36%);
   backdrop-filter: blur(3px);
+}
+.repository-switch-dialog {
+  width: min(620px, calc(100vw - 40px));
+  max-height: min(720px, calc(100vh - 40px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-dialog);
+}
+.repository-switch-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+.repository-switch-header > div { min-width: 0; display: grid; gap: 5px; }
+.repository-switch-header strong { color: #29394a; font-size: 16px; }
+.repository-switch-header span { color: var(--color-text-secondary); font-size: 12px; }
+.repository-switch-header .icon-button { margin-left: auto; flex: 0 0 auto; }
+.recent-repository-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: auto;
+  padding: 12px 2px;
+}
+.recent-repository-item {
+  min-height: 55px;
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  padding: 8px 11px;
+  text-align: left;
+}
+.recent-repository-item > span { min-width: 0; display: grid; flex: 1 1 auto; gap: 3px; }
+.recent-repository-item strong,
+.recent-repository-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-repository-item strong { font-size: 13px; }
+.recent-repository-item small { color: var(--color-text-muted); font-size: 11px; }
+.recent-repository-item em {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  font-size: 10px;
+  font-style: normal;
+}
+.recent-repository-item em.unavailable { color: var(--color-danger); background: var(--color-danger-soft); }
+.repository-switch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
 }
 .id-dialog {
   width: min(420px, calc(100vw - 40px));

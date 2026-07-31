@@ -6,16 +6,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
-const preferencesFilename = "preferences.json"
+const (
+	preferencesFilename      = "preferences.json"
+	maxRecentRepositoryCount = 10
+)
 
 type savePreferences struct {
-	LastSaveDirectory string                                      `json:"lastSaveDirectory"`
-	LastRepository    string                                      `json:"lastRepository,omitempty"`
-	RepositoryWidth   int                                         `json:"repositoryWidth,omitempty"`
-	RepositoryRefs    map[string]string                           `json:"repositoryRefs,omitempty"`
-	RepositoryIndexes map[string]map[string]repositoryIndexRecord `json:"repositoryIndexes,omitempty"`
+	LastSaveDirectory  string                                      `json:"lastSaveDirectory"`
+	LastRepository     string                                      `json:"lastRepository,omitempty"`
+	RecentRepositories []string                                    `json:"recentRepositories,omitempty"`
+	RepositoryWidth    int                                         `json:"repositoryWidth,omitempty"`
+	RepositoryRefs     map[string]string                           `json:"repositoryRefs,omitempty"`
+	RepositoryIndexes  map[string]map[string]repositoryIndexRecord `json:"repositoryIndexes,omitempty"`
 }
 
 type repositoryIndexRecord struct {
@@ -81,11 +87,42 @@ func (s Store) RecordSaveTarget(target string) error {
 // caller intentionally receives missing paths too, so startup can report that
 // the recent repository is no longer available.
 func (s Store) LastRepository() string {
-	value := s.load().LastRepository
-	if value == "" {
-		return ""
+	recent := s.RecentRepositories()
+	if len(recent) > 0 {
+		return recent[0]
 	}
-	return filepath.Clean(value)
+	return ""
+}
+
+// RecentRepositories returns up to ten repositories in most-recently-opened
+// order. The legacy lastRepository value is retained as a migration fallback.
+func (s Store) RecentRepositories() []string {
+	value := s.load()
+	paths := value.RecentRepositories
+	if len(paths) == 0 && value.LastRepository != "" {
+		paths = []string{value.LastRepository}
+	}
+	result := make([]string, 0, min(len(paths), maxRecentRepositoryCount))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		cleaned := filepath.Clean(path)
+		duplicate := false
+		for _, existing := range result {
+			if repositoryPathsEqual(existing, cleaned) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			result = append(result, cleaned)
+		}
+		if len(result) == maxRecentRepositoryCount {
+			break
+		}
+	}
+	return result
 }
 
 func (s Store) RecordRepository(root string) error {
@@ -101,10 +138,30 @@ func (s Store) RecordRepository(root string) error {
 	}
 	value := s.load()
 	cleaned := filepath.Clean(absolute)
-	if value.LastRepository == cleaned {
+	recent := make([]string, 0, maxRecentRepositoryCount)
+	recent = append(recent, cleaned)
+	for _, path := range value.RecentRepositories {
+		path = filepath.Clean(path)
+		if path == "." || repositoryPathsEqual(path, cleaned) {
+			continue
+		}
+		recent = append(recent, path)
+		if len(recent) == maxRecentRepositoryCount {
+			break
+		}
+	}
+	if len(value.RecentRepositories) == 0 && value.LastRepository != "" &&
+		!repositoryPathsEqual(value.LastRepository, cleaned) {
+		recent = append(recent, filepath.Clean(value.LastRepository))
+	}
+	if len(recent) > maxRecentRepositoryCount {
+		recent = recent[:maxRecentRepositoryCount]
+	}
+	if value.LastRepository == cleaned && slicesEqualPaths(value.RecentRepositories, recent) {
 		return nil
 	}
 	value.LastRepository = cleaned
+	value.RecentRepositories = recent
 	return s.write(value)
 }
 
@@ -263,4 +320,25 @@ func directoryExists(path string) bool {
 	}
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+func repositoryPathsEqual(left, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
+}
+
+func slicesEqualPaths(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if !repositoryPathsEqual(left[index], right[index]) {
+			return false
+		}
+	}
+	return true
 }

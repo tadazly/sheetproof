@@ -185,6 +185,66 @@ describe("App", () => {
     expect(wrapper.text()).toContain("没有匹配的文件或目录");
   });
 
+  it("opens the recent repository dialog from switch repository without changing the open action", async () => {
+    const otherRepository = {
+      ...structuredClone(repositoryView),
+      name: "第二个仓库",
+      path: "/tmp/第二个仓库"
+    };
+    const recentRepositories = vi.fn(async () => [
+      { name: repositoryView.name, path: repositoryView.path, available: true },
+      { name: otherRepository.name, path: otherRepository.path, available: true },
+      { name: "已移动仓库", path: "/tmp/已移动仓库", available: false }
+    ]);
+    const openRepository = vi.fn(async (): Promise<RepositoryResult> => ({
+      repository: otherRepository,
+      summary: null
+    }));
+    const selectRepository = vi.fn(async (): Promise<RepositoryResult> => ({
+      repository: structuredClone(repositoryView),
+      summary: null
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({
+            loading: false,
+            hasSession: false,
+            error: "",
+            mode: "repository",
+            repository: structuredClone(repositoryView)
+          }),
+          RecentRepositories: recentRepositories,
+          OpenRepository: openRepository,
+          SelectRepository: selectRepository
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const switchButton = wrapper.findAll("button").find((button) => button.text() === "切换仓库");
+    await switchButton!.trigger("click");
+    await flushPromises();
+
+    expect(recentRepositories).toHaveBeenCalledOnce();
+    expect(selectRepository).not.toHaveBeenCalled();
+    expect(wrapper.get(".repository-switch-dialog").text()).toContain("最近打开的仓库");
+    expect(wrapper.get(`button.recent-repository-item[title="${repositoryView.path}"]`).attributes("disabled")).toBeDefined();
+    expect(wrapper.get('button.recent-repository-item[title="/tmp/已移动仓库"]').attributes("disabled")).toBeDefined();
+
+    await wrapper.get(`button.recent-repository-item[title="${otherRepository.path}"]`).trigger("click");
+    await flushPromises();
+    expect(openRepository).toHaveBeenCalledWith(otherRepository.path);
+    expect(wrapper.find(".repository-switch-dialog").exists()).toBe(false);
+    expect(wrapper.text()).toContain(otherRepository.name);
+
+    const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开本地仓库"));
+    await openButton!.trigger("click");
+    await flushPromises();
+    expect(selectRepository).toHaveBeenCalledOnce();
+  });
+
   it("keeps unverified workbooks hidden while the semantic difference index is building", async () => {
     vi.useFakeTimers();
     const indexing = {

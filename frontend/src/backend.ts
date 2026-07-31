@@ -2,6 +2,7 @@ import type {
   BootstrapState,
   CellDiff,
   Region,
+  RecentRepository,
   RepositoryResult,
   Summary,
   UGitConfigurationResult
@@ -22,6 +23,7 @@ export const backend = {
   openFiles: (left: string, right: string): Promise<Summary> =>
     controller().OpenFiles(left, right),
   selectRepository: (): Promise<RepositoryResult> => controller().SelectRepository(),
+  recentRepositories: (): Promise<RecentRepository[]> => controller().RecentRepositories(),
   openRepository: (path: string): Promise<RepositoryResult> => controller().OpenRepository(path),
   repository: (): Promise<RepositoryResult> => controller().Repository(),
   selectRepositoryFile: (path: string): Promise<RepositoryResult> =>

@@ -10,6 +10,8 @@
 - 独立应用图标使用左右表格、红绿差异和双向合并语义，macOS 与 Windows
   共享同一 SVG 设计源，不再使用 Wails 默认 “W” 占位图标
 - 从仓库子目录自动定位根目录，支持目录拖放、最近仓库自动恢复和可调目录树宽度
+- “切换仓库”提供最近打开的 10 个仓库列表；当前仓库明确标记，失效路径禁用，
+  也可从弹窗继续选择其他仓库；原“打开本地仓库”目录选择入口保持不变
 - 仓库侧栏提供“仓库文件 / 差异表 / 工作表与差异”三页签；目录树仅展示 `.xlsx`，
   后台索引刷新不会改变用户已展开或收起的目录
 - 差异表使用可持久化的语义索引：Git 先筛出双方共有的变化候选，后台再按 Go 核心相等语义精确过滤
@@ -321,7 +323,7 @@ internal/diff       O(n) 差异算法
 internal/merge      单元格捕获和跨工作簿应用
 internal/history    撤销栈
 internal/storage    安全写入
-internal/preferences 另存目录、最近仓库、侧栏宽度、对比分支偏好和语义差异索引
+internal/preferences 另存目录、最近 10 个仓库、侧栏宽度、对比分支偏好和语义差异索引
 internal/repository Git 工作区发现、XLSX 扫描、分支与对象读取
 internal/ugit       UGit *.xlsx 外部工具检测、事务式注册和路径更新
 internal/app        共享会话和视口 API

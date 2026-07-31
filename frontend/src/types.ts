@@ -137,6 +137,12 @@ export interface RepositoryResult {
   summary: Summary | null;
 }
 
+export interface RecentRepository {
+  name: string;
+  path: string;
+  available: boolean;
+}
+
 export interface BootstrapState {
   loading: boolean;
   hasSession: boolean;

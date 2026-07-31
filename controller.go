@@ -54,6 +54,12 @@ type RepositoryResult struct {
 	Summary    *coreapp.Summary `json:"summary"`
 }
 
+type RecentRepository struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Available bool   `json:"available"`
+}
+
 type Controller struct {
 	mu                        sync.Mutex
 	loadMu                    sync.Mutex
@@ -368,6 +374,22 @@ func (c *Controller) SelectRepository() (RepositoryResult, error) {
 		return RepositoryResult{}, errors.New("已取消选择仓库")
 	}
 	return c.OpenRepository(path)
+}
+
+func (c *Controller) RecentRepositories() []RecentRepository {
+	c.prefsMu.Lock()
+	paths := c.prefs.RecentRepositories()
+	c.prefsMu.Unlock()
+	result := make([]RecentRepository, 0, len(paths))
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		result = append(result, RecentRepository{
+			Name:      filepath.Base(path),
+			Path:      path,
+			Available: err == nil && info.IsDir(),
+		})
+	}
+	return result
 }
 
 func (c *Controller) OpenRepository(path string) (RepositoryResult, error) {

@@ -8,6 +8,7 @@ import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
 import type {
   CellDiff,
+  RecentRepository,
   Region,
   RegionCell,
   RepositoryResult,
@@ -60,6 +61,10 @@ const idDialog = ref<{
   rows: number[];
   values: string[];
 }>({ visible: false, rows: [], values: [] });
+const repositorySwitchDialog = ref<{
+  visible: boolean;
+  repositories: RecentRepository[];
+}>({ visible: false, repositories: [] });
 const startupLoading = ref(true);
 const expandedDirectories = ref(new Set<string>());
 const repositorySearch = ref("");
@@ -364,6 +369,26 @@ async function chooseRepository() {
   const result = await guard(() => backend.selectRepository());
   if (result) await acceptRepositoryResult(result);
   else scheduleDifferenceIndexPoll();
+}
+
+async function showRepositorySwitcher() {
+  const repositories = await guard(() => backend.recentRepositories());
+  if (!repositories) return;
+  repositorySwitchDialog.value = { visible: true, repositories };
+}
+
+async function switchToRecentRepository(path: string) {
+  if (path === repository.value?.path) return;
+  repositorySwitchDialog.value.visible = false;
+  window.clearTimeout(differenceIndexTimer);
+  const result = await guard(() => backend.openRepository(path));
+  if (result) await acceptRepositoryResult(result);
+  else scheduleDifferenceIndexPoll();
+}
+
+async function chooseOtherRepository() {
+  repositorySwitchDialog.value.visible = false;
+  await chooseRepository();
 }
 
 async function chooseFiles() {
@@ -810,6 +835,10 @@ async function undo() {
 }
 
 function onWindowKeyDown(event: KeyboardEvent) {
+  if (event.key === "Escape" && repositorySwitchDialog.value.visible) {
+    repositorySwitchDialog.value.visible = false;
+    return;
+  }
   if (!event.ctrlKey && !event.metaKey) return;
   const key = event.key.toLowerCase();
   if (key === "s") {
@@ -1270,7 +1299,7 @@ onBeforeUnmount(() => {
       <span v-if="repository.workspaceDirty" class="working-status"><span class="status-dot"></span>工作区有未提交修改</span>
       <span v-if="repository.operation" class="operation-status"><span class="status-dot"></span>正在进行 {{ repository.operation }}</span>
       <span class="grow"></span>
-      <button class="ghost compact-button" :disabled="busy" @click="chooseRepository">切换仓库</button>
+      <button class="ghost compact-button" :disabled="busy" @click="showRepositorySwitcher">切换仓库</button>
     </div>
     <div v-if="repository?.notice" class="notice-banner"><AppIcon name="info" />{{ repository.notice }}</div>
 
@@ -1884,6 +1913,54 @@ onBeforeUnmount(() => {
           >新增到左侧</button>
         </div>
       </form>
+    </div>
+    <div
+      v-if="repositorySwitchDialog.visible"
+      class="repository-switch-overlay"
+      @pointerdown.self="repositorySwitchDialog.visible = false"
+    >
+      <section class="repository-switch-dialog" role="dialog" aria-modal="true" aria-labelledby="repository-switch-title">
+        <div class="repository-switch-header">
+          <div>
+            <strong id="repository-switch-title">切换仓库</strong>
+            <span>最近打开的仓库，最多显示 10 个。</span>
+          </div>
+          <button
+            class="icon-button"
+            title="关闭"
+            aria-label="关闭切换仓库弹窗"
+            @click="repositorySwitchDialog.visible = false"
+          ><AppIcon name="x" /></button>
+        </div>
+        <div v-if="repositorySwitchDialog.repositories.length" class="recent-repository-list">
+          <button
+            v-for="item in repositorySwitchDialog.repositories"
+            :key="item.path"
+            class="recent-repository-item"
+            :disabled="busy || !item.available || item.path === repository?.path"
+            :title="item.path"
+            @click="switchToRecentRepository(item.path)"
+          >
+            <AppIcon name="repository" />
+            <span><strong>{{ item.name }}</strong><small>{{ item.path }}</small></span>
+            <em v-if="item.path === repository?.path">当前仓库</em>
+            <em v-else-if="!item.available" class="unavailable">路径不可用</em>
+          </button>
+        </div>
+        <EmptyState
+          v-else
+          icon="repository"
+          title="暂无最近仓库"
+          description="可选择其他本地 Git 仓库。"
+          compact
+        />
+        <div class="repository-switch-actions">
+          <button @click="repositorySwitchDialog.visible = false">取消</button>
+          <button class="primary" :disabled="busy" @click="chooseOtherRepository">
+            <AppIcon name="folder" />选择其他仓库
+          </button>
+        </div>
+      </section>
     </div>
     <div v-if="startupLoading" class="loading-overlay" role="status" aria-live="polite">
       <div class="loading-dialog">

@@ -1,6 +1,7 @@
 package preferences
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -115,5 +116,64 @@ func TestStoreRemembersRepositoryAndSidebarWidthWithoutLosingSaveDirectory(t *te
 	}
 	if got := reopened.RepositoryRef(otherRepository); got != "" {
 		t.Fatalf("unrelated repository ref = %q", got)
+	}
+}
+
+func TestStoreKeepsTenRecentRepositoriesInMostRecentOrder(t *testing.T) {
+	root := t.TempDir()
+	store := NewStoreAt(filepath.Join(root, "config", preferencesFilename))
+	repositories := make([]string, 12)
+	for index := range repositories {
+		repositories[index] = filepath.Join(root, fmt.Sprintf("repo-%02d", index))
+		if err := os.Mkdir(repositories[index], 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.RecordRepository(repositories[index]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recent := NewStoreAt(store.path).RecentRepositories()
+	if len(recent) != 10 {
+		t.Fatalf("recent repository count = %d, want 10: %#v", len(recent), recent)
+	}
+	if recent[0] != repositories[11] || recent[9] != repositories[2] {
+		t.Fatalf("recent repository order = %#v", recent)
+	}
+	if err := store.RecordRepository(repositories[5]); err != nil {
+		t.Fatal(err)
+	}
+	recent = store.RecentRepositories()
+	if recent[0] != repositories[5] || len(recent) != 10 {
+		t.Fatalf("reopened repository was not moved to the front: %#v", recent)
+	}
+	seen := 0
+	for _, path := range recent {
+		if path == repositories[5] {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("reopened repository appears %d times: %#v", seen, recent)
+	}
+}
+
+func TestStoreMigratesLegacyLastRepositoryToRecentRepositories(t *testing.T) {
+	root := t.TempDir()
+	repository := filepath.Join(root, "legacy")
+	if err := os.Mkdir(repository, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	preferencePath := filepath.Join(root, preferencesFilename)
+	data := []byte(fmt.Sprintf(`{"lastRepository":%q}`, repository))
+	if err := os.WriteFile(preferencePath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStoreAt(preferencePath)
+	if got := store.RecentRepositories(); len(got) != 1 || got[0] != repository {
+		t.Fatalf("legacy recent repositories = %#v", got)
+	}
+	if got := store.LastRepository(); got != repository {
+		t.Fatalf("legacy last repository = %q", got)
 	}
 }

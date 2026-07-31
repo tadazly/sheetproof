@@ -295,6 +295,39 @@ func TestControllerRestoresLastRepositoryAndFallsBackWhenItMoves(t *testing.T) {
 	}
 }
 
+func TestControllerListsRecentRepositoriesWithAvailability(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "first repository")
+	second := filepath.Join(root, "第二个仓库")
+	for _, path := range []string{first, second} {
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	controller := NewController("", "", coreapp.Options{})
+	controller.prefs = preferences.NewStoreAt(filepath.Join(root, "preferences.json"))
+	if err := controller.prefs.RecordRepository(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.prefs.RecordRepository(second); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(first); err != nil {
+		t.Fatal(err)
+	}
+
+	recent := controller.RecentRepositories()
+	if len(recent) != 2 {
+		t.Fatalf("recent repositories = %#v", recent)
+	}
+	if recent[0].Name != filepath.Base(second) || recent[0].Path != second || !recent[0].Available {
+		t.Fatalf("available recent repository = %+v", recent[0])
+	}
+	if recent[1].Path != first || recent[1].Available {
+		t.Fatalf("missing recent repository = %+v", recent[1])
+	}
+}
+
 func TestControllerUnsavedRepositorySwitchOffersCancelSaveAndDiscard(t *testing.T) {
 	root, relative := createControllerRepository(t)
 	controller := NewController("", "", coreapp.Options{})
