@@ -1,6 +1,6 @@
 # 第二、三轮交付与下一轮迭代交接
 
-更新时间：2026-07-31
+更新时间：2026-08-01
 
 本文是新会话接手 `ugxlsx` 的当前事实基线。第一轮历史交付保留在
 `docs/iteration-1-handoff.md`；项目约束见根目录 `AGENTS.md`，实现设计见
@@ -58,6 +58,11 @@ main.go
   TaskDialog 的 STA 前置条件。Windows 辅助函数现锁定同一 OS 线程、初始化 STA，
   调用完成后成对反初始化。删除 UGit XLSX 配置后的同路径复测已不再立即报错，
   原生模态对话框成功进入等待选择状态。
+- 2026-08-01 用户再次报告“配置 UGit”仍收到 `HRESULT 0x80070057`，导致确认链路
+  在真正写配置前中断。Windows 选择对话框现只接受当前进程中可见且启用的 owner；
+  TaskDialog 失败时先去掉 owner 重试，再回退到标准 `MessageBoxW`，并明确映射
+  两按钮与三按钮的业务含义。新增回归覆盖 TaskDialog 返回 `E_INVALIDARG` 后选择
+  “确定”仍返回“配置 UGit”，从而继续调用原有 `internal/ugit` 事务式写入流程。
 - 本机 UGit 是 5.51.0，安装于
   `C:\\Users\\luyi\\AppData\\Local\\UGit\\app-5.51.0`。UGit 自带 Git 2.45.2，
   系统 PATH Git 是 2.37.1.windows.1。Windows 配置逻辑现优先按自然版本选择
@@ -289,6 +294,20 @@ Go 测试目前覆盖：
 - “配置 UGit”低频按钮、后端调用和成功状态反馈。
 
 ## 最近验证快照
+
+2026-08-01 修复 Windows“配置 UGit”对话框再次返回 `0x80070057` 后执行：
+
+```text
+go test ./...                                      PASS
+go vet ./...                                       PASS
+Windows 对话框定向回归（含 E_INVALIDARG 降级）    PASS
+git diff --check                                   PASS
+Wails v2.10.2 build（windows/amd64）               PASS
+```
+
+桌面产物已重新生成到 `build/bin/ugxlsx.exe`。本次没有实际点击桌面 GUI，也没有
+修改用户真实全局 Git 配置；真实“点击配置 → 确认 → 重启 UGit”仍应按
+`docs/manual-acceptance.md` 单独手工验收，不能用自动化与桌面构建代替。
 
 2026-07-31 增加最近 10 个仓库切换弹窗后执行：
 

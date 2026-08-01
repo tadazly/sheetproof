@@ -100,7 +100,10 @@ tag 隔离：Windows 使用 Common Controls v6 `TaskDialogIndirect` 保留业务
 关闭时“保存并继续”仍调用现有安全保存流程。Windows 辅助函数在整个
 `TaskDialogIndirect` 生命周期锁定同一 OS 线程，以 STA 模式初始化 COM，并在返回后
 成对反初始化；否则 Wails 绑定回调线程首次显示对话框会返回
-`E_INVALIDARG (0x80070057)`。
+`E_INVALIDARG (0x80070057)`。owner 只有在属于当前进程且可见、启用时才传入；
+TaskDialog 失败时先去掉 owner 重试，再回退到标准 `MessageBoxW`。回退层按按钮
+角色把 `IDOK/IDCANCEL` 或 `IDYES/IDNO/IDCANCEL` 映射回原业务选项，并在正文中
+显示映射说明，所以对话框实现差异不会跳过后续 UGit 配置或保存选择。
 
 Windows 可执行文件继续嵌入多尺寸 ICO。Wails 2.10.2 只设置 `ICON_SMALL`，因此
 `OnDomReady` 后由 Windows 专用辅助函数为当前进程顶层窗口补充

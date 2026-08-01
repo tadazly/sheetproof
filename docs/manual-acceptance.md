@@ -134,8 +134,9 @@ ugxlsx repo \
    ugxlsx 路径；另为 `*.csv` 保留任意外部工具配置。
 2. 启动 ugxlsx，点击顶部“配置 UGit”。确认原生对话框明确说明只替换
    `*.xlsx`，并列出检测到的旧路径；即使当前没有任何 XLSX 工具项，也不得出现
-   `HRESULT 0x80070057`。点击“取消”后用 `git config --global` 确认所有配置
-   完全不变。
+   `HRESULT 0x80070057`。如果系统使用标准对话框回退，正文必须明确“确定”对应
+   “配置 UGit”、“取消”对应不修改。点击“取消”后用 `git config --global`
+   确认所有配置完全不变。
 3. 再次点击并确认。重启 UGit，检查差异工具参数为
    `compare --left "$LOCAL" --right "$REMOTE"`，合并工具参数额外包含
    `--output "$MERGED"`，且 `trustExitCode=false`；原有 CSV 工具仍存在。

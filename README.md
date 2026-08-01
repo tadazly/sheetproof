@@ -153,8 +153,11 @@ Windows 的后台 Git/UGit CLI 子进程使用无控制台窗口的进程属性�
 差异索引时由 `git.exe` / `conhost.exe` 产生临时任务栏图标。该设置不作用于
 ugxlsx 主窗口，也不改变 macOS/Linux 行为。Windows 的未保存确认使用原生三按钮
 对话框，关闭或切换时均提供“保存并继续 / 不保存并继续 / 取消”。原生
-`TaskDialogIndirect` 调用会锁定当前 OS 线程并初始化 STA，避免首次真正显示确认框时
-返回 `HRESULT 0x80070057`。
+`TaskDialogIndirect` 调用会锁定当前 OS 线程并初始化 STA。显示前会排除隐藏或
+禁用的 owner；如果 TaskDialog 仍因运行环境返回错误，会先以无 owner 方式重试，
+再回退到标准 `MessageBoxW`。标准对话框会在正文中明确说明“确定/取消”或
+“是/否/取消”分别对应的业务操作，因此 `HRESULT 0x80070057` 不会再中断 UGit
+配置或未保存确认流程。
 
 如需手工配置，在 UGit 的“设置 → 工具 → 差异工具”中添加：
 
