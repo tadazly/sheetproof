@@ -1197,4 +1197,89 @@ describe("App", () => {
     expect(appendedLeftCell?.classes()).toContain("cell-added");
     expect(appendedLeftCell?.classes()).not.toContain("cell-deleted");
   });
+
+  it("keeps copy actions for selections containing unchanged rows and separates conflicts", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.equal = false;
+    loaded.diff.sheetCount = 1;
+    loaded.diff.differentSheetCount = 1;
+    loaded.diff.differenceCount = 4;
+    loaded.diff.sheets = [{
+      name: "混合选择", status: "modified", orderDifferent: false,
+      differenceCount: 4, maxRow: 5, maxCol: 1, idColumn: 0, nextId: 0,
+      addedRowCount: 1, deletedRowCount: 1, modifiedRowCount: 1, conflictRowCount: 1,
+      rows: [
+        { row: 2, id: "", status: "added" },
+        { row: 3, id: "", status: "deleted" },
+        { row: 4, id: "", status: "modified" },
+        { row: 5, id: "", status: "conflict" }
+      ]
+    }];
+    loaded.selectedSheet = "混合选择";
+    const value = (raw: string) => ({ present: true, raw, display: raw, type: "string" });
+    const cells = [
+      { row: 1, col: 1, axis: "A1", status: "unchanged", rowStatus: "unchanged", left: value("相同"), right: value("相同") },
+      { row: 2, col: 1, axis: "A2", status: "right-added", rowStatus: "added", left: value(""), right: value("增加") },
+      { row: 3, col: 1, axis: "A3", status: "left-deleted", rowStatus: "deleted", left: value("删除"), right: value("") },
+      { row: 4, col: 1, axis: "A4", status: "modified", rowStatus: "modified", left: value("旧值"), right: value("新值") },
+      { row: 5, col: 1, axis: "A5", status: "modified", rowStatus: "conflict", left: value("左冲突"), right: value("右冲突") }
+    ] as Region["cells"];
+    const differences = cells.slice(1).map((cell) => ({
+      ref: { sheet: "混合选择", row: cell.row, col: cell.col },
+      status: cell.status,
+      rowStatus: cell.rowStatus,
+      left: cell.left,
+      right: cell.right
+    }));
+    const copyMany = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
+    const copyRows = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => differences,
+          Region: async () => ({
+            sheet: "混合选择", fromRow: 1, toRow: 5, fromCol: 1, toCol: 1, cells
+          }),
+          CopyRightToLeftMany: copyMany,
+          CopyRowsRightToLeft: copyRows
+        }
+      }
+    };
+
+    const wrapper = mount(App);
+    await flushPromises();
+    let rightPanel = wrapper.findAll(".grid-panel")[1];
+    let rowHeaders = rightPanel.findAll(".row-header");
+    await rowHeaders[0].trigger("pointerdown", { button: 0 });
+    await rowHeaders[3].trigger("pointerenter");
+    await rightPanel.findAll(".cell")[0].trigger("contextmenu", { clientX: 120, clientY: 120 });
+    expect(wrapper.get(".context-menu").text()).toContain("复制单元格到左侧");
+    expect(wrapper.get(".context-menu").text()).toContain("复制整行到左侧");
+    await wrapper.findAll(".context-menu button")[0].trigger("click");
+    await flushPromises();
+    expect(copyMany).toHaveBeenCalledWith("混合选择", [
+      { row: 2, col: 1 },
+      { row: 3, col: 1 },
+      { row: 4, col: 1 }
+    ]);
+
+    rightPanel = wrapper.findAll(".grid-panel")[1];
+    await rightPanel.findAll(".cell")[0].trigger("contextmenu", { clientX: 120, clientY: 120 });
+    const copyRowButton = wrapper.findAll(".context-menu button")
+      .find((button) => button.text() === "复制整行到左侧");
+    await copyRowButton!.trigger("click");
+    await flushPromises();
+    expect(copyRows).toHaveBeenCalledWith("混合选择", [2, 3, 4]);
+
+    rightPanel = wrapper.findAll(".grid-panel")[1];
+    rowHeaders = rightPanel.findAll(".row-header");
+    await rowHeaders[0].trigger("pointerdown", { button: 0 });
+    await rowHeaders[4].trigger("pointerenter");
+    await rightPanel.findAll(".cell")[0].trigger("contextmenu", { clientX: 120, clientY: 120 });
+    const menu = wrapper.get(".context-menu");
+    expect(menu.text()).toContain("选中的内容中包含冲突，请单独处理冲突部分");
+    expect(menu.findAll("button")).toHaveLength(0);
+  });
 });

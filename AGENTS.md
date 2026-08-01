@@ -66,9 +66,18 @@
 - 影响桌面集成或交付前执行：
 
   ```bash
+  # Windows
+  powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
+
+  # macOS/Linux
   GOCACHE=/tmp/ugxlsx-go-cache \
     go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
   ```
+
+- Windows Wails 构建必须先使用上述离线优先脚本检查已安装 CLI 和本地 Go 模块
+  缓存；其他平台也必须先检查可执行文件与 `GOMODCACHE`。不得因
+  `go run ...@版本` 尝试联网就声称本地没有 Wails。只有确认固定版本源码或其依赖
+  缓存确实不完整后，才能请求联网。
 
 - 高风险核心修改还应执行 `go vet ./...` 和 `go test -race ./...`。
 - 自动化测试、桌面构建和实机手工验收必须分别陈述；没有实际操作 GUI 时，

@@ -191,20 +191,7 @@ const copyTargets = computed(() => {
   }
   return result;
 });
-const selectionCoordinates = computed(() => {
-  if (!selection.value) return activePoint.value ? [{ ...activePoint.value }] : [];
-  const result: CellPoint[] = [];
-  for (let row = selection.value.startRow; row <= selection.value.endRow; row++) {
-    for (let col = selection.value.startCol; col <= selection.value.endCol; col++) {
-      result.push({ row, col });
-      if (result.length > 10000) return result;
-    }
-  }
-  return result;
-});
-const contextRows = computed(() => {
-  const row = contextMenu.value.row;
-  if (!row) return [];
+function rowsForContext(row: number) {
   if (!selection.value || row < selection.value.startRow || row > selection.value.endRow) {
     return [row];
   }
@@ -212,25 +199,47 @@ const contextRows = computed(() => {
     { length: selection.value.endRow - selection.value.startRow + 1 },
     (_, index) => selection.value!.startRow + index
   );
+}
+const contextRows = computed(() => {
+  const row = contextMenu.value.row;
+  if (!row) return [];
+  return rowsForContext(row);
 });
-const contextRowStatuses = computed(() =>
-  contextRows.value.map((row) => rowStatus(row))
+const contextActionableRows = computed(() =>
+  contextRows.value.filter((row) => rowStatus(row) !== "unchanged")
+);
+const contextActionableStatuses = computed(() =>
+  contextActionableRows.value.map((row) => rowStatus(row))
+);
+const contextHasConflict = computed(() =>
+  contextActionableStatuses.value.some((status) => status === "conflict")
+);
+const contextHasNonConflict = computed(() =>
+  contextActionableStatuses.value.some((status) => status !== "conflict")
+);
+const contextHasMixedConflict = computed(() =>
+  contextHasConflict.value && contextHasNonConflict.value
 );
 const contextIsConflict = computed(() =>
-  contextRowStatuses.value.length > 0 &&
-  contextRowStatuses.value.every((status) => status === "conflict")
+  contextHasConflict.value && !contextHasNonConflict.value
 );
 const contextIsActionable = computed(() =>
-  contextRowStatuses.value.length > 0 &&
-  contextRowStatuses.value.every((status) => status !== "unchanged")
+  contextActionableRows.value.length > 0 && !contextHasConflict.value
 );
+const contextStatusLabel = computed(() => {
+  if (contextHasMixedConflict.value) return "包含冲突";
+  const statuses = [...new Set(contextActionableStatuses.value)];
+  if (statuses.length === 0) return "无差异";
+  if (statuses.length > 1) return "混合差异";
+  return rowStatusLabel(statuses[0]);
+});
 const contextActionDisabled = computed(() =>
   busy.value || Boolean(summary.value?.options.readonlyLeft) || !comparisonActive.value
 );
 const automaticIDLabel = computed(() => {
   const nextID = activeSheet.value?.nextId ?? 0;
-  if (!nextID || !contextRows.value.length) return "";
-  const lastID = nextID + contextRows.value.length - 1;
+  if (!nextID || !contextActionableRows.value.length) return "";
+  const lastID = nextID + contextActionableRows.value.length - 1;
   return nextID === lastID ? `id:${nextID}` : `id:${nextID}~${lastID}`;
 });
 const comparisonActive = computed(() => !repository.value || repository.value.comparisonActive);
@@ -854,31 +863,31 @@ async function runContextAction(action: () => Promise<Summary>) {
 }
 
 async function copyContextCells() {
-  if (!selectionCoordinates.value.length || selectionCoordinates.value.length > 10000) return;
+  if (!copyTargets.value.length || copyTargets.value.length > 10000) return;
   await runContextAction(() =>
-    backend.copyMany(sheet.value, selectionCoordinates.value)
+    backend.copyMany(sheet.value, copyTargets.value)
   );
 }
 
 async function copyContextRows() {
-  if (!contextRows.value.length) return;
+  if (!contextActionableRows.value.length) return;
   await runContextAction(() =>
-    backend.copyRows(sheet.value, contextRows.value)
+    backend.copyRows(sheet.value, contextActionableRows.value)
   );
 }
 
 async function appendContextRowsAutomatically() {
-  if (!contextRows.value.length || !automaticIDLabel.value) return;
+  if (!contextActionableRows.value.length || !automaticIDLabel.value) return;
   await runContextAction(() =>
-    backend.appendRows(sheet.value, contextRows.value, [])
+    backend.appendRows(sheet.value, contextActionableRows.value, [])
   );
 }
 
 function openSpecifiedIDDialog() {
   idDialog.value = {
     visible: true,
-    rows: [...contextRows.value],
-    values: contextRows.value.map(() => "")
+    rows: [...contextActionableRows.value],
+    values: contextActionableRows.value.map(() => "")
   };
   contextMenu.value.visible = false;
 }
@@ -1236,11 +1245,13 @@ function resizeRepositorySidebar(event: PointerEvent) {
 
 function openCellMenu(event: MouseEvent, cell: RegionCell, side: "left" | "right") {
   event.preventDefault();
-  if ((cell.rowStatus || rowStatus(cell.row)) === "unchanged" && cell.status === "unchanged") {
+  const selected = containsCell(selection.value, cell.row, cell.col);
+  const hasSelectedAction = selected && rowsForContext(cell.row).some((row) => rowStatus(row) !== "unchanged");
+  if ((cell.rowStatus || rowStatus(cell.row)) === "unchanged" && cell.status === "unchanged" && !hasSelectedAction) {
     contextMenu.value.visible = false;
     return;
   }
-  if (!containsCell(selection.value, cell.row, cell.col)) {
+  if (!selected) {
     setSingleSelection(cell);
   }
   contextMenu.value = {
@@ -1255,11 +1266,13 @@ function openCellMenu(event: MouseEvent, cell: RegionCell, side: "left" | "right
 
 function openRowMenu(event: MouseEvent, row: number, side: "left" | "right") {
   event.preventDefault();
-  if (rowStatus(row) === "unchanged") {
+  const selected = Boolean(selection.value && row >= selection.value.startRow && row <= selection.value.endRow);
+  const hasSelectedAction = selected && rowsForContext(row).some((selectedRow) => rowStatus(selectedRow) !== "unchanged");
+  if (rowStatus(row) === "unchanged" && !hasSelectedAction) {
     contextMenu.value.visible = false;
     return;
   }
-  if (!selection.value || row < selection.value.startRow || row > selection.value.endRow) {
+  if (!selected) {
     beginRowSelection(row, event);
   }
   contextMenu.value = {
@@ -2065,10 +2078,13 @@ onBeforeUnmount(() => {
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
       @pointerdown.stop
     >
-      <template v-if="contextIsConflict">
+      <template v-if="contextHasMixedConflict">
+        <span class="context-menu-warning">选中的内容中包含冲突，请单独处理冲突部分</span>
+      </template>
+      <template v-else-if="contextIsConflict">
         <button
           v-if="contextMenu.kind === 'cell'"
-          :disabled="!selectionCoordinates.length || selectionCoordinates.length > 10000 || contextActionDisabled"
+          :disabled="!copyTargets.length || copyTargets.length > 10000 || contextActionDisabled"
           @click="copyContextCells"
         >覆盖单元格到左侧</button>
         <button :disabled="contextActionDisabled" @click="copyContextRows">覆盖整行到左侧</button>
@@ -2086,14 +2102,14 @@ onBeforeUnmount(() => {
       <template v-else-if="contextIsActionable">
         <button
           v-if="contextMenu.kind === 'cell'"
-          :disabled="!selectionCoordinates.length || selectionCoordinates.length > 10000 || contextActionDisabled"
+          :disabled="!copyTargets.length || copyTargets.length > 10000 || contextActionDisabled"
           @click="copyContextCells"
         >复制单元格到左侧</button>
         <button :disabled="contextActionDisabled" @click="copyContextRows">复制整行到左侧</button>
       </template>
       <span>
         {{ contextRows.length > 1 ? `已选 ${contextRows.length} 行` : `第 ${contextMenu.row} 行` }}
-        · {{ contextIsConflict ? "冲突" : rowStatusLabel(contextRowStatuses[0] || "modified") }}
+        · {{ contextStatusLabel }}
       </span>
     </div>
     <div v-if="idDialog.visible" class="id-dialog-overlay" @pointerdown.self="idDialog.visible = false">

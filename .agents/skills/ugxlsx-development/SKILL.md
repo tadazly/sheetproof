@@ -95,9 +95,24 @@ GOCACHE=/tmp/ugxlsx-go-cache go test -race ./...
 For desktop delivery, run:
 
 ```bash
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
+
+# macOS/Linux
 GOCACHE=/tmp/ugxlsx-go-cache \
   go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 ```
+
+The Windows launcher is offline-first: it checks a matching installed/project-local Wails CLI, then
+builds v2.10.2 from the project's `go.mod` and local module cache with `GOPROXY=off`. It also uses
+the ignored project-local `build/cache/go-build` cache so stale cross-session ACLs in the default
+Windows Go cache cannot break child commands. Always use it on Windows before requesting network
+access or claiming that Wails is absent. On macOS/Linux, check `command -v wails` and the exact
+versioned `GOMODCACHE` directory first. A failed
+`go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 ...` lookup is not evidence that the CLI
+or module is missing, because Go may contact the proxy for metadata even with cached sources.
+Only report a local absence after the launcher confirms that the versioned module directory is
+missing, or that its dependencies are genuinely incomplete.
 
 For every UI layout, styling, visibility, or interaction change, real desktop GUI acceptance is
 a mandatory delivery gate. Build and launch the current Wails desktop artifact, exercise the

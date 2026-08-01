@@ -46,7 +46,10 @@
   > 增加”自动选择首个有内容的分类和索引项
 - 打开表格时若当前摘要工作表没有差异，会自动进入首个有差异的工作表，并让
   左右视口同步定位到上述优先分类的第一处；编辑和保存后的局部刷新保留当前视口
-- 右键可复制/覆盖单元格或整行；冲突行还可按左侧最大数字 ID 自动续号，或逐行指定新 ID 后追加到左侧
+- 右键可复制/覆盖单元格或整行；多选中的未改动单元格/行不会隐藏可用操作，实际
+  批量操作只提交其中有差异的坐标/行；若选区同时包含冲突与非冲突差异，菜单会
+  提示先单独处理冲突部分
+- 冲突行还可按左侧最大数字 ID 自动续号，或逐行指定新 ID 后追加到左侧
 - 冲突覆盖或追加后，右侧来源行显示处理方式；追加到左侧的新行保持新增色，撤销
   同时移除处理标记
 - 左侧文本、数字、公式和清空编辑
@@ -81,7 +84,16 @@ make build
 open build/bin/ugxlsx.app
 ```
 
-不安装全局 Wails CLI 也可构建桌面发布包：
+Windows 会话优先使用项目的离线启动器。它先复用匹配版本的现成 CLI；若没有，
+则从本地 Go 模块缓存离线生成 `build/tools/wails-v2.10.2.exe`，并使用 Git 忽略的
+`build/cache/go-build` 避免默认 Go 缓存的跨会话 ACL 干扰。只有脚本明确报告
+版本源码或依赖缓存缺失时，才需要联网补齐：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
+```
+
+macOS/Linux 不安装全局 Wails CLI 时仍可构建桌面发布包：
 
 ```bash
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
@@ -93,7 +105,7 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 # 当前 Mac 架构
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 
-# Windows 11 amd64；macOS 交叉构建前先安装 brew install mingw-w64
+# 从 macOS 交叉构建 Windows 11 amd64；先安装 brew install mingw-w64
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build \
   -platform windows/amd64
 ```
@@ -117,6 +129,10 @@ build/bin/ugxlsx.app/Contents/MacOS/ugxlsx
 ```bash
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 dev
 ```
+
+Windows 开发模式同样可执行
+`powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 dev`，避免
+`go run module@version` 在已有缓存时仍为弃用元数据查询访问 Go Proxy。
 
 ## CLI
 
@@ -279,7 +295,7 @@ AppData，并通过系统 Known Folder 获取实际下载目录（包括被系�
 | 单格选择 | 点击单元格 |
 | 范围选择 | Shift 扩展，或按住鼠标拖选 |
 | 整行选择 | 点击或拖动行号，Shift 可扩展多行 |
-| 复制单元格/整行到左侧 | 在增加、删除或修改的单元格/行上右键 |
+| 复制单元格/整行到左侧 | 在增加、删除或修改的单元格/行上右键；混入未改动项仍可操作 |
 | 处理冲突行 | 右键后覆盖单元格/整行，或用自动/指定 ID 将右侧整行追加到左侧 |
 | 编辑左侧 | 双击左侧单元格直接编辑；Enter 或失焦提交，Esc 取消 |
 | 撤销 | `Ctrl/Command + Z`；保存后撤销历史仍保留 |
@@ -325,6 +341,9 @@ npm run build
 
 cd ..
 ./scripts/verify_cli.sh
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
+# macOS/Linux
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 ```
 
@@ -374,7 +393,9 @@ AGENTS.md            项目协作规则和兼容不变量
 - 仓库模式不负责 fetch、pull、push、add、commit、分支创建/删除/切换或冲突恢复。
 - 不编辑图片、图表、数据透视表、宏、外部连接或条件格式。
 - 右侧独有工作表会显示，但首版没有“一键复制整个工作表”；可逐单元格合并的前提是工作表两侧都存在。
-- 顶部批量复制只提交选区中的差异坐标；右键“复制/覆盖整行”会提交所选行的完整列范围。单次最多处理 10,000 个单元格。
+- 顶部和右键批量单元格操作只提交选区中的差异坐标；右键“复制/覆盖整行”会
+  忽略所选的未改动行，并提交其余行的完整列范围。冲突与非冲突差异混选时不直接
+  执行批量操作，需先单独选择冲突部分。单次最多处理 10,000 个单元格。
 - 冲突行识别依赖首行名为 `id`（不区分大小写）的列。普通双文件/仓库模式按
   相同物理行判断；UGit mergetool 模式会先按双方唯一 ID 对齐到左侧记录行。
   没有 `id` 列或 ID 重复/空白时仍分类增加/删除/修改，但相应记录不做 ID 对齐。

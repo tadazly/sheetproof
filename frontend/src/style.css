@@ -1111,6 +1111,16 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 }
 .context-menu button { min-height: 31px; justify-content: flex-start; padding: 0 10px; border: 0; border-radius: var(--radius-sm); box-shadow: none; text-align: left; }
 .context-menu span { padding: 5px 10px 7px; color: var(--color-text-muted); font-size: 10px; }
+.context-menu .context-menu-warning {
+  margin: 3px;
+  padding: 9px 10px;
+  border: 1px solid #edd9a8;
+  border-radius: var(--radius-sm);
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .id-dialog-overlay, .repository-switch-overlay, .loading-overlay {
   position: fixed;
   z-index: 200;
