@@ -1358,7 +1358,7 @@ func (c *Controller) startRepositoryDifferenceIndex(
 			cancel()
 			c.wg.Done()
 		}()
-		result, err := exactRepositoryDifferenceFiles(indexContext, repo, branch, files)
+		result, skipped, err := exactRepositoryDifferenceFiles(indexContext, repo, branch, files)
 		cacheWarning := ""
 		if err == nil {
 			currentSignature, signatureErr := repo.DifferenceIndexSignatureContext(indexContext, branch, files)
@@ -1397,6 +1397,12 @@ func (c *Controller) startRepositoryDifferenceIndex(
 			return
 		}
 		c.repositoryView.DifferenceFiles = result
+		if len(skipped) > 0 {
+			c.repositoryView.Notice = appendNotice(
+				c.repositoryView.Notice,
+				formatSkippedDifferenceIndexFiles(skipped),
+			)
+		}
 		if cacheWarning != "" {
 			c.repositoryView.Notice = appendNotice(
 				c.repositoryView.Notice,
@@ -1411,40 +1417,67 @@ func exactRepositoryDifferenceFiles(
 	repo *repository.Repository,
 	branch repository.Branch,
 	files []string,
-) ([]string, error) {
+) ([]string, []string, error) {
 	candidates, err := repo.ChangedCommonXLSXContext(ctx, branch, files)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	result := make([]string, 0, len(candidates))
+	skipped := make([]string, 0)
 	for _, relative := range candidates {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		left, resolveErr := repo.ResolveRelativePath(relative)
 		if resolveErr != nil {
-			return nil, resolveErr
+			return nil, nil, resolveErr
 		}
 		right, readErr := repo.ReadReferenceFileContext(ctx, branch, relative)
 		if readErr != nil {
-			return nil, readErr
+			return nil, nil, readErr
 		}
 		session, openErr := coreapp.OpenContext(ctx, left, right, coreapp.Options{ReadonlyLeft: true})
 		if openErr != nil {
 			removeTemporary(right)
-			return nil, fmt.Errorf("比较 %s 失败: %w", relative, openErr)
+			if skippableDifferenceIndexWorkbookError(openErr) {
+				skipped = append(skipped, relative)
+				continue
+			}
+			return nil, nil, fmt.Errorf("比较 %s 失败: %w", relative, openErr)
 		}
 		summary := session.Summary()
 		closeErr := session.Close()
 		removeTemporary(right)
 		if closeErr != nil {
-			return nil, fmt.Errorf("关闭 %s 失败: %w", relative, closeErr)
+			return nil, nil, fmt.Errorf("关闭 %s 失败: %w", relative, closeErr)
 		}
 		if !summary.Diff.Equal {
 			result = append(result, relative)
 		}
 	}
-	return result, nil
+	return result, skipped, nil
+}
+
+func skippableDifferenceIndexWorkbookError(err error) bool {
+	return workbook.HasCode(err, workbook.ErrCorrupt) ||
+		workbook.HasCode(err, workbook.ErrUnsupported) ||
+		workbook.HasCode(err, workbook.ErrNoSheets)
+}
+
+func formatSkippedDifferenceIndexFiles(files []string) string {
+	const visibleLimit = 3
+	visible := files
+	if len(visible) > visibleLimit {
+		visible = visible[:visibleLimit]
+	}
+	message := fmt.Sprintf(
+		"差异表索引已跳过无法解析的 XLSX：%s",
+		strings.Join(visible, "、"),
+	)
+	if remaining := len(files) - len(visible); remaining > 0 {
+		message += fmt.Sprintf(" 等 %d 个文件", len(files))
+	}
+	return message + "；修复文件后刷新仓库即可重新检查"
 }
 
 func (c *Controller) recordRepositoryRef(root, ref string) {

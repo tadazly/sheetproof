@@ -1,6 +1,7 @@
 package workbook
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -29,7 +30,7 @@ func (Reader) Validate(path string) error {
 	}
 	f, err := excelize.OpenFile(abs, excelize.Options{RawCellValue: true})
 	if err != nil {
-		return &Error{Code: ErrCorrupt, Path: abs, Err: err}
+		return workbookOpenError(abs, err)
 	}
 	defer f.Close()
 	if len(f.GetSheetList()) == 0 {
@@ -111,7 +112,7 @@ func (Reader) OpenContext(ctx context.Context, path string) (*excelize.File, *Wo
 	}
 	f, err := excelize.OpenFile(abs, excelize.Options{RawCellValue: true})
 	if err != nil {
-		return nil, nil, &Error{Code: ErrCorrupt, Path: abs, Err: err}
+		return nil, nil, workbookOpenError(abs, err)
 	}
 	snapshot, err := snapshotContext(ctx, f, abs, id)
 	if err != nil {
@@ -119,6 +120,27 @@ func (Reader) OpenContext(ctx context.Context, path string) (*excelize.File, *Wo
 		return nil, nil, err
 	}
 	return f, snapshot, nil
+}
+
+func workbookOpenError(path string, cause error) error {
+	const compoundHeaderLength = 8
+	compoundHeader := []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}
+	file, err := os.Open(path)
+	if err == nil {
+		defer file.Close()
+		header := make([]byte, compoundHeaderLength)
+		if read, readErr := io.ReadFull(file, header); readErr == nil &&
+			read == compoundHeaderLength && bytes.Equal(header, compoundHeader) {
+			return &Error{
+				Code: ErrUnsupported,
+				Path: path,
+				Err: fmt.Errorf(
+					"file uses a legacy binary or encrypted OLE compound format; only OOXML .xlsx ZIP packages are supported",
+				),
+			}
+		}
+	}
+	return &Error{Code: ErrCorrupt, Path: path, Err: cause}
 }
 
 func Snapshot(f *excelize.File, path string, id FileIdentity) (*WorkbookSnapshot, error) {

@@ -637,6 +637,71 @@ describe("App", () => {
     expect(wrapper.find(".editor").exists()).toBe(false);
   });
 
+  it("prefetches a buffered region while scrolling before the current cells leave the viewport", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.sheetCount = 1;
+    loaded.diff.sheets = [{
+      name: "长表", status: "equal", orderDifferent: false,
+      differenceCount: 0, maxRow: 500, maxCol: 8, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 0,
+      rows: []
+    }];
+    loaded.selectedSheet = "长表";
+    let resolvePrefetch: ((value: Region) => void) | undefined;
+    const regionCall = vi.fn((
+      name: string, fromRow: number, rowCount: number, fromCol: number, colCount: number
+    ): Promise<Region> => {
+      const value = {
+        sheet: name,
+        fromRow,
+        toRow: fromRow + rowCount - 1,
+        fromCol,
+        toCol: fromCol + colCount - 1,
+        cells: []
+      };
+      if (fromRow === 1) return Promise.resolve(value);
+      return new Promise((resolve) => {
+        resolvePrefetch = resolve;
+      });
+    });
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: regionCall
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(regionCall).toHaveBeenCalledWith("长表", 1, 48, 1, 20);
+
+    const scrolls = wrapper.findAll(".grid-scroll");
+    for (const item of scrolls) {
+      Object.defineProperty(item.element, "clientHeight", { configurable: true, value: 230 });
+      Object.defineProperty(item.element, "clientWidth", { configurable: true, value: 480 });
+    }
+    vi.useFakeTimers();
+    (scrolls[0].element as HTMLElement).scrollTop = 30 * 23;
+    await scrolls[0].trigger("scroll");
+    (scrolls[0].element as HTMLElement).scrollTop = 32 * 23;
+    await scrolls[0].trigger("scroll");
+    expect(regionCall).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(16);
+    await flushPromises();
+    expect(regionCall).toHaveBeenCalledTimes(2);
+    expect(regionCall).toHaveBeenLastCalledWith("长表", 13, 48, 1, 20);
+    const openRepository = wrapper.findAll("button").find((button) => button.text().includes("打开本地仓库"));
+    expect(openRepository?.attributes("disabled")).toBeUndefined();
+    resolvePrefetch?.({
+      sheet: "长表", fromRow: 13, toRow: 60, fromCol: 1, toCol: 20, cells: []
+    });
+    await flushPromises();
+  });
+
   it("opens the first differing sheet at its first prioritized difference", async () => {
     const loaded = structuredClone(emptySummary);
     loaded.diff.equal = false;
@@ -706,7 +771,7 @@ describe("App", () => {
     await flushPromises();
 
     expect(differencesCall).toHaveBeenCalledWith("数据", 0, 10000);
-    expect(regionCall).toHaveBeenCalledWith("数据", 119, 48, 2, 20);
+    expect(regionCall).toHaveBeenCalledWith("数据", 85, 48, 1, 20);
     expect(wrapper.get(".sheet-item.active").text()).toContain("数据");
     expect(wrapper.text()).toContain("D120");
     const activeFilter = wrapper.findAll(".diff-filter-tabs button")
@@ -795,7 +860,7 @@ describe("App", () => {
     }
     expect(wrapper.findAll(".col-header-layer")).toHaveLength(2);
     expect(wrapper.get(".col-header").attributes("style")).toContain("top: 0px");
-    expect(regionCall.mock.calls.at(-1)?.[1]).toBe(6);
+    expect(regionCall.mock.calls.at(-1)?.[1]).toBe(1);
     expect(wrapper.text()).toContain("最新区域");
     expect(wrapper.text()).not.toContain("过期区域");
   });
@@ -857,6 +922,33 @@ describe("App", () => {
     expect(window.localStorage.length).toBe(1);
     await wrapper.get(".zoom-button").trigger("click");
     expect(wrapper.get(".zoom-button").text()).toBe("缩放 100%");
+    const gridScrolls = wrapper.findAll(".grid-scroll");
+    const initialTop = (gridScrolls[0].element as HTMLElement).scrollTop;
+    const initialLeft = (gridScrolls[0].element as HTMLElement).scrollLeft;
+    const leftWheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 36,
+      deltaY: 92
+    });
+    gridScrolls[0].element.dispatchEvent(leftWheel);
+    expect(leftWheel.defaultPrevented).toBe(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    expect((gridScrolls[0].element as HTMLElement).scrollTop).toBe(initialTop + 92);
+    expect((gridScrolls[1].element as HTMLElement).scrollTop).toBe(initialTop + 92);
+    expect((gridScrolls[0].element as HTMLElement).scrollLeft).toBe(initialLeft + 36);
+    expect((gridScrolls[1].element as HTMLElement).scrollLeft).toBe(initialLeft + 36);
+
+    const rightWheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: -24
+    });
+    gridScrolls[1].element.dispatchEvent(rightWheel);
+    expect(rightWheel.defaultPrevented).toBe(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    expect((gridScrolls[0].element as HTMLElement).scrollTop).toBe(initialTop + 68);
+    expect((gridScrolls[1].element as HTMLElement).scrollTop).toBe(initialTop + 68);
     const rightCells = wrapper.findAll(".grid-panel")[1].findAll(".cell");
     await rightCells[0].trigger("pointerdown", { button: 0 });
     await rightCells[1].trigger("pointerenter");
@@ -870,7 +962,7 @@ describe("App", () => {
       { row: 1, col: 1 },
       { row: 1, col: 2 }
     ]);
-    expect(regionCall.mock.calls.at(-1)?.[1]).toBe(11);
+    expect(regionCall.mock.calls.at(-1)?.[1]).toBe(1);
     window.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
       cancelable: true,

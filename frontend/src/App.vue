@@ -27,6 +27,9 @@ const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.8;
 const VIEW_ROWS = 48;
 const VIEW_COLS = 20;
+const REGION_ROW_STEP = 12;
+const REGION_COL_STEP = 4;
+const REGION_SCHEDULE_MS = 16;
 const DIFF_FILTER_TABS: DiffFilter[] = ["added", "deleted", "modified", "conflict"];
 
 const summary = ref<Summary | null>(null);
@@ -73,6 +76,10 @@ const inlineEdit = ref<{ row: number; col: number; value: string; original: Regi
 const repoSidebar = ref<HTMLElement | null>(null);
 let loadingTimer = 0;
 let differenceIndexTimer = 0;
+let wheelFrame = 0;
+let wheelSource: HTMLElement | null = null;
+let wheelDeltaTop = 0;
+let wheelDeltaLeft = 0;
 let regionRequest = 0;
 let sheetRequest = 0;
 let repositoryRequest = 0;
@@ -515,7 +522,8 @@ async function loadSheet(name: string, resetSelection = true) {
   const fromCol = changed || resetSelection
     ? 1
     : columnAtOffset(source?.scrollLeft ?? viewportLeft.value);
-  await loadRegion(fromRow, fromCol);
+  const target = viewportRegionTarget(source, fromRow, fromCol);
+  await loadRegion(target.row, target.col);
   if (request !== sheetRequest || sheet.value !== name) return;
   if (changed || resetSelection) {
     await nextTick();
@@ -534,28 +542,87 @@ async function loadRegion(fromRow: number, fromCol: number): Promise<boolean> {
   if (!sheet.value) return false;
   const request = ++regionRequest;
   const requestedSheet = sheet.value;
-  const data = await guard(() => backend.region(requestedSheet, Math.max(1, fromRow), VIEW_ROWS, Math.max(1, fromCol), VIEW_COLS));
-  if (!data || request !== regionRequest || sheet.value !== requestedSheet) return false;
-  region.value = data;
-  return true;
+  try {
+    const data = await backend.region(
+      requestedSheet,
+      Math.max(1, fromRow),
+      VIEW_ROWS,
+      Math.max(1, fromCol),
+      VIEW_COLS
+    );
+    if (request !== regionRequest || sheet.value !== requestedSheet) return false;
+    region.value = data;
+    return true;
+  } catch (reason) {
+    if (request === regionRequest && sheet.value === requestedSheet) {
+      error.value = reason instanceof Error ? reason.message : String(reason);
+    }
+    return false;
+  }
+}
+
+function viewportRegionTarget(source: HTMLElement | null, fallbackRow?: number, fallbackCol?: number) {
+  const top = source?.scrollTop ?? viewportTop.value;
+  const left = source?.scrollLeft ?? viewportLeft.value;
+  const firstRow = fallbackRow ?? Math.floor(top / rowHeight.value) + 1;
+  const lastRow = Math.floor((top + Math.max(0, source?.clientHeight ?? 0)) / rowHeight.value) + 1;
+  const visibleRowCount = Math.max(1, lastRow - firstRow + 1);
+  const rowPadding = Math.max(4, Math.floor((VIEW_ROWS - visibleRowCount) / 2));
+  const rawRow = Math.max(1, firstRow - rowPadding);
+  const row = 1 + Math.floor((rawRow - 1) / REGION_ROW_STEP) * REGION_ROW_STEP;
+
+  const firstCol = fallbackCol ?? columnAtOffset(left);
+  const lastCol = columnAtOffset(left + Math.max(0, source?.clientWidth ?? 0));
+  const visibleColCount = Math.max(1, lastCol - firstCol + 1);
+  const colPadding = Math.max(2, Math.floor((VIEW_COLS - visibleColCount) / 2));
+  const rawCol = Math.max(1, firstCol - colPadding);
+  const col = 1 + Math.floor((rawCol - 1) / REGION_COL_STEP) * REGION_COL_STEP;
+  return { row, col };
+}
+
+function requestViewportRegion(source: HTMLElement | null) {
+  const target = viewportRegionTarget(source);
+  if (region.value?.fromRow === target.row && region.value.fromCol === target.col) return;
+  void loadRegion(target.row, target.col);
+}
+
+function scheduleViewportRegion(source: HTMLElement) {
+  if (loadingTimer) return;
+  loadingTimer = window.setTimeout(() => {
+    loadingTimer = 0;
+    requestViewportRegion(source);
+  }, REGION_SCHEDULE_MS);
+}
+
+function applySyncedScroll(source: HTMLElement, top: number, left: number) {
+  const target = source === leftScroll.value ? rightScroll.value : leftScroll.value;
+  syncing = true;
+  source.scrollTop = Math.max(0, top);
+  source.scrollLeft = Math.max(0, left);
+  const actualTop = source.scrollTop;
+  const actualLeft = source.scrollLeft;
+  if (target) {
+    target.scrollTop = actualTop;
+    target.scrollLeft = actualLeft;
+  }
+  syncing = false;
+  updateViewportOffsets(actualTop, actualLeft);
+  scheduleViewportRegion(source);
 }
 
 function onScroll(side: "left" | "right") {
   if (syncing) return;
   const source = side === "left" ? leftScroll.value : rightScroll.value;
+  if (!source) return;
   const target = side === "left" ? rightScroll.value : leftScroll.value;
-  if (!source || !target) return;
-  syncing = true;
-  const actualTop = source.scrollTop;
-  const actualLeft = source.scrollLeft;
-  updateViewportOffsets(actualTop, actualLeft);
-  target.scrollTop = actualTop;
-  target.scrollLeft = actualLeft;
-  syncing = false;
-  window.clearTimeout(loadingTimer);
-  loadingTimer = window.setTimeout(() => {
-    loadRegion(Math.floor(source.scrollTop / rowHeight.value) + 1, columnAtOffset(source.scrollLeft));
-  }, 60);
+  if (
+    target &&
+    target.scrollTop === source.scrollTop &&
+    target.scrollLeft === source.scrollLeft &&
+    viewportTop.value === source.scrollTop &&
+    viewportLeft.value === source.scrollLeft
+  ) return;
+  applySyncedScroll(source, source.scrollTop, source.scrollLeft);
 }
 
 function updateViewportOffsets(top: number, left: number) {
@@ -691,10 +758,8 @@ async function scrollTo(row: number, col: number) {
     }
   }
   updateViewportOffsets(actualTop, actualLeft);
-  const loaded = await loadRegion(
-    Math.floor(actualTop / rowHeight.value) + 1,
-    columnAtOffset(actualLeft)
-  );
+  const target = viewportRegionTarget(source);
+  const loaded = await loadRegion(target.row, target.col);
   if (!loaded) return;
   await nextTick();
   const cell = region.value?.cells.find((item) => item.row === row && item.col === col);
@@ -1015,10 +1080,44 @@ function persistLayout() {
   }
 }
 
+function queueSyncedWheel(source: HTMLElement, deltaTop: number, deltaLeft: number) {
+  wheelSource = source;
+  wheelDeltaTop += deltaTop;
+  wheelDeltaLeft += deltaLeft;
+  if (wheelFrame) return;
+  wheelFrame = window.requestAnimationFrame(() => {
+    wheelFrame = 0;
+    const current = wheelSource;
+    const top = wheelDeltaTop;
+    const left = wheelDeltaLeft;
+    wheelSource = null;
+    wheelDeltaTop = 0;
+    wheelDeltaLeft = 0;
+    if (current) {
+      applySyncedScroll(current, current.scrollTop + top, current.scrollLeft + left);
+    }
+  });
+}
+
 function onGridWheel(event: WheelEvent) {
-  if (!event.ctrlKey && !event.metaKey) return;
-  event.preventDefault();
   const source = event.currentTarget as HTMLElement;
+  if (!event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    const linePixels = rowHeight.value;
+    const pageY = Math.max(linePixels, source.clientHeight);
+    const pageX = Math.max(columnWidth(columnAtOffset(source.scrollLeft)), source.clientWidth);
+    const multiplierY = event.deltaMode === 1 ? linePixels : event.deltaMode === 2 ? pageY : 1;
+    const multiplierX = event.deltaMode === 1 ? linePixels : event.deltaMode === 2 ? pageX : 1;
+    let deltaLeft = event.deltaX * multiplierX;
+    let deltaTop = event.deltaY * multiplierY;
+    if (event.shiftKey && deltaLeft === 0) {
+      deltaLeft = deltaTop;
+      deltaTop = 0;
+    }
+    queueSyncedWheel(source, deltaTop, deltaLeft);
+    return;
+  }
+  event.preventDefault();
   const previous = zoom.value;
   const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((previous + (event.deltaY < 0 ? 0.1 : -0.1)).toFixed(1))));
   if (next === previous) return;
@@ -1031,14 +1130,7 @@ function onGridWheel(event: WheelEvent) {
   nextTick(() => {
     const nextLeft = Math.max(0, (source.scrollLeft + pointerX) * ratio - pointerX);
     const nextTop = Math.max(0, (source.scrollTop + pointerY) * ratio - pointerY);
-    for (const element of [leftScroll.value, rightScroll.value]) {
-      if (element) {
-        element.scrollLeft = nextLeft;
-        element.scrollTop = nextTop;
-      }
-    }
-    updateViewportOffsets(nextTop, nextLeft);
-    loadRegion(Math.floor(nextTop / rowHeight.value) + 1, columnAtOffset(nextLeft));
+    applySyncedScroll(source, nextTop, nextLeft);
   });
 }
 
@@ -1160,6 +1252,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.clearTimeout(loadingTimer);
   window.clearTimeout(differenceIndexTimer);
+  window.cancelAnimationFrame(wheelFrame);
   window.removeEventListener("pointermove", resizeColumn);
   window.removeEventListener("pointermove", resizeRepositorySidebar);
   window.removeEventListener("pointerup", finishPointerAction);

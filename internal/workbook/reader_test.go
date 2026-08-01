@@ -91,4 +91,13 @@ func TestReaderErrors(t *testing.T) {
 	if _, _, err := (Reader{}).Open(corrupt); !HasCode(err, ErrCorrupt) {
 		t.Fatalf("corrupt error = %v", err)
 	}
+	compound := filepath.Join(dir, "legacy-renamed.xlsx")
+	if err := os.WriteFile(compound, []byte{
+		0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0x00,
+	}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := (Reader{}).Open(compound); !HasCode(err, ErrUnsupported) {
+		t.Fatalf("renamed OLE compound error = %v", err)
+	}
 }

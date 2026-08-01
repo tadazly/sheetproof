@@ -244,6 +244,62 @@ func TestControllerRepositoryWorkflowPreservesBranchAndSavesOnlyWorktreeFile(t *
 	}
 }
 
+func TestControllerDifferenceIndexSkipsCorruptWorkbookAndCachesResult(t *testing.T) {
+	root, validRelative := createControllerRepository(t)
+	invalidRelative := "config/损坏但扩展名正常.xlsx"
+	invalidPath := filepath.Join(root, filepath.FromSlash(invalidRelative))
+	if err := os.WriteFile(invalidPath, []byte("not an xlsx package on main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	controllerGit(t, root, "add", invalidRelative)
+	controllerGit(t, root, "commit", "-m", "add invalid workbook on main")
+	controllerGit(t, root, "switch", "develop")
+	if err := os.WriteFile(invalidPath, []byte("not an xlsx package on develop"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	controllerGit(t, root, "add", invalidRelative)
+	controllerGit(t, root, "commit", "-m", "add invalid workbook on develop")
+	controllerGit(t, root, "switch", "main")
+
+	preferencePath := filepath.Join(t.TempDir(), "preferences.json")
+	controller := NewController("", "", coreapp.Options{})
+	controller.prefs = preferences.NewStoreAt(preferencePath)
+	if _, err := controller.OpenRepository(root); err != nil {
+		t.Fatal(err)
+	}
+	result, err := controller.SelectRepositoryRef("refs/heads/develop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Repository.DifferenceIndexing {
+		t.Fatalf("corrupt workbook index did not start in background: %+v", result.Repository)
+	}
+	result = waitForDifferenceIndex(t, controller)
+	if len(result.Repository.DifferenceFiles) != 1 ||
+		result.Repository.DifferenceFiles[0] != validRelative {
+		t.Fatalf("difference files after corrupt workbook skip = %#v", result.Repository.DifferenceFiles)
+	}
+	if !strings.Contains(result.Repository.Notice, invalidRelative) ||
+		strings.Contains(result.Repository.Notice, "索引建立失败") {
+		t.Fatalf("corrupt workbook notice = %q", result.Repository.Notice)
+	}
+	controller.shutdown(context.Background())
+
+	cachedController := NewController("", "", coreapp.Options{})
+	cachedController.prefs = preferences.NewStoreAt(preferencePath)
+	cachedResult, err := cachedController.OpenRepository(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cachedResult.Repository.SelectedRef != "refs/heads/develop" ||
+		cachedResult.Repository.DifferenceIndexing ||
+		len(cachedResult.Repository.DifferenceFiles) != 1 ||
+		cachedResult.Repository.DifferenceFiles[0] != validRelative {
+		t.Fatalf("cached index retried corrupt workbook: %+v", cachedResult.Repository)
+	}
+	cachedController.shutdown(context.Background())
+}
+
 func TestControllerRestoresLastRepositoryAndFallsBackWhenItMoves(t *testing.T) {
 	root, _ := createControllerRepository(t)
 	preferencePath := filepath.Join(t.TempDir(), "config", "preferences.json")
