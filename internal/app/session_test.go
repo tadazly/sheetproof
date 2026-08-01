@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ug-tools/ugxlsx/internal/diff"
@@ -392,6 +393,77 @@ func TestSessionCopiesAndAppendsConflictRowsWithUndo(t *testing.T) {
 	if err != nil || appended.Cells[0].Left.Raw != "custom-id" ||
 		appended.Cells[0].Left.Type != "string" {
 		t.Fatalf("text specified ID cell = %+v, err=%v", appended.Cells, err)
+	}
+}
+
+func TestGitMergeAlignsShiftedUniqueIDsAndExplainsFileConflict(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	left := filepath.Join(dir, "left.xlsx")
+	write := func(path string, rows [][]any) {
+		t.Helper()
+		file := excelize.NewFile()
+		for rowIndex, row := range rows {
+			for colIndex, value := range row {
+				axis, _ := excelize.CoordinatesToCellName(colIndex+1, rowIndex+1)
+				if err := file.SetCellValue("Sheet1", axis, value); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if err := file.SaveAs(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	baseRows := [][]any{{"id", "name", "type"}, {1, "one", "common"}, {2, "two", "common"}}
+	write(base, baseRows)
+	write(right, baseRows)
+	write(left, [][]any{{"id", "name", "type"}, {"", "left-only", ""}, {1, "one", "common"}, {2, "left-two", "common"}})
+
+	session, err := Open(left, right, Options{GitMerge: true, MergeBase: base})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	summary := session.Summary()
+	sheet := summary.Diff.Sheets[0]
+	if sheet.DifferenceCount != 3 || sheet.DeletedRowCount != 1 ||
+		sheet.ModifiedRowCount != 1 || sheet.ConflictRowCount != 0 {
+		t.Fatalf("aligned summary = %+v", sheet)
+	}
+	if len(summary.Warnings) < 1 || !strings.Contains(summary.MergeNotice, "右侧与共同基线语义一致") {
+		t.Fatalf("merge warnings = %#v, notice = %q", summary.Warnings, summary.MergeNotice)
+	}
+	region, err := session.Region("Sheet1", 2, 3, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[3].Right.Raw != "1" || region.Cells[6].Right.Raw != "2" {
+		t.Fatalf("right rows were not aligned to left IDs: %+v", region.Cells)
+	}
+	if err := session.CopyRightToLeft(workbook.CellRef{Sheet: "Sheet1", Row: 2, Col: 2}); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := session.Region("Sheet1", 2, 1, 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.Cells[0].Left.Present || cleared.Cells[0].Left.Raw != "" {
+		t.Fatalf("copying an aligned empty cell read an unrelated physical row: %+v", cleared.Cells[0])
+	}
+	if err := session.CopyRightToLeft(workbook.CellRef{Sheet: "Sheet1", Row: 4, Col: 2}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := session.Region("Sheet1", 4, 1, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Cells[1].Left.Raw != "two" || after.Cells[1].Status != diff.Unchanged {
+		t.Fatalf("aligned copy used the wrong physical source row: %+v", after.Cells)
 	}
 }
 

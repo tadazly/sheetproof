@@ -40,6 +40,8 @@
 - 单格、Shift 范围、鼠标拖拽范围和整行选择
 - 使用 Git 双栏配色：增加为绿色、删除为红色、修改为左红右绿、冲突为橙色；
   “工作表与差异”同时显示四类行数量
+- UGit 合并模式读取共同基线，并把 Git 的 XLSX 文件级冲突与双方实际表格语义
+  冲突分开说明；存在唯一 `id` 时按左侧记录对齐右侧，避免插入一行后整段错位
 - 差异索引提供“增加 / 删除 / 修改 / 冲突”筛选页签，并按“冲突 > 修改 > 删除
   > 增加”自动选择首个有内容的分类和索引项
 - 打开表格时若当前摘要工作表没有差异，会自动进入首个有差异的工作表，并让
@@ -144,7 +146,10 @@ ugxlsx repo \
 注册为当前正在运行的 ugxlsx：
 
 - 只替换 `*.xlsx` 对应的 `difftool` / `mergetool` 项，不修改其他后缀；
-- 自动写入差异、合并和 `trustExitCode=false` 配置，并在写入后重新读取校验；
+- 差异工具注册为 UGit 5.51 可直接启动的 `SpreadsheetCompare`，合并工具写入
+  `$BASE`、`$MERGED` 和 `trustExitCode=false`，并在写入后重新读取校验；
+- 同时保留标准 `Custom` difftool 命令，供普通 Git difftool 显式选择；UGit 按
+  首个同后缀配置优先命中前面的 `SpreadsheetCompare`；
 - 如果应用被移动，再次点击会检测当前可执行文件路径并覆盖旧路径；
 - 如果任一步失败，会尝试恢复配置前的全部 `*.xlsx` 工具项；
 - 已经正确配置时不会重复写入；UGit 正在运行时，配置后应重启 UGit；
@@ -171,7 +176,7 @@ ugxlsx 主窗口，也不改变 macOS/Linux 行为。Windows 的未保存确认�
 | 字段 | 内容 |
 |---|---|
 | 后缀 | `*.xlsx` |
-| 工具 | `Custom` |
+| 工具 | `SpreadsheetCompare` |
 | 路径（macOS） | `/绝对路径/ugxlsx/build/bin/ugxlsx.app/Contents/MacOS/ugxlsx` |
 | 路径（Windows） | `C:\绝对路径\ugxlsx.exe` |
 | Args | `compare --left "$LOCAL" --right "$REMOTE"` |
@@ -182,7 +187,13 @@ ugxlsx 主窗口，也不改变 macOS/Linux 行为。Windows 的未保存确认�
 /Users/luyi/splan-git/ugxlsx/build/bin/ugxlsx.app/Contents/MacOS/ugxlsx
 ```
 
-Git difftool 会设置标准的 `GIT_DIFF_PATH_COUNTER` 和
+UGit 5.51 对名为 `SpreadsheetCompare` 的工具使用直接路径列表协议：先把两侧
+绝对路径逐行写入 `SpreadsheetCompare-*.txt`，再直接启动 ugxlsx。ugxlsx 会识别
+该列表并建立只读会话。因此“使用差异工具与工作区对比”即使两侧字节相同、
+`git difftool` 本来没有可交给外部工具的差异，也仍会打开窗口。推荐使用应用内
+“配置 UGit”，它会同时处理带空格的可执行文件路径。
+
+普通 Git difftool 会设置标准的 `GIT_DIFF_PATH_COUNTER` 和
 `GIT_DIFF_PATH_TOTAL` 环境变量。`ugxlsx` 检测到这些变量后自动把整个差异
 会话设为只读，不依赖 Args 是否显式带 `--readonly-left`。界面两侧显示
 “Git 差异快照 · 只读”，隐藏冗长临时目录，并禁用编辑、复制合并、撤销、
@@ -210,10 +221,13 @@ Git 对新增或删除的文件会把不存在的一侧传为 `/dev/null`（Wind
 | 后缀 | `*.xlsx` |
 | 工具 | `Custom` |
 | 路径 | 与差异工具相同 |
-| Args | `compare --left "$LOCAL" --right "$REMOTE" --output "$MERGED"` |
+| Args | `compare --left "$LOCAL" --right "$REMOTE" --base "$BASE" --output "$MERGED"` |
 
-当前是基于 `$LOCAL` 和 `$REMOTE` 的双向表格语义合并，不读取 `$BASE`。只有用户
-点击保存后，结果才通过安全保存流程写入 `$MERGED`；不要省略 `--output
+`$BASE` 只用于判断左右两侧分别是否相对共同基线发生语义变化，并在界面中解释
+Git 文件级冲突；实际覆盖、追加和保存仍由 `$LOCAL` / `$REMOTE` 会话完成。
+合并模式会在首行存在唯一 `id` 时把右侧记录映射到左侧同 ID 的显示行，空白或
+重复 ID 保持坐标回退语义。只有用户点击保存后，结果才通过安全保存流程写入
+`$MERGED`；不要省略 `--output
 "$MERGED"`，否则 Git 提供的临时 `$LOCAL` 可能成为默认保存目标。
 
 如果点击后无窗口，先在终端检查桌面二进制：
@@ -237,6 +251,7 @@ Git 对新增或删除的文件会把不存在的一侧传为 `/dev/null`（Wind
 ```text
 --title TEXT
 --readonly-left
+--base FILE
 --output FILE
 ```
 
@@ -314,6 +329,7 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 ```
 
 集成测试完全由代码生成工作簿，覆盖多数据类型、中文/特殊字符、多工作表、公式、样式、合并单元格、行高列宽、超链接、批注、安全保存、保存后重开、失败不损坏和外部修改检测。完整 GUI 手工流程见 [docs/manual-acceptance.md](docs/manual-acceptance.md)。
+任何 UI 布局、样式、可见性或交互改动都必须在当次 Wails 桌面构建上完成实机验收后才能交付。Windows 的常规启动截图验收使用 `scripts/capture-wails-window.ps1`，一次完成目标进程启动、DPI 感知的固定窗口、整窗截图和干净退出；需要点击操作的流程再在此基础上补充交互步骤。
 
 ## Benchmark
 
@@ -359,7 +375,9 @@ AGENTS.md            项目协作规则和兼容不变量
 - 不编辑图片、图表、数据透视表、宏、外部连接或条件格式。
 - 右侧独有工作表会显示，但首版没有“一键复制整个工作表”；可逐单元格合并的前提是工作表两侧都存在。
 - 顶部批量复制只提交选区中的差异坐标；右键“复制/覆盖整行”会提交所选行的完整列范围。单次最多处理 10,000 个单元格。
-- 冲突行识别依赖首行名为 `id`（不区分大小写）的列，且当前按左右相同物理行判断；没有 `id` 列时仍分类增加/删除/修改，但不提供冲突追加菜单。
+- 冲突行识别依赖首行名为 `id`（不区分大小写）的列。普通双文件/仓库模式按
+  相同物理行判断；UGit mergetool 模式会先按双方唯一 ID 对齐到左侧记录行。
+  没有 `id` 列或 ID 重复/空白时仍分类增加/删除/修改，但相应记录不做 ID 对齐。
 - 差异索引前端当前一次读取当前工作表最多 10,000 条，尚未提供跨页 UI。
 - 不提供重做、完整公式计算、格式工具栏或 Excel 级公式编辑器。
 - excelize 会重写 OOXML 包。未修改的常见内容已有回归测试，但图片、图表、透视表、外部连接、复杂条件格式和厂商私有扩展没有保真承诺。请勿用本工具保存包含宏的文件（`.xlsm` 会在打开前被拒绝）。

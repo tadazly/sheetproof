@@ -1765,7 +1765,7 @@ onBeforeUnmount(() => {
             <div class="source-card-heading">
               <span class="source-icon"><AppIcon :name="leftReadonly ? 'files' : 'edit'" /></span>
               <span>
-                <small>{{ summary.options.gitDiff ? "Git 差异快照 · 只读" : leftReadonly ? "原始表格 · 只读" : "原始表格 · 可编辑" }}</small>
+                <small>{{ summary.options.gitDiff ? "Git 差异快照 · 只读" : summary.options.gitMerge ? "Git 合并来源 · 可编辑" : leftReadonly ? "原始表格 · 只读" : "原始表格 · 可编辑" }}</small>
                 <strong>{{ summary.options.leftLabel }}</strong>
               </span>
               <span class="source-state"><AppIcon name="check" :size="12" />{{ leftReadonly ? "只读" : "已解析" }}</span>
@@ -1777,7 +1777,7 @@ onBeforeUnmount(() => {
           <div class="source-card readonly-source">
             <div class="source-card-heading">
               <span class="source-icon"><AppIcon name="files" /></span>
-              <span><small>{{ summary.options.gitDiff ? "Git 差异快照 · 只读" : "目标表格 · 只读" }}</small><strong>{{ summary.options.rightLabel }}</strong></span>
+              <span><small>{{ summary.options.gitDiff ? "Git 差异快照 · 只读" : summary.options.gitMerge ? "Git 合并来源 · 只读" : "目标表格 · 只读" }}</small><strong>{{ summary.options.rightLabel }}</strong></span>
               <span class="source-state"><AppIcon name="check" :size="12" />只读</span>
             </div>
             <span class="source-path" :title="summary.options.gitDiff ? '由 Git 提供的临时只读快照' : summary.diff.rightFile">
@@ -1786,22 +1786,34 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div v-if="summary" class="result-summary" aria-label="对比结果摘要">
-          <div class="result-summary-title">
-            <AppIcon :name="summary.diff.equal ? 'check' : 'selection'" />
-            <span>
-              <small>对比结果</small>
-              <strong>{{ summary.diff.equal ? "两侧内容一致" : `${summary.diff.differenceCount} 处差异` }}</strong>
+        <div v-if="summary" class="comparison-summary-stack">
+          <div class="result-summary" aria-label="对比结果摘要">
+            <div class="result-summary-title">
+              <AppIcon :name="summary.diff.equal ? 'check' : 'selection'" />
+              <span>
+                <small>对比结果</small>
+                <strong>{{ summary.diff.equal ? "两侧内容一致" : `${summary.diff.differenceCount} 处差异` }}</strong>
+              </span>
+            </div>
+            <span class="summary-metric added"><i></i>新增行 <strong>{{ resultMetrics.added }}</strong></span>
+            <span class="summary-metric deleted"><i></i>删除行 <strong>{{ resultMetrics.deleted }}</strong></span>
+            <span class="summary-metric modified"><i></i>修改行 <strong>{{ resultMetrics.modified }}</strong></span>
+            <span class="summary-metric conflict"><i></i>冲突行 <strong>{{ resultMetrics.conflict }}</strong></span>
+            <span class="summary-context">
+              当前筛选：{{ rowStatusLabel(diffFilter) }}
+              <template v-if="selectionSize > 0"> · 已选择 {{ selectionSize }} 格</template>
             </span>
           </div>
-          <span class="summary-metric added"><i></i>新增行 <strong>{{ resultMetrics.added }}</strong></span>
-          <span class="summary-metric deleted"><i></i>删除行 <strong>{{ resultMetrics.deleted }}</strong></span>
-          <span class="summary-metric modified"><i></i>修改行 <strong>{{ resultMetrics.modified }}</strong></span>
-          <span class="summary-metric conflict"><i></i>冲突行 <strong>{{ resultMetrics.conflict }}</strong></span>
-          <span class="summary-context">
-            当前筛选：{{ rowStatusLabel(diffFilter) }}
-            <template v-if="selectionSize > 0"> · 已选择 {{ selectionSize }} 格</template>
-          </span>
+
+          <div
+            v-if="summary.options.gitMerge && summary.mergeNotice"
+            class="merge-semantic-notice"
+            role="status"
+            aria-live="polite"
+          >
+            <AppIcon name="alert" :size="15" />
+            <span>{{ summary.mergeNotice }}</span>
+          </div>
         </div>
 
         <div class="grids">

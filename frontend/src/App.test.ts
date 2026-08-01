@@ -10,6 +10,7 @@ const emptySummary: Summary = {
     rightLabel: "对比来源（只读）",
     readonlyLeft: false,
     gitDiff: false,
+    gitMerge: false,
     output: ""
   },
   diff: {
@@ -25,6 +26,7 @@ const emptySummary: Summary = {
   dirty: false,
   undoCount: 0,
   warnings: [],
+  mergeNotice: "",
   selectedSheet: ""
 };
 
@@ -183,6 +185,25 @@ describe("App", () => {
     await search.setValue("不存在");
     expect(wrapper.find(".repository-tree").exists()).toBe(false);
     expect(wrapper.text()).toContain("没有匹配的文件或目录");
+  });
+
+  it("distinguishes a Git file conflict from semantic row conflicts", async () => {
+    const mergeSummary = structuredClone(emptySummary);
+    mergeSummary.options.gitMerge = true;
+    mergeSummary.mergeNotice = "Git 已将此 XLSX 标记为文件级冲突，但右侧与共同基线语义一致；当前只有左侧存在实际表格变化，没有双方语义冲突。";
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => mergeSummary
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Git 合并来源 · 可编辑");
+    expect(wrapper.get(".comparison-summary-stack").element.children).toHaveLength(2);
+    expect(wrapper.get(".merge-semantic-notice").text()).toContain("没有双方语义冲突");
   });
 
   it("keeps five recent searches per repository and provides a larger clear action", async () => {

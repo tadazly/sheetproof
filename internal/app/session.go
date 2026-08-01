@@ -24,7 +24,9 @@ type Options struct {
 	RightLabel     string `json:"rightLabel"`
 	ReadonlyLeft   bool   `json:"readonlyLeft"`
 	GitDiff        bool   `json:"gitDiff"`
+	GitMerge       bool   `json:"gitMerge"`
 	Output         string `json:"output"`
+	MergeBase      string `json:"-"`
 	RepositoryPath string `json:"repositoryPath,omitempty"`
 	RepositoryFile string `json:"repositoryFile,omitempty"`
 	RepositoryRef  string `json:"repositoryRef,omitempty"`
@@ -37,6 +39,7 @@ type Summary struct {
 	Dirty         bool               `json:"dirty"`
 	UndoCount     int                `json:"undoCount"`
 	Warnings      []string           `json:"warnings"`
+	MergeNotice   string             `json:"mergeNotice"`
 	SelectedSheet string             `json:"selectedSheet"`
 }
 
@@ -89,11 +92,14 @@ type Session struct {
 	rightFile   *excelize.File
 	left        *workbook.WorkbookSnapshot
 	right       *workbook.WorkbookSnapshot
+	rightSource *workbook.WorkbookSnapshot
+	rightRows   map[string]map[int]int
 	currentDiff *diff.WorkbookDiff
 	history     history.Stack
 	options     Options
 	dirty       bool
 	warnings    []string
+	mergeNotice string
 	stateID     uint64
 	savedState  uint64
 	nextState   uint64
@@ -120,7 +126,7 @@ func OpenContext(ctx context.Context, leftPath, rightPath string, options Option
 	if err != nil {
 		return nil, err
 	}
-	rightFile, right, err := reader.OpenContext(ctx, rightPath)
+	rightFile, rightSource, err := reader.OpenContext(ctx, rightPath)
 	if err != nil {
 		_ = leftFile.Close()
 		return nil, err
@@ -130,16 +136,40 @@ func OpenContext(ctx context.Context, leftPath, rightPath string, options Option
 		_ = leftFile.Close()
 		return nil, err
 	}
+	right := rightSource
+	rightRows := identityRightRows(rightSource)
+	alignmentWarnings := []string(nil)
+	if options.GitMerge {
+		var moved int
+		right, rightRows, moved = alignRightRowsByID(left, rightSource)
+		if moved > 0 {
+			alignmentWarnings = append(alignmentWarnings, fmt.Sprintf(
+				"检测到 %d 条同 ID 记录位于不同物理行，已按左侧 ID 对齐显示，避免把插入/删除放大为连续修改。", moved,
+			))
+		}
+	}
 	currentDiff, err := compareContext(ctx, left, right)
 	if err != nil {
 		_ = rightFile.Close()
 		_ = leftFile.Close()
 		return nil, err
 	}
+	mergeNotice := ""
+	if options.GitMerge && strings.TrimSpace(options.MergeBase) != "" {
+		baseFile, base, baseErr := reader.OpenContext(ctx, options.MergeBase)
+		if baseErr != nil {
+			_ = rightFile.Close()
+			_ = leftFile.Close()
+			return nil, baseErr
+		}
+		_ = baseFile.Close()
+		mergeNotice = mergeSemanticNotice(base, left, rightSource)
+	}
 	options = defaultOptions(options)
 	return &Session{
 		leftFile: leftFile, rightFile: rightFile,
-		left: left, right: right, currentDiff: currentDiff,
+		left: left, right: right, rightSource: rightSource, rightRows: rightRows,
+		currentDiff: currentDiff, warnings: alignmentWarnings, mergeNotice: mergeNotice,
 		options: options, stateID: 1, savedState: 1, nextState: 2,
 	}, nil
 }
@@ -193,14 +223,21 @@ func defaultOptions(options Options) Options {
 // undo history and the left save target remain intact.
 func (s *Session) ReplaceRight(rightPath, rightLabel string) error {
 	reader := workbook.Reader{}
-	rightFile, right, err := reader.Open(rightPath)
+	rightFile, rightSource, err := reader.Open(rightPath)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
 	old := s.rightFile
+	right := rightSource
+	rightRows := identityRightRows(rightSource)
+	if s.options.GitMerge {
+		right, rightRows, _ = alignRightRowsByID(s.left, rightSource)
+	}
 	s.rightFile = rightFile
 	s.right = right
+	s.rightSource = rightSource
+	s.rightRows = rightRows
 	s.currentDiff = diff.Compare(s.left, right)
 	s.resolutions = nil
 	if rightLabel != "" {
@@ -220,6 +257,8 @@ func (s *Session) DetachRight(rightLabel string) error {
 	old := s.rightFile
 	s.rightFile = nil
 	s.right = nil
+	s.rightSource = nil
+	s.rightRows = nil
 	s.currentDiff = nil
 	s.resolutions = nil
 	if rightLabel != "" {
@@ -257,7 +296,7 @@ func (s *Session) Summary() Summary {
 		Options: s.options, Diff: compactDiff(presentation),
 		Resolutions: append([]RowResolution{}, s.resolutions...),
 		Dirty:       s.dirty, UndoCount: s.history.Len(),
-		Warnings: append([]string{}, s.warnings...), SelectedSheet: selected,
+		Warnings: append([]string{}, s.warnings...), MergeNotice: s.mergeNotice, SelectedSheet: selected,
 	}
 }
 
@@ -423,7 +462,7 @@ func (s *Session) copyRightToLeftManyLocked(
 		if err != nil {
 			return err
 		}
-		after, err := merge.Capture(s.rightFile, ref)
+		after, err := s.captureRightLocked(ref)
 		if err != nil {
 			return err
 		}
@@ -590,12 +629,11 @@ func (s *Session) AppendRowsRightToLeft(
 		targetRow := targetStart + index
 		for col := 1; col <= maxCol; col++ {
 			targetRef := workbook.CellRef{Sheet: sheet, Row: targetRow, Col: col}
-			sourceRef := workbook.CellRef{Sheet: sheet, Row: sourceRow, Col: col}
 			before, captureErr := merge.Capture(s.leftFile, targetRef)
 			if captureErr != nil {
 				return nil, captureErr
 			}
-			after, captureErr := merge.Capture(s.rightFile, sourceRef)
+			after, captureErr := s.captureRightLocked(workbook.CellRef{Sheet: sheet, Row: sourceRow, Col: col})
 			if captureErr != nil {
 				return nil, captureErr
 			}
@@ -858,6 +896,19 @@ func (s *Session) sheetDiffLocked(name string) *diff.SheetDiff {
 		}
 	}
 	return nil
+}
+
+func (s *Session) captureRightLocked(ref workbook.CellRef) (merge.CellState, error) {
+	if rows := s.rightRows[ref.Sheet]; rows != nil {
+		if physicalRow := rows[ref.Row]; physicalRow > 0 {
+			ref.Row = physicalRow
+			return merge.Capture(s.rightFile, ref)
+		}
+		if s.options.GitMerge {
+			return merge.CellState{}, nil
+		}
+	}
+	return merge.Capture(s.rightFile, ref)
 }
 
 func (s *Session) rowStatusLocked(sheet string, row int) diff.RowStatus {

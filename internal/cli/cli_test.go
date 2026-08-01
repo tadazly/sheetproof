@@ -204,6 +204,66 @@ func TestCompareForcesGitDiffToolInvocationReadOnly(t *testing.T) {
 	}
 }
 
+func TestUGitSpreadsheetCompareListAlwaysLaunchesReadOnly(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	listDir := t.TempDir()
+	listPath := filepath.Join(listDir, "SpreadsheetCompare-123.txt")
+	if err := os.WriteFile(listPath, []byte(pair.Left+"\r\n"+pair.Right+"\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var launchedLeft, launchedRight string
+	var launched app.Options
+	launcher := func(left, right string, options app.Options) error {
+		launchedLeft, launchedRight, launched = left, right, options
+		return nil
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{listPath}, &stdout, &stderr, launcher)
+	if code != ExitOK {
+		t.Fatalf("exit = %d stderr=%s", code, stderr.String())
+	}
+	if launchedLeft != pair.Left || launchedRight != pair.Right {
+		t.Fatalf("launched paths = %q / %q", launchedLeft, launchedRight)
+	}
+	if !launched.GitDiff || !launched.ReadonlyLeft || launched.LeftLabel != "选中版本" || launched.RightLabel != "工作区" {
+		t.Fatalf("UGit direct options = %+v", launched)
+	}
+}
+
+func TestComparePassesMergeBaseMetadata(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := filepath.Join(t.TempDir(), "base.xlsx")
+	data, err := os.ReadFile(pair.Right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(base, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var launched app.Options
+	launcher := func(_, _ string, options app.Options) error {
+		launched = options
+		return nil
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{
+		"compare", "--left", pair.Left, "--right", pair.Right,
+		"--base", base, "--output", filepath.Join(t.TempDir(), "merged.xlsx"),
+	}, &stdout, &stderr, launcher)
+	if code != ExitOK {
+		t.Fatalf("exit = %d stderr=%s", code, stderr.String())
+	}
+	if !launched.GitMerge || launched.MergeBase != base {
+		t.Fatalf("merge options = %+v", launched)
+	}
+}
+
 func TestCompareUsesUGitEnvironmentLabelsWhenFlagsAreAbsent(t *testing.T) {
 	pair, err := testutil.CreatePair(t.TempDir())
 	if err != nil {

@@ -662,6 +662,12 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   background: var(--color-surface);
   font-size: 10px;
 }
+.comparison-summary-stack {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto;
+}
 .result-summary {
   min-width: 0;
   min-height: 42px;
@@ -692,6 +698,19 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.merge-semantic-notice {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  color: #7a4512;
+  border-bottom: 1px solid #efc48f;
+  background: #fff7e8;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.merge-semantic-notice svg { flex: 0 0 auto; color: var(--diff-conflict); }
 
 .grids {
   min-height: 0;

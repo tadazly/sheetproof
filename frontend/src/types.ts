@@ -60,6 +60,7 @@ export interface Summary {
     rightLabel: string;
     readonlyLeft: boolean;
     gitDiff: boolean;
+    gitMerge: boolean;
     output: string;
     repositoryPath?: string;
     repositoryFile?: string;
@@ -78,6 +79,7 @@ export interface Summary {
   dirty: boolean;
   undoCount: number;
   warnings: string[];
+  mergeNotice: string;
   selectedSheet: string;
 }
 

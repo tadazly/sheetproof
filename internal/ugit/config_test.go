@@ -57,6 +57,9 @@ func TestConfigureUpdatesMovedExecutableAndOnlyTouchesXLSXTools(t *testing.T) {
 	if !afterMove.Configured {
 		t.Fatal("moved configuration was not verified")
 	}
+	if !contains(afterMove.ExistingPaths, secondExecutable) {
+		t.Fatalf("existing paths = %v, want unquoted executable path %q", afterMove.ExistingPaths, secondExecutable)
+	}
 	for _, entry := range afterMove.Existing {
 		if strings.Contains(entry.Value, firstExecutable) {
 			t.Fatalf("old executable path remains in %s", entry.Key)
@@ -66,13 +69,19 @@ func TestConfigureUpdatesMovedExecutableAndOnlyTouchesXLSXTools(t *testing.T) {
 		t,
 		c,
 		diffCommandKey,
+		"'\""+secondExecutable+"\"'"+` compare --left "$LOCAL" --right "$REMOTE"`,
+	)
+	assertConfigValue(
+		t,
+		c,
+		diffFallbackKey,
 		"'"+secondExecutable+`' compare --left "$LOCAL" --right "$REMOTE"`,
 	)
 	assertConfigValue(
 		t,
 		c,
 		mergeCommandKey,
-		"'"+secondExecutable+`' compare --left "$LOCAL" --right "$REMOTE" --output "$MERGED"`,
+		"'"+secondExecutable+`' compare --left "$LOCAL" --right "$REMOTE" --base "$BASE" --output "$MERGED"`,
 	)
 	assertConfigValue(t, c, mergeTrustExitKey, "false")
 }

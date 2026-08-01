@@ -99,8 +99,23 @@ GOCACHE=/tmp/ugxlsx-go-cache \
   go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 ```
 
+For every UI layout, styling, visibility, or interaction change, real desktop GUI acceptance is
+a mandatory delivery gate. Build and launch the current Wails desktop artifact, exercise the
+affected flow with representative data, capture screenshots, and inspect the rendered layout and
+state before handing the change to the user. Frontend unit tests, browser-only DOM checks, and a
+successful Wails build do not substitute for this acceptance. If the environment cannot complete
+the desktop check, keep working on the acceptance setup or report a blocker; do not hand an
+unverified UI change to the user for trial-and-error.
+
+On Windows, use `scripts/capture-wails-window.ps1` for the normal screenshot acceptance path. It
+starts the exact built executable with test arguments, waits for its window, applies DPI-aware fixed
+bounds, captures the complete window, and requests a clean close in one command. Prefer this path
+over manually locating, resizing, capturing, cropping, and closing the window. Only fall back to
+manual capture when the affected interaction cannot be represented at launch; keep the reusable
+launch-and-capture step in the flow even then.
+
 Report automated tests, desktop packaging, and real GUI acceptance separately. Do not claim a
-manual flow passed unless it was actually exercised.
+manual flow passed unless it was actually exercised and visually inspected.
 
 ## Keep handoff material current
 

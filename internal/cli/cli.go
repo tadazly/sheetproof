@@ -38,6 +38,9 @@ func Run(args []string, stdout, stderr io.Writer, launch Launcher) int {
 		}
 		return ExitOK
 	}
+	if handled, code := runUGitSpreadsheetCompare(args, stderr, launch); handled {
+		return code
+	}
 	switch args[0] {
 	case "diff":
 		return runDiff(args[1:], stdout, stderr)
@@ -185,6 +188,7 @@ func runCompare(args []string, stderr io.Writer, launch Launcher) int {
 	leftLabel := flags.String("left-label", "", "left display label")
 	rightLabel := flags.String("right-label", "", "right display label")
 	readonly := flags.Bool("readonly-left", false, "disable edits and saving")
+	base := flags.String("base", "", "merge base .xlsx path")
 	output := flags.String("output", "", "default save target")
 	if err := flags.Parse(args); err != nil {
 		return ExitRuntime
@@ -204,17 +208,89 @@ func runCompare(args []string, stderr io.Writer, launch Launcher) int {
 		}
 		defer cleanup()
 	}
+	hasMergeBaseArgument := strings.TrimSpace(*base) != ""
+	mergeBase := ""
+	if hasMergeBaseArgument && !isNullDevice(*base) {
+		if err := workbook.ValidateXLSXPath(*base); err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitCode(err)
+		}
+		mergeBase = *base
+	}
 	gitDiff := isGitDiffToolInvocation()
 	resolvedLeftLabel, resolvedRightLabel := resolveCompareLabels(*leftLabel, *rightLabel)
 	options := app.Options{
 		Title: *title, LeftLabel: resolvedLeftLabel, RightLabel: resolvedRightLabel,
 		ReadonlyLeft: *readonly || gitDiff, GitDiff: gitDiff, Output: *output,
+		GitMerge:  hasMergeBaseArgument,
+		MergeBase: mergeBase,
 	}
 	if err := launch(preparedLeft, preparedRight, options); err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitCode(err)
 	}
 	return ExitOK
+}
+
+// runUGitSpreadsheetCompare implements the direct path-list protocol used by
+// UGit 5.51 for a diff tool named SpreadsheetCompare. UGit writes two absolute
+// workbook paths to a temporary text file and starts the configured program
+// with only that file as its argument. Unlike git difftool, this route launches
+// even when Git has no byte-level difference to hand to an external command.
+func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher) (bool, int) {
+	if len(args) != 1 {
+		return false, ExitRuntime
+	}
+	listPath := strings.TrimSpace(args[0])
+	if !strings.HasPrefix(filepath.Base(listPath), "SpreadsheetCompare-") ||
+		!strings.EqualFold(filepath.Ext(listPath), ".txt") {
+		return false, ExitRuntime
+	}
+	data, err := os.ReadFile(listPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "读取 UGit 差异文件列表: %v\n", err)
+		return true, ExitRead
+	}
+	var paths []string
+	for _, line := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
+		if value := strings.TrimSpace(line); value != "" {
+			paths = append(paths, value)
+		}
+	}
+	if len(paths) != 2 {
+		fmt.Fprintln(stderr, "UGit 差异文件列表必须恰好包含两个 XLSX 路径")
+		return true, ExitRuntime
+	}
+	if err := validateComparePaths(paths[0], paths[1]); err != nil {
+		fmt.Fprintln(stderr, err)
+		return true, exitCode(err)
+	}
+	rightLabel := "对比版本"
+	if !pathWithinDirectory(paths[1], filepath.Dir(listPath)) {
+		rightLabel = "工作区"
+	}
+	options := app.Options{
+		LeftLabel: "选中版本", RightLabel: rightLabel,
+		ReadonlyLeft: true, GitDiff: true,
+	}
+	if err := launch(paths[0], paths[1], options); err != nil {
+		fmt.Fprintln(stderr, err)
+		return true, exitCode(err)
+	}
+	return true, ExitOK
+}
+
+func pathWithinDirectory(path, directory string) bool {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absDirectory, err := filepath.Abs(directory)
+	if err != nil {
+		return false
+	}
+	relative, err := filepath.Rel(absDirectory, absPath)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
 }
 
 // resolveCompareLabels uses UGit's per-invocation reference titles when the

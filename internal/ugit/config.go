@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	diffCommandKey       = "difftool.*.xlsx_Custom.cmd"
+	diffCommandKey       = "difftool.*.xlsx_SpreadsheetCompare.cmd"
+	diffFallbackKey      = "difftool.*.xlsx_Custom.cmd"
 	mergeCommandKey      = "mergetool.*.xlsx_Custom.cmd"
 	mergeTrustExitKey    = "mergetool.*.xlsx_Custom.trustexitcode"
 	managedKeyExpression = `^(difftool|mergetool)\.\*\.xlsx_[0-9A-Za-z]+\.(cmd|trustexitcode)$`
@@ -399,14 +400,27 @@ func validateExecutablePath(path string) error {
 
 func desiredEntries(executablePath string) []Entry {
 	quotedPath := "'" + executablePath + "'"
+	// UGit treats a tool named SpreadsheetCompare specially: it exports both
+	// sides itself and always starts the configured executable with a one-file
+	// path-list protocol. This is the only UGit 5.51 path that still opens the
+	// external viewer when Git considers the selected revision and worktree
+	// file byte-identical.
+	// The nested double quotes are retained by UGit's config parser, so its
+	// direct ChildProcess.exec call also works when the executable path contains
+	// spaces.
+	ugitDirectPath := "'\"" + executablePath + "\"'"
 	return []Entry{
 		{
 			Key:   diffCommandKey,
+			Value: ugitDirectPath + ` compare --left "$LOCAL" --right "$REMOTE"`,
+		},
+		{
+			Key:   diffFallbackKey,
 			Value: quotedPath + ` compare --left "$LOCAL" --right "$REMOTE"`,
 		},
 		{
 			Key:   mergeCommandKey,
-			Value: quotedPath + ` compare --left "$LOCAL" --right "$REMOTE" --output "$MERGED"`,
+			Value: quotedPath + ` compare --left "$LOCAL" --right "$REMOTE" --base "$BASE" --output "$MERGED"`,
 		},
 		{Key: mergeTrustExitKey, Value: "false"},
 	}
@@ -480,6 +494,7 @@ func existingPaths(entries []Entry) []string {
 			continue
 		}
 		path := value[1 : end+1]
+		path = strings.Trim(path, `"`)
 		if _, exists := seen[path]; exists {
 			continue
 		}

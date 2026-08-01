@@ -91,6 +91,13 @@ Git difftool 同时向工具进程传递 `GIT_DIFF_PATH_COUNTER` 和
 这些变量的 Git mergetool 仍保持原有可写语义。前端用 `GitDiff` 把两侧标为
 “Git 差异快照 · 只读”，只显示快照文件名，不把宿主临时目录作为可写路径呈现。
 
+UGit 5.51 对工具名 `SpreadsheetCompare` 走独立于 `git difftool` 的路径：UGit
+自行导出两侧文件，把绝对路径逐行写入 `SpreadsheetCompare-*.txt`，然后直接
+执行配置中的程序。`internal/cli` 在普通子命令分派前识别这个单参数协议，严格
+要求两个有效 XLSX 路径，并建立 `GitDiff + ReadonlyLeft` 会话。因为该流程不再
+依赖 Git 先确认字节差异，“与工作区对比”在所选版本和工作区内容相同时也能
+拉起窗口；列表和 UGit 导出的工作簿仍位于宿主临时目录，不写入用户仓库。
+
 UGit 5.51.0 会额外注入 `LOCAL_TITLE`、`REMOTE_TITLE` 和 `WORKSPACE_PATH`。
 直接 `compare` 在对应 `--left-label` / `--right-label` 为空时逐侧读取前两个
 变量作为展示名，显式 CLI 参数优先。标签只进入 `app.Options` 的界面元数据，
@@ -100,8 +107,10 @@ UGit 5.51.0 会额外注入 `LOCAL_TITLE`、`REMOTE_TITLE` 和 `WORKSPACE_PATH`�
 顶部“配置 UGit”调用 `internal/ugit`，通过参数数组执行 `git config --global`，
 不直接编辑用户的配置文件，也不调用 shell。注册前读取所有符合 UGit 命名规则
 的全局 `*.xlsx` 差异/合并项；用户在原生对话框确认后，只清理这些 XLSX 项，
-再写入当前可执行文件的差异命令、带 `$MERGED` 的合并命令，以及
-`trustExitCode=false`。写入后重新读取并做精确比较；中途失败会用操作前快照
+再依次写入工具名为 `SpreadsheetCompare` 的 UGit 直连差异命令、供普通 Git
+difftool 显式选择的标准 `Custom` 差异命令、带 `$BASE` / `$MERGED` 的 `Custom`
+合并命令，以及 `trustExitCode=false`。直连差异程序路径保留 UGit 直接
+`exec` 所需的双引号，以兼容含空格安装目录。写入后重新读取并做精确比较；中途失败会用操作前快照
 恢复。CSV 等其他后缀不在读取和清理表达式内。
 
 可执行文件路径来自 `os.Executable` 并规范化：macOS 使用 `.app` 内部 Mach-O，
@@ -214,6 +223,23 @@ Go 后端同时返回单元格状态和行状态。右侧存在、左侧不存�
 若首行存在不区分大小写的 `id` 列、同一物理行两侧 ID 相同且非空，并且其余
 实际存在的数据列全部不同，则整行标为橙色“冲突”。空白占位列不参与“全部
 不同”的判断。没有 `id` 列时不生成冲突行。
+
+Git mergetool 入口额外传入 `$BASE` 并设置 `Options.GitMerge`。该模式以可写左侧
+的物理行作为显示坐标，对两侧都唯一且非空的 ID 建立“右侧物理行 → 左侧逻辑行”
+映射；右侧独有且坐标已占用的记录追加到逻辑尾部，空白/重复 ID 保持坐标回退。
+差异、Region、右侧复制和追加都使用同一映射，右侧逻辑空行不会误读原物理行。
+因此单侧插入/删除不会把后续全部记录放大为连续修改；普通双文件和仓库模式仍
+保持精确物理坐标语义。
+
+共同基线仅用于分别比较 `BASE↔LOCAL` 和 `BASE↔REMOTE` 的核心表格语义，并生成
+固定的合并说明，不参与覆盖值或保存目标选择。界面明确区分 Git 对二进制 XLSX
+给出的“文件级冲突”和橙色语义冲突行：只有左右两侧都改变同一对齐记录且满足
+既有冲突规则时才显示橙色；若一侧与基线语义一致，则说明没有双方语义冲突。
+
+前端 `.content` 保持四条纵向布局轨道：来源卡、摘要区、双表格弹性区和底部差异
+详情。对比结果与 Git 合并语义说明共同封装在 `comparison-summary-stack` 中，只占用
+一条自动高度的摘要轨道；双表格是唯一的 `minmax(0, 1fr)` 弹性轨道。新增摘要类
+提示不得作为 `.content` 的独立子节点，否则会把双表格挤入固定高度的详情轨道。
 
 选中态和差异态可叠加：无差异选中项使用蓝色；四类差异保留原底色并叠加蓝色
 边框。Summary 按工作表返回四类行计数，Differences 和 Region 返回对应行状态，
