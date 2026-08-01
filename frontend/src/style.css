@@ -372,20 +372,28 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 .repository-tree-header .icon-button { min-height: 27px; }
 .repository-search {
   flex: 0 0 40px;
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
-  gap: 7px;
   margin: 0;
   padding: 5px var(--space-2);
   color: var(--color-text-muted);
   border-bottom: 1px solid var(--color-border);
   background: #eef1f4;
 }
-.repository-search input {
+.repository-search-control {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.repository-search-control input {
   width: 100%;
   min-width: 0;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 34px 0 8px;
   color: var(--color-text);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
@@ -393,7 +401,57 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   background: var(--color-surface);
   font-size: 11px;
 }
-.repository-search input::placeholder { color: #9199a4; }
+.repository-search-control input::placeholder { color: #9199a4; }
+.repository-search-clear {
+  position: absolute;
+  right: 1px;
+  width: 28px;
+  min-width: 28px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  color: #687585;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+}
+.repository-search-clear:hover:not(:disabled) { border-color: transparent; color: #2f3b49; background: #e5eaf0; }
+.repository-search-history {
+  position: absolute;
+  top: calc(100% - 1px);
+  right: var(--space-2);
+  left: var(--space-2);
+  max-height: 190px;
+  overflow: auto;
+  padding: 5px;
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-popover);
+}
+.repository-search-history-title {
+  padding: 3px 7px 5px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+.repository-search-history button {
+  width: 100%;
+  min-height: 29px;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0 7px;
+  color: var(--color-text-secondary);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  font-size: 11px;
+  text-align: left;
+}
+.repository-search-history button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repository-search-history-empty { padding: 8px 7px 10px; color: var(--color-text-muted); font-size: 11px; }
 .repository-tree { flex: 1; min-height: 0; overflow: auto; padding: 5px 4px 12px; }
 .tree-row {
   width: 100%;

@@ -185,6 +185,78 @@ describe("App", () => {
     expect(wrapper.text()).toContain("没有匹配的文件或目录");
   });
 
+  it("keeps five recent searches per repository and provides a larger clear action", async () => {
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({
+            loading: false,
+            hasSession: false,
+            error: "",
+            mode: "repository",
+            repository: structuredClone(repositoryView)
+          })
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const search = wrapper.get('input[aria-label="筛选仓库文件或目录"]');
+    await search.trigger("focus");
+    expect(wrapper.get('[role="listbox"][aria-label="最近搜索"]').text()).toContain("暂无搜索记录");
+
+    for (let index = 1; index <= 6; index++) {
+      await search.setValue(`搜索 ${index}`);
+      await search.trigger("blur");
+      expect(wrapper.find('[role="listbox"][aria-label="最近搜索"]').exists()).toBe(false);
+      if (index < 6) await search.trigger("focus");
+    }
+
+    await search.trigger("focus");
+    const options = wrapper.findAll('[role="option"]');
+    expect(options).toHaveLength(5);
+    expect(options.map((option) => option.text())).toEqual([
+      "搜索 6", "搜索 5", "搜索 4", "搜索 3", "搜索 2"
+    ]);
+    expect(window.localStorage.getItem(
+      `ugxlsx:repository-search-history:${encodeURIComponent(repositoryView.path)}`
+    )).toBe(JSON.stringify(["搜索 6", "搜索 5", "搜索 4", "搜索 3", "搜索 2"]));
+
+    const historyItem = options.find((option) => option.text() === "搜索 4");
+    await historyItem!.trigger("mousedown");
+    await historyItem!.trigger("click");
+    await flushPromises();
+    expect((search.element as HTMLInputElement).value).toBe("搜索 4");
+    expect(wrapper.find('[role="listbox"][aria-label="最近搜索"]').exists()).toBe(false);
+
+    const clear = wrapper.get('button[aria-label="清空搜索"]');
+    await clear.trigger("mousedown");
+    await clear.trigger("click");
+    expect((search.element as HTMLInputElement).value).toBe("");
+    expect(wrapper.find('[role="listbox"][aria-label="最近搜索"]').exists()).toBe(true);
+
+    wrapper.unmount();
+    const otherRepository = { ...structuredClone(repositoryView), path: "/tmp/另一个仓库" };
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({
+            loading: false,
+            hasSession: false,
+            error: "",
+            mode: "repository",
+            repository: otherRepository
+          })
+        }
+      }
+    };
+    const otherWrapper = mount(App);
+    await flushPromises();
+    await otherWrapper.get('input[aria-label="筛选仓库文件或目录"]').trigger("focus");
+    expect(otherWrapper.get('[role="listbox"][aria-label="最近搜索"]').text()).toContain("暂无搜索记录");
+  });
+
   it("opens the recent repository dialog from switch repository without changing the open action", async () => {
     const otherRepository = {
       ...structuredClone(repositoryView),

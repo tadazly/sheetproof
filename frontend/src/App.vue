@@ -30,6 +30,8 @@ const VIEW_COLS = 20;
 const REGION_ROW_STEP = 12;
 const REGION_COL_STEP = 4;
 const REGION_SCHEDULE_MS = 16;
+const REPOSITORY_SEARCH_HISTORY_LIMIT = 5;
+const REPOSITORY_SEARCH_HISTORY_PREFIX = "ugxlsx:repository-search-history:";
 const DIFF_FILTER_TABS: DiffFilter[] = ["added", "deleted", "modified", "conflict"];
 
 const summary = ref<Summary | null>(null);
@@ -71,6 +73,9 @@ const repositorySwitchDialog = ref<{
 const startupLoading = ref(true);
 const expandedDirectories = ref(new Set<string>());
 const repositorySearch = ref("");
+const repositorySearchHistory = ref<string[]>([]);
+const repositorySearchFocused = ref(false);
+const repositorySearchInput = ref<HTMLInputElement | null>(null);
 const repositorySidebarTab = ref<"files" | "differences" | "sheets">("files");
 const inlineEdit = ref<{ row: number; col: number; value: string; original: RegionCell } | null>(null);
 const repoSidebar = ref<HTMLElement | null>(null);
@@ -317,6 +322,9 @@ function acceptRepositoryView(view: RepositoryView) {
   const repositoryChanged = repository.value?.path !== view.path;
   repository.value = view;
   if (repositoryChanged) {
+    repositorySearch.value = "";
+    repositorySearchFocused.value = false;
+    repositorySearchHistory.value = loadRepositorySearchHistory(view.path);
     const expanded = new Set<string>();
     for (const file of view.files) {
       const parts = file.split("/");
@@ -327,6 +335,61 @@ function acceptRepositoryView(view: RepositoryView) {
     expandedDirectories.value = expanded;
   }
   scheduleDifferenceIndexPoll();
+}
+
+function repositorySearchHistoryKey(path: string): string {
+  return `${REPOSITORY_SEARCH_HISTORY_PREFIX}${encodeURIComponent(path)}`;
+}
+
+function loadRepositorySearchHistory(path: string): string[] {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(repositorySearchHistoryKey(path)) ?? "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .slice(0, REPOSITORY_SEARCH_HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function recordRepositorySearch(value = repositorySearch.value) {
+  const path = repository.value?.path;
+  const query = value.trim();
+  if (!path || !query) return;
+  const normalized = query.toLocaleLowerCase();
+  const history = [
+    query,
+    ...repositorySearchHistory.value.filter((item) => item.toLocaleLowerCase() !== normalized)
+  ].slice(0, REPOSITORY_SEARCH_HISTORY_LIMIT);
+  repositorySearchHistory.value = history;
+  try {
+    window.localStorage.setItem(repositorySearchHistoryKey(path), JSON.stringify(history));
+  } catch {
+    // Search remains usable when WebView storage is unavailable.
+  }
+}
+
+function finishRepositorySearch() {
+  recordRepositorySearch();
+  repositorySearchFocused.value = false;
+}
+
+function endRepositorySearch() {
+  repositorySearchInput.value?.blur();
+}
+
+function clearRepositorySearch() {
+  repositorySearch.value = "";
+  repositorySearchFocused.value = true;
+  repositorySearchInput.value?.focus();
+}
+
+function applyRepositorySearchHistory(query: string) {
+  repositorySearch.value = query;
+  recordRepositorySearch(query);
+  repositorySearchFocused.value = false;
+  nextTick(() => repositorySearchInput.value?.blur());
 }
 
 function scheduleDifferenceIndexPoll() {
@@ -1443,15 +1506,52 @@ onBeforeUnmount(() => {
               @click="refreshRepository"
             ><AppIcon name="refresh" /></button>
           </div>
-          <label class="repository-search">
-            <AppIcon name="search" :size="14" />
-            <input
-              v-model="repositorySearch"
-              type="search"
-              :placeholder="repositorySidebarTab === 'differences' ? '筛选差异表或目录' : '筛选文件或目录'"
-              :aria-label="repositorySidebarTab === 'differences' ? '筛选差异表或目录' : '筛选仓库文件或目录'"
-            />
-          </label>
+          <div class="repository-search">
+            <div class="repository-search-control">
+              <AppIcon name="search" :size="14" />
+              <input
+                ref="repositorySearchInput"
+                v-model="repositorySearch"
+                type="text"
+                autocomplete="off"
+                :placeholder="repositorySidebarTab === 'differences' ? '筛选差异表或目录' : '筛选文件或目录'"
+                :aria-label="repositorySidebarTab === 'differences' ? '筛选差异表或目录' : '筛选仓库文件或目录'"
+                @focus="repositorySearchFocused = true"
+                @blur="finishRepositorySearch"
+                @keydown.enter.prevent="endRepositorySearch"
+                @keydown.esc.prevent="endRepositorySearch"
+              />
+              <button
+                v-if="repositorySearch"
+                type="button"
+                class="repository-search-clear"
+                title="清空搜索"
+                aria-label="清空搜索"
+                @mousedown.prevent
+                @click="clearRepositorySearch"
+              ><AppIcon name="x" :size="15" /></button>
+            </div>
+            <div
+              v-if="repositorySearchFocused"
+              class="repository-search-history"
+              role="listbox"
+              aria-label="最近搜索"
+            >
+              <div class="repository-search-history-title">最近搜索</div>
+              <button
+                v-for="query in repositorySearchHistory"
+                :key="query"
+                type="button"
+                role="option"
+                :aria-label="`搜索 ${query}`"
+                @mousedown.prevent
+                @click="applyRepositorySearchHistory(query)"
+              ><AppIcon name="search" :size="12" /><span>{{ query }}</span></button>
+              <div v-if="!repositorySearchHistory.length" class="repository-search-history-empty">
+                暂无搜索记录
+              </div>
+            </div>
+          </div>
           <div
             v-if="repositorySidebarTab === 'differences' && !repository.differenceFiles.length"
             class="tree-empty"
