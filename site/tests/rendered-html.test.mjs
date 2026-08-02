@@ -52,6 +52,13 @@ test("exports product routes", async () => {
   }
 });
 
+test("guide keeps the difference-row shortcut concise", async () => {
+  const html = await render("/guide");
+  assert.match(html, /差异行筛选/);
+  assert.match(html, /1–4 切换分类，5 全选/);
+  assert.doesNotMatch(html, /5 切换全部 \/ 不筛选/);
+});
+
 test("release download page contains stable v0.1.0 assets and signing limitations", async () => {
   const html = await render("/download");
   assert.match(html, /github\.com\/tadazly\/sheetproof\/releases\/download\/v0\.1\.0/);

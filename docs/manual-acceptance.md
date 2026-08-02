@@ -309,7 +309,8 @@ SheetProof compare \
 4. 确认首页首屏明确面向 Git 工作流中的配置表和数据表，不暗示格式、图表、宏或
    Excel 级编辑能力；UGit 作为独立集成模块出现。页头和页脚 GitHub 入口应指向
    `https://github.com/tadazly/sheetproof`，页脚显示
-   `Copyright (c) 2026 tadazly`。
+   `Copyright (c) 2026 tadazly`。使用说明页“常用操作”的“差异行筛选”右侧应简洁
+   显示“1–4 切换分类，5 全选”，并保持单行对齐。
 5. 发布后分别检查源站和 `https://sheetproof.luyilabs.com/`，确认主要路由、favicon、
    截图和 Open Graph 图片正常，并确认同一 Caddy 实例上的既有站点未受影响。
 6. 手动运行 GitHub Actions 的 Release workflow，确认可以生成 Windows amd64 和 macOS
