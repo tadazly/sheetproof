@@ -18,8 +18,6 @@ import (
 )
 
 const (
-	Version = "0.1.0"
-
 	ExitOK          = 0
 	ExitRuntime     = 1
 	ExitRead        = 2
@@ -52,7 +50,7 @@ func Run(args []string, stdout, stderr io.Writer, launch Launcher) int {
 		printUsage(stdout)
 		return ExitOK
 	case "version", "--version":
-		fmt.Fprintf(stdout, "ugxlsx %s\n", Version)
+		fmt.Fprintf(stdout, "SheetProof %s\n", Version)
 		return ExitOK
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
@@ -448,11 +446,11 @@ func exitCode(err error) int {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, `ugxlsx - compare and merge Excel .xlsx workbooks
+	fmt.Fprintln(w, `SheetProof - compare and merge Excel .xlsx workbooks
 
 Usage:
-  ugxlsx compare [--left FILE --right FILE] [--title TEXT] [--left-label TEXT] [--right-label TEXT] [--readonly-left] [--output FILE]
-  ugxlsx repo --path DIRECTORY [--file RELATIVE.xlsx] [--ref BRANCH]
-  ugxlsx diff --left FILE --right FILE [--format json|text]
-  ugxlsx`)
+  sheetproof compare [--left FILE --right FILE] [--title TEXT] [--left-label TEXT] [--right-label TEXT] [--readonly-left] [--output FILE]
+  sheetproof repo --path DIRECTORY [--file RELATIVE.xlsx] [--ref BRANCH]
+  sheetproof diff --left FILE --right FILE [--format json|text]
+  sheetproof`)
 }

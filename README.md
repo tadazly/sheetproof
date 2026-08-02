@@ -1,405 +1,176 @@
-# ugxlsx
+# SheetProof · 表鉴
 
-`ugxlsx` 是面向 Git/UGit 工作流的 `.xlsx` 对比与合并工具。它提供 Wails + Vue 3 桌面界面和无界面的 CLI；差异、合并、撤销和安全保存都由同一套 Go 核心实现。
+> 看清每一处差异，再决定如何合并。
 
-## 已实现
+一款本地优先的 .xlsx 对比与合并桌面工具，面向双文件、Git 仓库与 UGit 工作流。 SheetProof 在本机读取工作簿，不依赖 Excel；桌面界面和 CLI 复用同一套 Go 差异、合并、撤销与安全保存核心。
 
-- 以本地 Git 工作区为入口的三栏界面：仓库 XLSX 目录树、当前工作区、其他本地/远端分支
-- 现代化桌面生产力界面：统一设计 Token、线性 SVG 图标、分层工具栏、紧凑来源卡与结果摘要，
-  并针对最小窗口、高 DPI、键盘焦点和减少动态效果进行适配
-- 独立应用图标使用左右表格、红绿差异和双向合并语义，macOS 与 Windows
-  共享同一 SVG 设计源，不再使用 Wails 默认 “W” 占位图标
-- 从仓库子目录自动定位根目录，支持目录拖放、最近仓库自动恢复和可调目录树宽度
-- “切换仓库”提供最近打开的 10 个仓库列表；当前仓库明确标记，失效路径禁用，
-  也可从弹窗继续选择其他仓库；原“打开本地仓库”目录选择入口保持不变
-- 仓库侧栏提供“仓库文件 / 差异表 / 工作表与差异”三页签；目录树仅展示 `.xlsx`，
-  后台索引刷新不会改变用户已展开或收起的目录
-- 仓库搜索框提供易点击的独立清除按钮；聚焦时显示当前仓库最近 5 条本地搜索记录，
-  搜索记录按仓库根路径隔离，输入结束或失焦后自动收起
-- 差异表使用可持久化的语义索引：Git 先筛出双方共有的变化候选，后台再按 Go 核心相等语义精确过滤
-- 手工刷新会先校验索引签名，仓库内容未变化时直接复用；工具内保存只增量更新
-  当前表格的索引成员，不重复比较其他未变化表格
-- 仓库打开不等待逐表解析；缓存未命中时先显示索引中状态，未验证表不会出现，精确单元格差异数只在打开该表后显示
-- 后台索引遇到内容损坏、无工作表或只是误用 `.xlsx` 扩展名的文件时会明确跳过并
-  缓存其余有效结果；该文件未变化时下次启动不重复失败，修复后刷新会重新检查
-- 关闭窗口会取消正在执行的差异表索引，不等待剩余工作簿全部比较完成
-- 其他分支通过 Git 对象读取到系统临时目录，不 checkout、switch、fetch 或修改工作区
-- 本地分支优先、远端分支随后；排除当前分支和 `origin/HEAD` 等符号引用
-- 按仓库记住最近选择的完整对比分支引用；无记录或引用失效时优先选择当前分支对应的远端引用
-- 分支缺少同路径文件、无其他分支、Detached HEAD、Git 操作中、损坏 XLSX 等独立界面状态
-- 仓库模式合并和编辑只保存到当前工作区文件，不自动 add、commit 或 push
-- `.xlsx` 工作簿、工作表集合和工作表顺序对比
-- 文本、数字、布尔、日期、显式空字符串、真正空单元格、公式及类型差异
-- 左右双栏、同步滚动、带视口前后缓冲的窗口化渲染、差异分页索引和上一处/下一处导航
-- 滚动期间按帧合并预取相邻区域，不再等滚动停止后才加载，快速滚动时减少空白窗口
-- 视口 Region 请求不切换全局忙碌状态，滚动时顶部工具栏和其他非网格区域保持稳定
-- 普通滚轮和触控板输入按动画帧合并并同时更新左右两侧，避免高频重排和单侧追赶
-- 快速连续导航请求防乱序；原生 sticky 图层固定列标题和行号栏，直接拖动左右任一滚动条都不依赖事件后补偿
-- 紧凑单元格、`Ctrl/Command + 滚轮` 缩放、左右同步列宽调整
-- 按工作簿和工作表持久化缩放比例及各列宽度
-- 单格、Shift 范围、鼠标拖拽范围和整行选择
-- 使用 Git 双栏配色：增加为绿色、删除为红色、修改为左红右绿、冲突为橙色；
-  “工作表与差异”同时显示四类行数量
-- UGit 合并模式读取共同基线，并把 Git 的 XLSX 文件级冲突与双方实际表格语义
-  冲突分开说明；存在唯一 `id` 时按左侧记录对齐右侧，避免插入一行后整段错位
-- 差异索引提供“增加 / 删除 / 修改 / 冲突”筛选页签，并按“冲突 > 修改 > 删除
-  > 增加”自动选择首个有内容的分类和索引项
-- 打开表格时若当前摘要工作表没有差异，会自动进入首个有差异的工作表，并让
-  左右视口同步定位到上述优先分类的第一处；编辑和保存后的局部刷新保留当前视口
-- 右键可复制/覆盖单元格或整行；多选中的未改动单元格/行不会隐藏可用操作，实际
-  批量操作只提交其中有差异的坐标/行；若选区同时包含冲突与非冲突差异，菜单会
-  提示先单独处理冲突部分
-- 冲突行还可按左侧最大数字 ID 自动续号，或逐行指定新 ID 后追加到左侧
-- 冲突覆盖或追加后，右侧来源行显示处理方式；追加到左侧的新行保持新增色，撤销
-  同时移除处理标记
-- 左侧文本、数字、公式和清空编辑
-- 左侧双击原位编辑，底部两行显示左右值、类型和差异状态
-- 选中差异保留语义底色及蓝色边框；复制后真正相等的单元格立即取消差异色
-- 无值但带样式或默认类型元数据的单元格统一视为真正空白，复制单元格或整行后
-  不会出现左右都空却仍显示红/绿色的虚假差异；显式空字符串仍完整保留
-- 会话级复制/批量复制/编辑撤销；支持 Ctrl/Command+Z，保存后仍保留历史
-- 默认保存左侧；`Ctrl/Command + S` 保存当前文件，`Ctrl/Command + Shift + S` 另存为
-- 另存为默认沿用左侧文件名，首次打开系统下载目录，并记住上次成功保存目录
-- 仓库模式“另存为”导出独立副本，不改变工作区文件保存目标，也不把未保存的
-  工作区编辑误标为已保存
-- 直接文件模式启动读取时显示居中的加载窗口；仓库差异索引在目录界面中后台更新
-- 所有主要操作具备 hover、active、focus、disabled 和 busy 反馈；错误、空状态、
-  缺失来源、无差异和后台索引使用一致的状态语言
-- 同目录临时文件、写盘同步、临时文件校验、原子替换、保存后重开校验
-- 基于大小、纳秒 mtime 和 SHA-256 的外部修改检测
-- JSON/文本 CLI 差异报告
+[下载与发布](#下载与发布) · [快速开始](#快速开始) · [使用方式](#使用方式) · [架构说明](docs/architecture.md) · [更新日志](CHANGELOG.md)
+
+[![SheetProof 游戏角色配置对比界面](site/public/screenshots/sheetproof-game-balance-overview.png)](site/public/screenshots/sheetproof-game-balance-overview.png)
+
+> 示例展示角色成长、关卡掉落和技能参数配置。截图可点击或单独打开查看原始尺寸。
+
+## 为什么做这个工具
+
+`.xlsx` 是压缩的 OOXML 包。普通文本 diff 很容易把重新保存产生的结构噪声当成变化，也无法在单元格上下文中完成选择性合并。SheetProof 直接读取工作簿语义，把当前文件和目标版本放进同步双栏网格中，并让用户明确决定哪些修改进入左侧结果。
+
+它特别适合把游戏配置表、运营表或其他需要进入 Git 的工作簿纳入正常的变更审阅流程。
+
+## 使用流程
+
+1. 打开左右两个 `.xlsx`，或从本地 Git 仓库选择工作区文件和对比引用。
+2. 按修改、增加、删除或冲突筛选，核对左右值与类型。
+
+[![聚焦查看角色配置差异](site/public/screenshots/sheetproof-review-difference.png)](site/public/screenshots/sheetproof-review-difference.png)
+
+3. 把确认过的单元格或整行复制到左侧，必要时撤销，然后保存左侧结果。
+
+[![合并并保存角色名称后的界面](site/public/screenshots/sheetproof-merge-result.png)](site/public/screenshots/sheetproof-merge-result.png)
+
+## 核心特性
+
+- **理解工作簿语义的对比**：按工作表、值、公式、显式空值、类型与工作表顺序比较，不把 OOXML 文本噪声当成业务差异。
+- **双栏差异审阅**：使用同步滚动的窗口化双栏网格，按增加、删除、修改和冲突分类定位真实差异。
+- **可控合并与撤销**：只把选中的单元格或行合并到可写左侧，记录处理结果，并让编辑与合并都可撤销。
+- **本地 Git 仓库模式**：左侧读取真实工作区，右侧从已验证的本地 Git 引用读取；不 checkout、不 fetch、不改分支。
+- **安全的本地保存**：保存前检测外部修改，经过同目录临时文件、重开校验、同步与原子替换写回。
+
+此外，应用支持双文件直接对比、Git/UGit 只读差异入口、单元格与整行合并、冲突行追加、会话撤销、JSON/text CLI 报告，以及外部修改检测。
+
+## 适用场景
+
+- **审阅配置表变更**：在提交或发版前核对数值、公式、类型与行级变化。
+- **处理 Git 中的 XLSX 变化**：直接比较工作区与本地分支或远端跟踪引用，不切换当前分支。
+- **选择性合并修正**：把确认过的单元格或整行复制到左侧，并在保存前随时撤销。
+
+## 下载与发布
+
+当前版本是 **0.1.0 Preview**。Windows 与 macOS 桌面安装包正在建设中。
+
+- [查看 GitHub Releases](https://github.com/tadazly/ugxlsx/releases)：安装包发布后可在这里下载。
+- [下载源码](https://github.com/tadazly/ugxlsx/archive/refs/heads/main.zip)：用于本地构建与开发。
+- 维护者可按照 [发布指南](docs/releasing.md) 制作发行包并更新下载地址。
 
 ## 快速开始
 
-要求 Go 1.24+、Node.js 20+。macOS 桌面构建还需要 Xcode Command Line Tools；
-在 macOS 交叉构建 Windows `amd64` 版本还需要 `mingw-w64`。
+要求 Go 1.24+、Node.js 20+。Windows 使用仓库内的离线优先 Wails 启动器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
+.\build\bin\SheetProof.exe
+```
+
+macOS/Linux 构建：
 
 ```bash
 cd frontend
 npm install
 npm run build
 cd ..
-
-make build
-open build/bin/ugxlsx.app
-```
-
-Windows 会话优先使用项目的离线启动器。它先复用匹配版本的现成 CLI；若没有，
-则从本地 Go 模块缓存离线生成 `build/tools/wails-v2.10.2.exe`，并使用 Git 忽略的
-`build/cache/go-build` 避免默认 Go 缓存的跨会话 ACL 干扰。只有脚本明确报告
-版本源码或依赖缓存缺失时，才需要联网补齐：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
-```
-
-macOS/Linux 不安装全局 Wails CLI 时仍可构建桌面发布包：
-
-```bash
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 ```
 
-只生成用于分发测试的最小桌面产物（不生成安装器或 zip）：
+桌面产物位于 `build/bin`。源码构建面向 Windows 与 macOS；Linux 暂无发行包。
 
-```bash
-# 当前 Mac 架构
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
-
-# 从 macOS 交叉构建 Windows 11 amd64；先安装 brew install mingw-w64
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build \
-  -platform windows/amd64
-```
-
-产物分别为 `build/bin/ugxlsx.app` 和 `build/bin/ugxlsx.exe`。
-应用图标的可维护源文件是 `build/appicon.svg`；`build/appicon.png` 用于
-Wails/macOS 图标生成，`build/windows/icon.ico` 是 Windows 多尺寸资源。
-
-macOS 上，Wails GUI 必须使用桌面构建产物：
-
-```text
-build/bin/ugxlsx.app/Contents/MacOS/ugxlsx
-```
-
-不要把普通 `go build -o build/bin/ugxlsx .` 生成的无标签 CLI
-二进制配置为 UGit GUI 工具；该二进制仅适合 `diff`、`version`
-等无界面命令，执行 `compare` 会被 Wails 拒绝启动。
-
-开发模式：
-
-```bash
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 dev
-```
-
-Windows 开发模式同样可执行
-`powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 dev`，避免
-`go run module@version` 在已有缓存时仍为弃用元数据查询访问 Go Proxy。
-
-## CLI
+## 使用方式
 
 ### 打开本地 Git 仓库
 
+1. 选择或拖入本地仓库，应用会定位仓库根目录。
+2. 从只包含 `.xlsx` 的目录树选择工作簿。
+3. 选择一个本地分支或远端跟踪引用作为右侧来源。
+4. 按增加、删除、修改和冲突审阅差异；需要时把右侧单元格或整行复制到左侧。
+5. 保存到当前工作区文件。SheetProof 不会自动 add、commit、push、fetch 或切换分支。
+
+### 直接比较两个文件
+
+在欢迎页选择“打开左右文件”，或从命令行启动：
+
 ```bash
-ugxlsx repo --path "/path/to/repository"
+sheetproof compare --left current.xlsx --right target.xlsx
 ```
 
-可以直接定位仓库内的表格和对比分支：
+左侧是唯一可写来源，右侧始终只读。所有保存都经过外部修改检测和原子替换流程。
+
+### CLI 差异报告
 
 ```bash
-ugxlsx repo \
-  --path "/path/to/repository" \
-  --file "config/activity/reward.xlsx" \
-  --ref "origin/develop"
+sheetproof diff --left current.xlsx --right target.xlsx --format json
+sheetproof diff --left current.xlsx --right target.xlsx --format text
+sheetproof repo --path /path/to/repository --file config/example.xlsx --ref origin/main
 ```
 
-`--file` 必须是仓库根目录下的 `.xlsx` 相对路径，`--ref` 必须是当前本地
-仓库已经存在的本地分支或远端跟踪分支。该命令不会执行 `git fetch`，也不会
-切换当前分支。
+`diff` 在“相同”和“不同”两种成功对比中都返回 0；脚本应读取 JSON 的 `equal` 字段。
 
-### UGit 配置
+## UGit 集成
 
-将应用放到准备长期使用的固定位置后，可以直接点击顶部工具栏的“配置 UGit”。
-应用会显示原生确认对话框，然后把 UGit 的全局 `*.xlsx` 差异工具和合并工具
-注册为当前正在运行的 ugxlsx：
+把应用放到固定目录后，点击顶部“配置 UGit”即可注册当前 `.xlsx` 差异与合并工具。应用只更新 XLSX 对应项，写入后重新读取校验，失败时恢复原配置。UGit 差异会话自动只读；合并会话只有在用户明确保存后才写入 Git 提供的输出路径。
 
-- 只替换 `*.xlsx` 对应的 `difftool` / `mergetool` 项，不修改其他后缀；
-- 差异工具注册为 UGit 5.51 可直接启动的 `SpreadsheetCompare`，合并工具写入
-  `$BASE`、`$MERGED` 和 `trustExitCode=false`，并在写入后重新读取校验；
-- 同时保留标准 `Custom` difftool 命令，供普通 Git difftool 显式选择；UGit 按
-  首个同后缀配置优先命中前面的 `SpreadsheetCompare`；
-- 如果应用被移动，再次点击会检测当前可执行文件路径并覆盖旧路径；
-- 如果任一步失败，会尝试恢复配置前的全部 `*.xlsx` 工具项；
-- 已经正确配置时不会重复写入；UGit 正在运行时，配置后应重启 UGit；
-- Windows 会优先使用当前版本 UGit 自带的 `cmd\\git.exe`，确认框和结果中显示
-  实际 Git 路径及配置来源，避免把配置静默写入另一套 Git 上下文。
+详细参数、只读语义和手工配置方法见 [UGit 使用说明](docs/ugit-integration.md)。
 
-macOS 注册 `.app/Contents/MacOS/ugxlsx`，Windows 注册当前 `ugxlsx.exe`。
-macOS App Translocation 或其他系统临时目录中的程序不会被注册；应先把应用移动
-到固定目录。macOS 优先使用系统 `PATH` 中的 Git；Windows 优先选择当前版本
-UGit 自带的 Git，再回退到 `PATH` 和常见 UGit/Git 安装位置。
-
-Windows 的后台 Git/UGit CLI 子进程使用无控制台窗口的进程属性，避免建立仓库
-差异索引时由 `git.exe` / `conhost.exe` 产生临时任务栏图标。该设置不作用于
-ugxlsx 主窗口，也不改变 macOS/Linux 行为。Windows 的未保存确认使用原生三按钮
-对话框，关闭或切换时均提供“保存并继续 / 不保存并继续 / 取消”。原生
-`TaskDialogIndirect` 调用会锁定当前 OS 线程并初始化 STA。显示前会排除隐藏或
-禁用的 owner；如果 TaskDialog 仍因运行环境返回错误，会先以无 owner 方式重试，
-再回退到标准 `MessageBoxW`。标准对话框会在正文中明确说明“确定/取消”或
-“是/否/取消”分别对应的业务操作，因此 `HRESULT 0x80070057` 不会再中断 UGit
-配置或未保存确认流程。
-
-如需手工配置，在 UGit 的“设置 → 工具 → 差异工具”中添加：
-
-| 字段 | 内容 |
-|---|---|
-| 后缀 | `*.xlsx` |
-| 工具 | `SpreadsheetCompare` |
-| 路径（macOS） | `/绝对路径/ugxlsx/build/bin/ugxlsx.app/Contents/MacOS/ugxlsx` |
-| 路径（Windows） | `C:\绝对路径\ugxlsx.exe` |
-| Args | `compare --left "$LOCAL" --right "$REMOTE"` |
-
-例如当前仓库的实际路径是：
+## 项目结构
 
 ```text
-/Users/luyi/splan-git/ugxlsx/build/bin/ugxlsx.app/Contents/MacOS/ugxlsx
+internal/       Go 领域核心：workbook、diff、merge、history、storage、repository
+frontend/       Vue 3 + TypeScript 桌面界面
+site/           SheetProof 多页面官网
+product/        产品名、版本、下载信息、特性与更新日志
+scripts/        构建、截图、品牌资产、内容同步与发布辅助脚本
+docs/           架构、验收、发布与维护文档
+build/          应用图标源与本地桌面构建产物
 ```
 
-UGit 5.51 对名为 `SpreadsheetCompare` 的工具使用直接路径列表协议：先把两侧
-绝对路径逐行写入 `SpreadsheetCompare-*.txt`，再直接启动 ugxlsx。ugxlsx 会识别
-该列表并建立只读会话。因此“使用差异工具与工作区对比”即使两侧字节相同、
-`git difftool` 本来没有可交给外部工具的差异，也仍会打开窗口。推荐使用应用内
-“配置 UGit”，它会同时处理带空格的可执行文件路径。
+架构保持两种入口共享同一个 `internal/app.Session`。完整数据流、安全边界和前后端 API 见 [docs/architecture.md](docs/architecture.md)。
 
-普通 Git difftool 会设置标准的 `GIT_DIFF_PATH_COUNTER` 和
-`GIT_DIFF_PATH_TOTAL` 环境变量。`ugxlsx` 检测到这些变量后自动把整个差异
-会话设为只读，不依赖 Args 是否显式带 `--readonly-left`。界面两侧显示
-“Git 差异快照 · 只读”，隐藏冗长临时目录，并禁用编辑、复制合并、撤销、
-另存和保存。配置后在 `.xlsx` 文件上选择“使用差异工具查看”，UGit 会启动
-GUI，并在窗口关闭后继续。
+## 已知限制
 
-UGit 5.51.0 还会为每次调用设置 `LOCAL_TITLE`、`REMOTE_TITLE` 和
-`WORKSPACE_PATH`。未显式传入 `--left-label` 或 `--right-label` 时，
-`ugxlsx` 自动使用前两个变量显示真实的两侧分支/引用名；UGit 常规双分支比较
-中分别对应命令里的左、右引用。显式 label 参数仍可逐侧覆盖自动值。它们是
-UGit 扩展变量，不是普通 `git difftool` 保证提供的标准变量。
+- 只支持 `.xlsx`；不支持 `.xls`、`.xlsm`、`.ods`、CSV 或加密工作簿。
+- 不编辑图片、图表、数据透视表、宏、外部连接或复杂条件格式，也不承诺这些高级对象经 excelize 重写后的完整保真。
+- 不提供重做、Excel 级公式编辑器、格式工具栏或跨页差异索引 UI。
+- 仓库模式不负责 fetch、pull、push、add、commit、分支管理或 Git 冲突恢复。
+- 右侧独有工作表可以查看，但当前没有一键复制整个工作表。
 
-Git 对新增或删除的文件会把不存在的一侧传为 `/dev/null`（Windows 环境也可能
-使用 `NUL`）。`compare` 会在系统临时目录创建一个工作表结构相同、但不含数据的
-占位 `.xlsx`，继续使用正常差异会话显示新增/删除内容；窗口关闭后自动清理，
-不会向用户仓库写入临时文件。
+## Roadmap
 
-需要修改工作区文件时应使用 ugxlsx 自身的仓库模式，或直接以普通 `compare`
-命令打开真实文件；不要把 Git difftool 当作可写入口。
+- 建立可复现、签名的 Windows/macOS GitHub Releases。
+- 完成 Windows 与 macOS 发布环境的完整 GUI 验收矩阵。
+- 为超过 10,000 条的差异索引增加分页 UI。
+- 在保留请求防乱序与 Region API 的前提下继续拆分前端大型视图组件。
 
-在 UGit 的“合并工具”中应单独配置输出目标，不能直接复用上面的差异参数：
+## FAQ
 
-| 字段 | 内容 |
-|---|---|
-| 后缀 | `*.xlsx` |
-| 工具 | `Custom` |
-| 路径 | 与差异工具相同 |
-| Args | `compare --left "$LOCAL" --right "$REMOTE" --base "$BASE" --output "$MERGED"` |
+**文件会上传到服务器吗？**  不会。当前桌面工具在本机读取、比较和保存文件；官网也不接收工作簿。
 
-`$BASE` 只用于判断左右两侧分别是否相对共同基线发生语义变化，并在界面中解释
-Git 文件级冲突；实际覆盖、追加和保存仍由 `$LOCAL` / `$REMOTE` 会话完成。
-合并模式会在首行存在唯一 `id` 时把右侧记录映射到左侧同 ID 的显示行，空白或
-重复 ID 保持坐标回退语义。只有用户点击保存后，结果才通过安全保存流程写入
-`$MERGED`；不要省略 `--output
-"$MERGED"`，否则 Git 提供的临时 `$LOCAL` 可能成为默认保存目标。
+**会修改我的 Git 分支或提交吗？**  不会。右侧引用通过 Git 对象读取，应用不 checkout、不 fetch，也不自动暂存或提交。
 
-如果点击后无窗口，先在终端检查桌面二进制：
+**为什么看起来相同的单元格仍可能被标记？**  相等语义包含单元格是否存在、原始值、公式和类型；底部详情会显示类型差异。
+
+**可以直接处理含宏的文件吗？**  不可以。`.xlsm` 会在打开前被拒绝。
+
+## 开发与验证
 
 ```bash
-/绝对路径/ugxlsx.app/Contents/MacOS/ugxlsx version
-```
-
-直接从脚本启动 GUI 的示例：
-
-```bash
-/绝对路径/ugxlsx.app/Contents/MacOS/ugxlsx compare \
-  --left "${LOCAL_FILE}" \
-  --right "${REMOTE_FILE}" \
-  --left-label "当前分支" \
-  --right-label "目标分支"
-```
-
-其他 GUI 参数：
-
-```text
---title TEXT
---readonly-left
---base FILE
---output FILE
-```
-
-普通 `compare` 的左侧文件是编辑和默认保存目标，右侧始终只读。只有用户点击
-“保存左侧”后才写回；未保存关闭时桌面端会要求确认。`--output` 将默认保存
-目标改为指定 `.xlsx` 路径。Git difftool 启动的 `compare` 会自动覆盖为全局
-只读；Git mergetool 不带 difftool 环境标记，因此仍可编辑。
-
-使用 `Ctrl+S`（macOS 为 `Command+S`）保存当前文件；“另存为”使用
-`Ctrl+Shift+S`（macOS 为 `Command+Shift+S`）。默认文件名是左侧工作簿的
-原文件名；首次另存默认打开当前用户的“下载”目录，成功保存后会在系统用户
-配置目录中记录该目录，下一次另存从上次位置开始。仓库模式下该操作是“导出
-副本”：不会改变当前工作区保存目标，导出后工作区中尚未保存的编辑仍保持
-未保存状态。macOS 使用用户配置目录和 `~/Downloads`，Windows 11 使用
-AppData，并通过系统 Known Folder 获取实际下载目录（包括被系统重定向的下载
-目录）。
-
-### GUI 操作速查
-
-| 操作 | 使用方式 |
-|---|---|
-| 上一处/下一处差异 | 顶部按钮；选中后左右表格同步定位 |
-| 表格缩放 | `Ctrl/Command + 鼠标滚轮`；工具栏显示“缩放 100%”，点击可恢复 100% |
-| 调整列宽 | 拖动列标题右边界；左右同步并按工作簿/工作表缓存 |
-| 单格选择 | 点击单元格 |
-| 范围选择 | Shift 扩展，或按住鼠标拖选 |
-| 整行选择 | 点击或拖动行号，Shift 可扩展多行 |
-| 复制单元格/整行到左侧 | 在增加、删除或修改的单元格/行上右键；混入未改动项仍可操作 |
-| 处理冲突行 | 右键后覆盖单元格/整行，或用自动/指定 ID 将右侧整行追加到左侧 |
-| 编辑左侧 | 双击左侧单元格直接编辑；Enter 或失焦提交，Esc 取消 |
-| 撤销 | `Ctrl/Command + Z`；保存后撤销历史仍保留 |
-| 保存当前文件 | `Ctrl/Command + S` |
-| 另存为 | `Ctrl/Command + Shift + S` |
-
-无界面对比：
-
-```bash
-ugxlsx diff --left A.xlsx --right B.xlsx --format json
-ugxlsx diff --left A.xlsx --right B.xlsx --format text
-```
-
-`diff` 在“文件相同”和“文件不同”两种成功对比中均返回 `0`，脚本通过 JSON 的 `equal` 字段判断。这避免把正常发现差异误报为运行错误。
-
-### 退出码
-
-| 代码 | 含义 |
-|---:|---|
-| 0 | 命令成功（`diff` 是否相同见 `equal`） |
-| 1 | 参数错误或普通运行错误 |
-| 2 | 文件不存在、不可读、损坏或无工作表 |
-| 3 | 保存失败或检测到外部修改 |
-| 4 | 不支持的文件格式 |
-| 5 | 为宿主集成预留的用户取消/未保存退出码；当前 GUI 正常关闭返回 0 |
-
-Wails 的窗口生命周期不会可靠区分“查看后关闭”和“保存后关闭”，所以首版 `compare` 正常关闭统一返回 0；UGit 应通过工作区文件是否变化判断是否保存。退出码 5 保留给后续结果文件协议。
-
-## 测试和验证
-
-```bash
-go fmt ./...
-go vet ./...
 go test ./...
-go test -race ./...
-go test -bench=. -benchmem ./...
-
+go vet ./...
 cd frontend
 npm run lint
 npm run typecheck
 npm run test
 npm run build
-
-cd ..
-./scripts/verify_cli.sh
-# Windows
-powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
-# macOS/Linux
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 ```
 
-集成测试完全由代码生成工作簿，覆盖多数据类型、中文/特殊字符、多工作表、公式、样式、合并单元格、行高列宽、超链接、批注、安全保存、保存后重开、失败不损坏和外部修改检测。完整 GUI 手工流程见 [docs/manual-acceptance.md](docs/manual-acceptance.md)。
-任何 UI 布局、样式、可见性或交互改动都必须在当次 Wails 桌面构建上完成实机验收后才能交付。Windows 的常规启动截图验收使用 `scripts/capture-wails-window.ps1`，一次完成目标进程启动、DPI 感知的固定窗口、整窗截图和干净退出；需要点击操作的流程再在此基础上补充交互步骤。
+影响桌面集成时还需完成 Wails 原生构建；任何 UI 改动都必须在当次桌面产物上实际操作并保存截图。完整门禁见 [AGENTS.md](AGENTS.md) 与 [手工验收清单](docs/manual-acceptance.md)。
 
-## Benchmark
+## 内容维护
 
-基准包括：
+产品名、版本、下载地址、特性和截图说明维护在 `product/product.json`；版本记录维护在 `product/changelog.json`。修改后运行：
 
-- 10 个 sheet / 10 万有效单元格 / 完全相同
-- 10 个 sheet / 10 万有效单元格 / 1 万差异
-- 10 个 sheet / 100 万有效单元格 / 少量差异
-
-运行 `go test -bench=. -benchmem ./...`。实际机器结果记录在 [docs/benchmark.md](docs/benchmark.md)；基准构造在计时区外，测量的是差异归并和索引结果构建。
-
-## 项目结构
-
-```text
-internal/workbook   稀疏快照、类型与文件身份
-internal/diff       O(n) 差异算法
-internal/merge      单元格捕获和跨工作簿应用
-internal/history    撤销栈
-internal/storage    安全写入
-internal/preferences 另存目录、最近 10 个仓库、侧栏宽度、对比分支偏好和语义差异索引
-internal/repository Git 工作区发现、XLSX 扫描、分支与对象读取
-internal/ugit       UGit *.xlsx 外部工具检测、事务式注册和路径更新
-internal/app        共享会话和视口 API
-internal/cli        命令、JSON/text 输出、退出码
-frontend            Vue 3 + TypeScript 窗口化双栏 UI
-build               跨平台应用图标源、平台资源和最小桌面产物
-cmd/gentestdata     验收工作簿生成器
-docs                架构和手工验收
-.agents/skills      项目级 Codex 接手与验证技能
-AGENTS.md            项目协作规则和兼容不变量
+```bash
+node scripts/sync-product-content.mjs
 ```
 
-详细设计见 [docs/architecture.md](docs/architecture.md)。
-当前工作区状态和后续迭代入口见
-[docs/iteration-2-handoff.md](docs/iteration-2-handoff.md)；可复制的新会话提示词见
-[docs/new-session-prompt.md](docs/new-session-prompt.md)。第一轮历史事实保留在
-[docs/iteration-1-handoff.md](docs/iteration-1-handoff.md)。
+该脚本同步生成 README、CHANGELOG 和官网内容副本。完整发布顺序见 [docs/releasing.md](docs/releasing.md)。
 
-## 已知限制
+## License
 
-- 不支持 `.xls`、`.xlsm`、`.ods`、CSV 和加密工作簿。
-- 仓库模式不负责 fetch、pull、push、add、commit、分支创建/删除/切换或冲突恢复。
-- 不编辑图片、图表、数据透视表、宏、外部连接或条件格式。
-- 右侧独有工作表会显示，但首版没有“一键复制整个工作表”；可逐单元格合并的前提是工作表两侧都存在。
-- 顶部和右键批量单元格操作只提交选区中的差异坐标；右键“复制/覆盖整行”会
-  忽略所选的未改动行，并提交其余行的完整列范围。冲突与非冲突差异混选时不直接
-  执行批量操作，需先单独选择冲突部分。单次最多处理 10,000 个单元格。
-- 冲突行识别依赖首行名为 `id`（不区分大小写）的列。普通双文件/仓库模式按
-  相同物理行判断；UGit mergetool 模式会先按双方唯一 ID 对齐到左侧记录行。
-  没有 `id` 列或 ID 重复/空白时仍分类增加/删除/修改，但相应记录不做 ID 对齐。
-- 差异索引前端当前一次读取当前工作表最多 10,000 条，尚未提供跨页 UI。
-- 不提供重做、完整公式计算、格式工具栏或 Excel 级公式编辑器。
-- excelize 会重写 OOXML 包。未修改的常见内容已有回归测试，但图片、图表、透视表、外部连接、复杂条件格式和厂商私有扩展没有保真承诺。请勿用本工具保存包含宏的文件（`.xlsm` 会在打开前被拒绝）。
-- CLI `compare` 的正常窗口关闭状态统一为 0，不能仅凭进程退出码判断用户是否点击保存。
+仓库当前没有 `LICENSE` 文件，因此源码公开不等于已经授予复制、修改或再分发许可。公开发布前请由项目维护者选择并加入明确许可证；同步后再更新 `product/product.json` 中的许可字段。

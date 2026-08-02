@@ -25,7 +25,7 @@ func launchGUI(left, right string, appOptions coreapp.Options) error {
 	controller := NewController(left, right, appOptions)
 	title := appOptions.Title
 	if title == "" {
-		title = "ugxlsx — Excel 对比与合并"
+		title = "SheetProof 表鉴 — Excel 对比与合并"
 	}
 	if err := wails.Run(&options.App{
 		Title: title, Width: 1440, Height: 900, MinWidth: 960, MinHeight: 640,

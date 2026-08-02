@@ -1342,9 +1342,9 @@ onBeforeUnmount(() => {
   <div class="app-shell" :aria-busy="startupLoading">
     <header class="toolbar">
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">U</span>
+        <span class="brand-mark" aria-hidden="true"><img src="/appicon.svg" alt="" /></span>
         <span class="brand-copy">
-          <strong>ugxlsx</strong>
+          <strong>SheetProof <span class="product-name-zh">表鉴</span></strong>
           <small :title="currentTaskName">{{ currentTaskName }}</small>
         </span>
       </div>
@@ -2042,9 +2042,9 @@ onBeforeUnmount(() => {
     <main v-else class="welcome">
       <div class="welcome-card">
         <div class="welcome-product">
-          <div class="logo">U</div>
+          <div class="logo"><img src="/appicon.svg" alt="" /></div>
           <div>
-            <span class="welcome-kicker">UGXLSX DESKTOP</span>
+            <span class="welcome-kicker">SHEETPROOF DESKTOP</span>
             <strong>表格对比与合并</strong>
           </div>
         </div>

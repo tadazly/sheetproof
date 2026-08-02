@@ -177,8 +177,10 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   font-weight: 750;
   letter-spacing: -.04em;
 }
+.brand-mark img { width: 28px; height: 28px; display: block; }
 .brand-copy { min-width: 0; display: flex; flex-direction: column; line-height: 1.15; }
 .brand-copy strong { color: #1f2d3b; font-size: 13px; letter-spacing: -.02em; }
+.product-name-zh { color: var(--color-text-muted); font-weight: 600; letter-spacing: .02em; }
 .brand-copy small {
   max-width: 128px;
   margin-top: 2px;
@@ -1010,6 +1012,7 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   font-size: 18px;
   font-weight: 750;
 }
+.logo img { width: 42px; height: 42px; display: block; }
 .welcome-kicker { color: var(--color-accent); font-size: 9px; font-weight: 750; letter-spacing: .12em; }
 .welcome-product strong { margin-top: 2px; color: #263443; font-size: 15px; }
 .welcome h1 { margin: 23px 0 8px; font-size: 24px; font-weight: 680; letter-spacing: -.025em; }

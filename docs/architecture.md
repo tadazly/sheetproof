@@ -1,6 +1,7 @@
-# ugxlsx 架构
+# SheetProof（表鉴）架构
 
-`ugxlsx` 将 Excel 处理保持在 Go 后端，GUI 与 CLI 复用相同领域逻辑。
+SheetProof 的仓库和 Go 模块仍使用兼容名称 `ugxlsx`。Excel 处理保持在 Go 后端，
+GUI 与 CLI 复用相同领域逻辑；产品命名不会改变文件格式、会话模型或保存语义。
 
 ## 两种入口模式
 
@@ -48,6 +49,20 @@ switch 或 fetch。临时文件位于系统临时目录，切换来源和退出�
 - `internal/app`：并发安全的 GUI/CLI 共享会话。
 - `internal/cli`：命令解析、结构化输出和退出码。
 - `frontend`：Vue 3 仓库导航和双栏视口化网格。
+
+## 产品内容与官网
+
+- `product/product.json` 是名称、版本、下载状态、特性、适用场景和截图说明的事实源。
+- `product/changelog.json` 是面向用户的版本记录事实源。
+- `scripts/sync-product-content.mjs` 从上述数据生成 README、CHANGELOG、CLI 版本文件，
+  并把网站所需 JSON 同步到 `site/app/content/`。
+- `site/` 是独立可构建的 vinext 多页网站。它只读取同步后的内容，不接触工作簿，
+  也不复制桌面端业务逻辑。
+- `build/appicon.svg` 是品牌图标源文件；`scripts/generate-brand-assets.py` 负责生成
+  PNG、Windows ICO、favicon 和前端/网站副本。
+- `cmd/genproductdemo` 生成角色成长、关卡掉落和技能参数工作簿，只用于产品演示与
+  截图，不参与自动化测试基线。`scripts/capture-wails-window.ps1` 可直接捕获客户区
+  或客户区内指定区域，避免窗口圆角和阴影透出桌面内容。
 
 ## 并发和内存
 

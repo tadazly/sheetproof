@@ -103,7 +103,7 @@
 CLI 直达流程：
 
 ```bash
-ugxlsx repo \
+sheetproof repo \
   --path "/path/to/repository" \
   --file "config/activity/reward.xlsx" \
   --ref "origin/develop"
@@ -119,7 +119,7 @@ ugxlsx repo \
 2. Windows 执行 `powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 dev`；
    macOS/Linux 执行 `go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 dev`。
    要验证命令行启动加载，可先用对应入口执行 `build`，再用桌面产物运行
-   `ugxlsx compare --left testdata/left.xlsx --right testdata/right.xlsx`；确认启动期间
+   `SheetProof compare --left testdata/left.xlsx --right testdata/right.xlsx`；确认启动期间
    出现居中的“正在加载并比较工作簿”提示。Windows 离线入口必须先检查已安装 CLI
    和本地模块缓存，不得把 `go run ...@版本` 的元数据联网行为当成本地缺失。
 3. 未传入文件时点击“打开左右文件”，依次选择 `testdata/left.xlsx` 和 `testdata/right.xlsx`；确认顶部完整路径、左右角色、工作表状态和总差异数可见，并自动定位到首个有差异的工作表及当前优先分类的第一处。
@@ -153,8 +153,8 @@ ugxlsx repo \
 ### 自动配置
 
 1. 把 `.app` 或 `.exe` 放到固定目录，先在 UGit 中为 `*.xlsx` 设置一个错误的
-   ugxlsx 路径；另为 `*.csv` 保留任意外部工具配置。
-2. 启动 ugxlsx，点击顶部“配置 UGit”。确认原生对话框明确说明只替换
+   SheetProof 路径；另为 `*.csv` 保留任意外部工具配置。
+2. 启动 SheetProof，点击顶部“配置 UGit”。确认原生对话框明确说明只替换
    `*.xlsx`，并列出检测到的旧路径；即使当前没有任何 XLSX 工具项，也不得出现
    `HRESULT 0x80070057`。如果系统使用标准对话框回退，正文必须明确“确定”对应
    “配置 UGit”、“取消”对应不修改。点击“取消”后用 `git config --global`
@@ -169,7 +169,7 @@ ugxlsx repo \
    确认对话框显示旧路径，完成后全局配置只包含新路径，没有旧路径或重复的
    `*.xlsx` 工具项。
 6. macOS 从 `.app` 验证注册路径是
-   `Contents/MacOS/ugxlsx`；Win11 验证带空格的安装目录和 `ugxlsx.exe` 路径。
+    `Contents/MacOS/SheetProof`；Win11 验证带空格的安装目录和 `SheetProof.exe` 路径。
    从 macOS App Translocation 或系统临时目录启动时，应拒绝注册并提示先移动。
 7. Windows 确认对话框与成功/错误信息显示 UGit 实际使用的 Git 路径以及
    `file:.../.gitconfig` 等配置来源；同时执行 `where.exe git`，证明即使系统
@@ -180,7 +180,7 @@ ugxlsx repo \
 普通命令直接打开真实工作区文件的可写模式：
 
 ```bash
-ugxlsx compare \
+SheetProof compare \
   --left "${LOCAL_FILE}" \
   --right "${REMOTE_FILE}" \
   --left-label "当前分支" \
@@ -204,7 +204,7 @@ compare --left "$LOCAL" --right "$REMOTE"
 显示 UGit 当前这次比较的实际分支/引用名，而不是固定的“当前分支 / 对比版本”。
 
 再选择一个内容与工作区相同的历史版本，点击“使用差异工具与工作区对比”。
-确认 ugxlsx 仍通过 `SpreadsheetCompare-*.txt` 路径列表启动，显示零处差异且保持
+确认 SheetProof 仍通过 `SpreadsheetCompare-*.txt` 路径列表启动，显示零处差异且保持
 只读；不能因 `git difftool` 判断无字节差异而完全没有窗口。关闭后确认仓库内
 没有生成列表文件或导出副本。
 
@@ -219,7 +219,7 @@ compare --left "$LOCAL" --right "$REMOTE"
 合并工具应使用独立参数：
 
 ```bash
-ugxlsx compare \
+SheetProof compare \
   --left "${LOCAL}" \
   --right "${REMOTE}" \
   --base "${BASE}" \
@@ -235,8 +235,12 @@ ugxlsx compare \
 窗口分别确认：提示不能占用双表格的弹性内容轨道，左右表格必须显示可用的数据行，
 底部两行差异详情和状态栏必须同时可见。Windows 常规截图可用
 `scripts/capture-wails-window.ps1` 一次完成启动、DPI 感知固定尺寸、整窗截图和退出；
-截图必须目视确认属于当次 ugxlsx 进程且包含窗口底部，不能用被其他窗口遮挡的屏幕
-截图或只截上半区代替。
+官网与 README 的产品截图使用 `cmd/genproductdemo` 生成的游戏配置表示例，避免把
+单元测试值当作产品演示内容。整窗概览以 1600×1000 外框启动，并通过
+`scripts/capture-wails-window.ps1 -ClientAreaOnly` 直接捕获应用客户区；四周不得
+出现桌面、任务栏、其他窗口或系统阴影中的下层内容。功能说明可以使用
+`CaptureX/CaptureY/CaptureWidth/CaptureHeight` 直接截取应用内部关键区域，但不能
+裁掉该步骤所需的来源、操作或结果信息，也不能补画不存在的控件和状态。
 
 再构造“REMOTE 与 BASE 语义相同，LOCAL 在中间插入一条记录并使后续唯一 ID
 整体下移”的文件级冲突。确认界面说明“右侧与共同基线语义一致，没有双方语义

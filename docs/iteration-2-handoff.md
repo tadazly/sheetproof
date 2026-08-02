@@ -613,6 +613,41 @@ Wails v2.10.2 build（windows/amd64）                PASS
 go test -race ./...                                未执行：本机 CGO_DISABLED 且无 C 编译器
 ```
 
+## 2026-08-02 产品化包装
+
+对当前代码、README、架构和桌面功能完成审计后，没有进行高风险目录重构：现有 Go
+包边界、共享 Session、仓库安全约束、视口 Region API 和安全保存链路已经正式且可
+维护。产品名确定为 SheetProof（表鉴），仓库和 Go 模块名继续保留 `ugxlsx` 以避免
+破坏兼容性。桌面标题、CLI 版本信息、Wails 产物名和应用图标已更新；当前 Windows
+产物为 `build/bin/SheetProof.exe`。
+
+新增 `product/product.json` 与 `product/changelog.json` 作为产品事实源，由
+`scripts/sync-product-content.mjs` 同步 README、CHANGELOG、CLI 版本和网站内容。
+`site/` 新增首页、功能、指南、下载和更新日志五个路由；品牌 SVG 源文件和多尺寸
+PNG/ICO/favicon 由 `scripts/generate-brand-assets.py` 生成。发布、部署和 UGit 接入
+分别记录在 `docs/releasing.md`、`docs/deployment.md` 和
+`docs/ugit-integration.md`。
+
+Windows 当次 Wails 产物已真实打开生成的左右 XLSX：初始显示 7 个语义差异；在右侧
+选择 A1，执行“复制单元格到左侧”并保存后，重新用 CLI 验证差异降为 6。两张整窗
+截图均为 1600×1000（16:10），完整包含标题栏、工具栏、来源、差异导航、双网格、
+底部详情和状态栏，存放于 `site/public/screenshots/`。这次没有重跑完整仓库模式或
+UGit GUI 主流程，不能把直接文件验收扩大表述为全量手工验收。
+
+官网通过 Sites 保存为版本 1，并发起仅限所有者访问的私有部署。自有服务器尚未部署，
+因为没有 SSH、域名、目标目录和进程管理信息；所需信息及验证方式见部署文档。
+
+收到产品截图反馈后，新增 `cmd/genproductdemo` 生成角色成长、关卡掉落和技能参数
+三张游戏配置表。产品截图不再使用“旧文本 / 新文本”等测试值；Windows 桌面端以
+该示例实际打开 31 处差异，将右侧 C2 角色名称复制到左侧并保存后，CLI 复核差异
+降为 30。`capture-wails-window.ps1` 新增客户区和客户区内指定区域捕获，三张官网
+截图均不包含桌面、任务栏、其他窗口或圆角阴影中的下层内容。
+
+官网截图改为整块可点击的大图查看器，支持键盘焦点、Esc/关闭按钮和移动端布局；
+使用说明页以“打开、核对、合并保存”三个关键画面展示主流程。首页、功能、下载、
+更新日志和页脚删除了测试、验证、事实来源及防伪式内部说明，未发布安装包统一显示
+为“正在建设中”。内部路由自动检查与本地浏览器点击验收覆盖主导航和大图开关。
+
 ## 后续风险与建议
 
 - 下一轮开始时先确认 `git status --short` 包含本轮现代化 UI、生产前端和文档

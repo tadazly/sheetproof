@@ -1,0 +1,94 @@
+{
+  "product": {
+    "name": "SheetProof",
+    "nameZh": "表鉴",
+    "legacyName": "ugxlsx",
+    "slogan": "See every change. Merge with intent.",
+    "taglineZh": "看清每一处差异，再决定如何合并。",
+    "description": "A local-first desktop tool for reviewing and merging changes between Excel .xlsx workbooks, with first-class Git and UGit workflows.",
+    "descriptionZh": "一款本地优先的 .xlsx 对比与合并桌面工具，面向双文件、Git 仓库与 UGit 工作流。",
+    "version": "0.1.0",
+    "channel": "Preview",
+    "formats": [".xlsx"],
+    "platforms": ["Windows", "macOS"],
+    "repository": "https://github.com/tadazly/ugxlsx",
+    "issues": "https://github.com/tadazly/ugxlsx/issues",
+    "license": "License not yet declared"
+  },
+  "downloads": {
+    "releases": "https://github.com/tadazly/ugxlsx/releases",
+    "windows": null,
+    "macos": null,
+    "source": "https://github.com/tadazly/ugxlsx/archive/refs/heads/main.zip",
+    "status": "Desktop installers are under construction. Source builds are available now."
+  },
+  "features": [
+    {
+      "title": "Workbook-aware comparison",
+      "titleZh": "理解工作簿语义的对比",
+      "summary": "Compares sheets, values, formulas, explicit blanks, types, and worksheet order instead of diffing OOXML text.",
+      "summaryZh": "按工作表、值、公式、显式空值、类型与工作表顺序比较，不把 OOXML 文本噪声当成业务差异。"
+    },
+    {
+      "title": "Side-by-side review",
+      "titleZh": "双栏差异审阅",
+      "summary": "Uses synchronized, virtualized grids with focused navigation and Git-style added, removed, modified, and conflict states.",
+      "summaryZh": "使用同步滚动的窗口化双栏网格，按增加、删除、修改和冲突分类定位真实差异。"
+    },
+    {
+      "title": "Controlled merge and undo",
+      "titleZh": "可控合并与撤销",
+      "summary": "Copies selected cells or rows into the writable left workbook, records merge decisions, and keeps every edit undoable.",
+      "summaryZh": "只把选中的单元格或行合并到可写左侧，记录处理结果，并让编辑与合并都可撤销。"
+    },
+    {
+      "title": "Git repository mode",
+      "titleZh": "本地 Git 仓库模式",
+      "summary": "Reads the real worktree on the left and a validated local Git ref on the right without checkout, fetch, or branch mutation.",
+      "summaryZh": "左侧读取真实工作区，右侧从已验证的本地 Git 引用读取；不 checkout、不 fetch、不改分支。"
+    },
+    {
+      "title": "Safe local save",
+      "titleZh": "安全的本地保存",
+      "summary": "Detects external changes and uses same-directory temporary files, verification, sync, and atomic replacement.",
+      "summaryZh": "保存前检测外部修改，经过同目录临时文件、重开校验、同步与原子替换写回。"
+    }
+  ],
+  "useCases": [
+    {
+      "title": "Review configuration workbooks",
+      "titleZh": "审阅配置表变更",
+      "summaryZh": "在提交或发版前核对数值、公式、类型与行级变化。"
+    },
+    {
+      "title": "Resolve XLSX changes in Git",
+      "titleZh": "处理 Git 中的 XLSX 变化",
+      "summaryZh": "直接比较工作区与本地分支或远端跟踪引用，不切换当前分支。"
+    },
+    {
+      "title": "Merge selected corrections",
+      "titleZh": "选择性合并修正",
+      "summaryZh": "把确认过的单元格或整行复制到左侧，并在保存前随时撤销。"
+    }
+  ],
+  "screenshots": [
+    {
+      "id": "direct-compare",
+      "src": "/screenshots/sheetproof-game-balance-overview.png",
+      "alt": "SheetProof 对比游戏项目的角色成长配置表",
+      "caption": "打开赛季角色数值配置后，工作表、差异分类、双栏网格和当前值集中显示。"
+    },
+    {
+      "id": "review-difference",
+      "src": "/screenshots/sheetproof-review-difference.png",
+      "alt": "SheetProof 聚焦显示角色名称和数值差异",
+      "caption": "聚焦差异区域：角色名称、生命和攻击调整以左右语义色展示，新增角色显示为绿色。"
+    },
+    {
+      "id": "merge-applied",
+      "src": "/screenshots/sheetproof-merge-result.png",
+      "alt": "SheetProof 将角色名称合并到左侧并保存后的界面",
+      "caption": "将右侧角色名称复制到左侧并保存后，该单元格恢复一致，总差异从 31 降为 30。"
+    }
+  ]
+}

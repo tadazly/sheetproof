@@ -21,7 +21,7 @@ frontend:
 	cd frontend && npm run lint && npm run typecheck && npm run test && npm run build
 
 cli:
-	GOCACHE=$(GOCACHE) go build -o build/bin/ugxlsx .
+	GOCACHE=$(GOCACHE) go build -o build/bin/SheetProof .
 
 desktop:
 	GOCACHE=$(GOCACHE) go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
