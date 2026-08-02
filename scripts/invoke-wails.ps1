@@ -72,5 +72,18 @@ if (-not $wails) {
     $wails = $projectTool
 }
 
-& $wails @WailsArguments
-exit $LASTEXITCODE
+$previousGoFlags = $env:GOFLAGS
+$trimPathFlag = '-trimpath'
+if ([string]::IsNullOrWhiteSpace($previousGoFlags)) {
+    $env:GOFLAGS = $trimPathFlag
+} elseif ($previousGoFlags -notmatch '(^|\s)-trimpath(?:\s|$)') {
+    $env:GOFLAGS = "$previousGoFlags $trimPathFlag"
+}
+
+try {
+    & $wails @WailsArguments
+    $wailsExitCode = $LASTEXITCODE
+} finally {
+    $env:GOFLAGS = $previousGoFlags
+}
+exit $wailsExitCode

@@ -12,6 +12,7 @@ permissions:
 env:
   WAILS_VERSION: "2.10.2"
   NODE_VERSION: "22"
+  GOFLAGS: "-trimpath"
 
 jobs:
   verify:

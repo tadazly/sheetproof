@@ -982,6 +982,37 @@ GitHub CLI，连接器也不提供仓库改名写操作。因此远端仓库尚�
 `build/acceptance/site-mobile-responsive/ugit-320.png` 和
 `build/acceptance/site-mobile-responsive/guide-code-240.png`。
 
+## 2026-08-02 v0.1.0 发布候选复核与产物隐私修正
+
+GitHub 只读复核确认公开仓库默认分支为 `main`，仍没有标签或 Release，因此
+`v0.1.0` 是有效的首次公开预览版本。当前 `main` 与 `origin/main` 均指向
+`27ac89f`；发布准备开始时工作树没有内容差异。
+
+隐私复核发现，既有官网与 README 产品截图把真实本机工作区路径显示在来源卡中；
+本次已用当前真实 Windows 桌面产物、生成式产品演示工作簿和通用临时演示根目录
+重新执行筛选、选择、复制与保存流程，并替换三张公开截图。新截图没有用户名、账号、
+凭据或真实工作区路径。对应旧截图已存在于公开 Git 历史，风险限于低敏感度的本机
+目录信息，未发现相关凭据且无需轮换；本次不改写公开历史。
+
+本地候选 EXE 的字符串扫描还发现编译时用户目录片段。Windows 离线优先入口和 GitHub
+Release workflow 现统一为 Go 构建启用 `-trimpath`，且保留调用者已有的其他
+`GOFLAGS`。重新构建后的 Windows amd64 EXE 不再包含用户目录或工作区路径，也未发现
+私钥标记或常见令牌格式；当前产物仍未签名。发布文档、架构、手工验收和项目技能均已
+同步这一门禁。
+
+本轮候选验证通过 Go 全量测试与 vet、前端 lint/typecheck/34 项测试/build、官网 lint、
+静态导出与 9 项渲染测试，以及 Windows Wails v2.10.2 完整构建。官网 lint 仍只有 4 条
+既有 `<img>` 优化警告。`go test -race ./...` 因当前 Windows 环境 `CGO_ENABLED=0` 且
+没有 GCC 仍无法执行，未记为通过。锁定依赖安装对官网完整开发依赖树报告安全审计项；
+生产部署是静态导出且不运行 Node，离线生产依赖检查未报告命中，但在线审计详情因不得
+向外部发送完整依赖元数据而未继续查询，发布候选汇总必须保留这一限制。
+
+启用 `-trimpath` 的最终本地 Windows 产物已再次真实启动，实际切换修改行筛选并目视
+核对来源卡、摘要、双网格、差异颜色、底部详情和状态栏，截图保存在
+`build/acceptance/release-v0.1.0/trimpath-build.png`，进程正常退出。候选仍未 commit、
+push、打标签、运行远端发布 workflow、发布 GitHub Release 或部署生产官网，必须先
+取得维护者对正式发布 `v0.1.0` 的明确确认。
+
 ## 后续风险与建议
 
 - 下一轮开始时先确认 `git status --short` 包含本轮现代化 UI、生产前端和文档

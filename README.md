@@ -65,6 +65,8 @@ powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
 .\build\bin\SheetProof.exe
 ```
 
+该入口会为桌面构建启用 Go `-trimpath`，避免把本机构建目录写入可执行文件；GitHub Release 的双平台构建使用同一约束。
+
 macOS/Linux 构建：
 
 ```bash

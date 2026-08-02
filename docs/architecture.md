@@ -70,6 +70,8 @@ switch 或 fetch。临时文件位于系统临时目录，切换来源和退出�
   使用说明页的 `#ugit` 章节记录应用内自动配置流程，首页 UGit 模块用文档导航直接定位到该章节。
 - `build/appicon.svg` 是品牌图标源文件；`scripts/generate-brand-assets.py` 负责生成
   PNG、Windows ICO、favicon 和前端/网站副本。
+- Windows 离线优先构建入口和 GitHub Release 工作流都通过 Go `-trimpath` 生成桌面
+  产物，避免把执行者或托管 runner 的源码目录写入可执行文件。
 - `cmd/genproductdemo` 生成角色成长、关卡掉落和技能参数工作簿，只用于产品演示与
   截图，不参与自动化测试基线。`scripts/capture-wails-window.ps1` 可直接捕获客户区
   或客户区内指定区域，避免窗口圆角和阴影透出桌面内容。

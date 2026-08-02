@@ -40,6 +40,9 @@ Windows 桌面构建使用离线优先入口：
 powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
 ```
 
+Windows 离线入口和 GitHub Release workflow 都会设置 Go `-trimpath`。不要绕过该约束：
+最终桌面产物的隐私扫描必须确认没有嵌入构建者用户目录或仓库工作区路径。
+
 构建完成后按 `docs/manual-acceptance.md` 启动本次桌面产物并完成实机验收。README 和官网截图必须来自对应版本的真实应用窗口，不得露出桌面、用户名、路径、账号或其他私人内容。
 
 ## 3. GitHub Release 自动构建
@@ -90,6 +93,7 @@ Cloudflare 公网入口、下载、静态资源和同一 Caddy 实例上的既�
 
 - `SheetProof version`、产品事实源、README 和官网版本一致。
 - GitHub Release 文件名、大小和 SHA-256 可以核对。
+- Windows/macOS 产物中没有构建者用户目录、仓库工作区路径、密钥或令牌。
 - 下载页没有指向不存在的文件，也没有把未签名产物写成已签名。
 - README 和官网只描述当前实现，不把计划写成已支持功能。
 - 更新日志只保留用户可感知的变化，没有私人信息、提示词或内部任务内容。

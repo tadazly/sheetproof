@@ -155,6 +155,9 @@ manual flow passed unless it was actually exercised and visually inspected.
 - Keep `.github/workflows/release.yml` aligned with the product version. A `v*` tag creates a draft
   release with Windows/macOS assets and checksums. Do not describe unsigned or unnotarized builds
   as signed releases.
+- Keep Go `-trimpath` enabled in the offline Windows launcher and GitHub Release builds. Scan final
+  desktop artifacts for embedded builder home/workspace paths as well as credentials before
+  publishing them.
 
 ## Prepare a formal release
 
