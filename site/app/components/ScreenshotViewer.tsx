@@ -6,10 +6,12 @@ type ScreenshotViewerProps = {
   src: string;
   alt: string;
   caption: string;
+  width?: number;
+  height?: number;
   className?: string;
 };
 
-export function ScreenshotViewer({ src, alt, caption, className = "" }: ScreenshotViewerProps) {
+export function ScreenshotViewer({ src, alt, caption, width, height, className = "" }: ScreenshotViewerProps) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export function ScreenshotViewer({ src, alt, caption, className = "" }: Screensh
   return <>
     <figure className={`app-shot ${className}`.trim()}>
       <button className="screenshot-open" type="button" onClick={() => setOpen(true)} aria-label={`放大查看：${alt}`}>
-        <img src={src} alt={alt} />
+        <img src={src} alt={alt} width={width} height={height} />
         <span>查看原图</span>
       </button>
       <figcaption>{caption}</figcaption>
@@ -37,7 +39,7 @@ export function ScreenshotViewer({ src, alt, caption, className = "" }: Screensh
     {open && <div className="screenshot-lightbox" role="dialog" aria-modal="true" aria-label={alt} onClick={() => setOpen(false)}>
       <button className="lightbox-close" type="button" onClick={() => setOpen(false)} aria-label="关闭大图">关闭</button>
       <div className="lightbox-stage" onClick={(event) => event.stopPropagation()}>
-        <img src={src} alt={alt} />
+        <img src={src} alt={alt} width={width} height={height} />
         <p>{caption}</p>
       </div>
     </div>}

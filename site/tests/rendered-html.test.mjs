@@ -59,6 +59,23 @@ test("guide keeps the difference-row shortcut concise", async () => {
   assert.doesNotMatch(html, /5 切换全部 \/ 不筛选/);
 });
 
+test("guide documents UGit setup and links directly to it", async () => {
+  const [home, guide, css] = await Promise.all([
+    render(),
+    render("/guide"),
+    readFile(fileURLToPath(new URL("../app/globals.css", import.meta.url)), "utf8"),
+  ]);
+  assert.match(home, /href="\/guide\/#ugit"/);
+  assert.match(guide, /id="ugit"/);
+  assert.match(guide, /点击“配置 UGit”/);
+  assert.match(guide, /只会更新 <code>\*\.xlsx<\/code>/);
+  assert.match(guide, /SpreadsheetCompare/);
+  assert.match(guide, /看到两条 XLSX 差异工具是正常的/);
+  assert.match(css, /\.mode-grid article \{ min-width: 0;/);
+  assert.match(css, /\.mode-grid pre \{ max-width: 100%; min-width: 0;/);
+  assert.match(css, /white-space: pre-wrap;/);
+});
+
 test("release download page contains stable v0.1.0 assets and signing limitations", async () => {
   const html = await render("/download");
   assert.match(html, /github\.com\/tadazly\/sheetproof\/releases\/download\/v0\.1\.0/);

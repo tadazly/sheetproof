@@ -20,7 +20,7 @@ export default function HomePage() {
               <span>文件留在本机</span><span>理解 XLSX 语义</span><span>为 Git 工作流设计</span>
             </div>
           </div>
-          <ScreenshotViewer className="hero-shot" src="/screenshots/sheetproof-review-difference.png" alt="SheetProof 聚焦显示游戏角色数值差异" caption="赛季角色数值差异 · 点击查看原图" />
+          <ScreenshotViewer className="hero-shot" src="/screenshots/sheetproof-review-difference.png" alt="SheetProof 聚焦显示游戏角色数值差异" caption="赛季角色数值差异 · 点击查看原图" width={1302} height={700} />
         </section>
 
         <section className="proof-strip">
@@ -75,7 +75,7 @@ export default function HomePage() {
         <section className="section page-width ugit-section">
           <div className="ugit-card">
             <div><p className="eyebrow">UGit 集成</p><h2>继续在熟悉的 UGit 流程里审阅 XLSX</h2></div>
-            <div><p>SheetProof 可注册为 UGit 的 .xlsx 差异与合并工具。工作区文件保持在可编辑左侧，版本快照只读；保存仍由你明确触发。</p><Link className="text-link" href="/guide">查看接入与使用方式 →</Link></div>
+            <div><p>SheetProof 可注册为 UGit 的 .xlsx 差异与合并工具。工作区文件保持在可编辑左侧，版本快照只读；保存仍由你明确触发。</p><a className="text-link" href="/guide/#ugit">查看接入与使用方式 →</a></div>
           </div>
         </section>
 

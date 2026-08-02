@@ -311,9 +311,13 @@ SheetProof compare \
    `https://github.com/tadazly/sheetproof`，页脚显示
    `Copyright (c) 2026 tadazly`。使用说明页“常用操作”的“差异行筛选”右侧应简洁
    显示“1–4 切换分类，5 全选”，并保持单行对齐。
-5. 发布后分别检查源站和 `https://sheetproof.luyilabs.com/`，确认主要路由、favicon、
+5. 在 390、320、280 和 240 像素宽的有效视口分别检查首页与使用说明页，确认页面
+   没有横向滚动。双文件模式和 Git 仓库模式的命令必须在卡片内换行，不得撑宽卡片；
+   首页“查看接入与使用方式”应定位到 `/guide/#ugit`，该章节应说明固定应用位置、
+   点击“配置 UGit”、只替换 `*.xlsx` 工具、重开 UGit 以及工具列表的正常状态。
+6. 发布后分别检查源站和 `https://sheetproof.luyilabs.com/`，确认主要路由、favicon、
    截图和 Open Graph 图片正常，并确认同一 Caddy 实例上的既有站点未受影响。
-6. 手动运行 GitHub Actions 的 Release workflow，确认可以生成 Windows amd64 和 macOS
+7. 手动运行 GitHub Actions 的 Release workflow，确认可以生成 Windows amd64 和 macOS
    universal artifacts，但不会创建 Release；推送与产品版本一致的测试标签时，确认只
    创建 Draft Release，并包含两个平台产物与 `SHA256SUMS.txt`。正式标签只能在准备
    发布时使用，不能为了验收污染公开版本记录。

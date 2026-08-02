@@ -13,7 +13,7 @@ export default function FeaturesPage() {
     </section>
     <section className="section page-width screenshot-section">
       <div className="section-heading compact"><p className="eyebrow">实际界面</p><h2>从定位差异到合并保存</h2><p>下面以角色数值配置为例，展示修改、新增和删除在左右表格中的样子。</p></div>
-      <div className="screenshot-stack">{screenshots.filter((shot) => shot.id !== "review-difference").map((shot) => <ScreenshotViewer key={shot.id} src={shot.src} alt={shot.alt} caption={shot.caption} />)}</div>
+      <div className="screenshot-stack">{screenshots.filter((shot) => shot.id !== "review-difference").map((shot) => <ScreenshotViewer key={shot.id} src={shot.src} alt={shot.alt} caption={shot.caption} width={shot.width} height={shot.height} />)}</div>
     </section>
     <section id="limits" className="section page-width limits-section">
       <div className="section-heading compact"><p className="eyebrow">支持范围</p><h2>当前支持什么</h2><p>SheetProof 处理常见 .xlsx 内容和本地版本工作流，以下范围暂不支持。</p></div>
