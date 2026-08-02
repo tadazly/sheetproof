@@ -6,7 +6,7 @@ import { screenshots } from "../content";
 const walkthrough = [
   { id: "direct-compare", number: "01", title: "打开工作簿", body: "选择左右两个 .xlsx，或从本地 Git 仓库选择工作区文件和对比引用。左侧可编辑，右侧保持只读。" },
   { id: "review-difference", number: "02", title: "定位并核对差异", body: "按修改、增加、删除或冲突筛选。选中单元格后，两侧值、类型和行状态会保持同步。" },
-  { id: "merge-applied", number: "03", title: "合并并保存", body: "把确认过的单元格或整行复制到左侧。操作可撤销；保存只写入左侧工作簿。" },
+  { id: "merge-applied", number: "03", title: "合并并保存", body: "把确认过的单元格或整行复制到左侧。想核对改动时，按住左侧“前后对比”或在表格中按住 Tab；改过的格子会单独标出来，松手就回到最新结果。确认后再保存。" },
 ];
 
 export default function GuidePage() {
@@ -20,7 +20,7 @@ export default function GuidePage() {
           <ScreenshotViewer src={shot.src} alt={shot.alt} caption={shot.caption} />
         </article>;
       })}</div>
-      <aside className="shortcut-card"><p className="eyebrow">SHORTCUTS</p><h2>常用操作</h2><dl><div><dt>保存</dt><dd>Ctrl / Command + S</dd></div><div><dt>另存为</dt><dd>Ctrl / Command + Shift + S</dd></div><div><dt>撤销</dt><dd>Ctrl / Command + Z</dd></div><div><dt>缩放</dt><dd>Ctrl / Command + 滚轮</dd></div><div><dt>编辑左侧</dt><dd>双击单元格</dd></div></dl></aside>
+      <aside className="shortcut-card"><p className="eyebrow">SHORTCUTS</p><h2>常用操作</h2><dl><div><dt>回看修改前</dt><dd>表格聚焦后按住 Tab</dd></div><div><dt>保存</dt><dd>Ctrl / Command + S</dd></div><div><dt>另存为</dt><dd>Ctrl / Command + Shift + S</dd></div><div><dt>撤销</dt><dd>Ctrl / Command + Z</dd></div><div><dt>缩放</dt><dd>Ctrl / Command + 滚轮</dd></div><div><dt>编辑左侧</dt><dd>双击单元格</dd></div></dl></aside>
     </section>
     <section className="section page-width mode-grid">
       <article><p className="eyebrow">DIRECT FILES</p><h2>双文件模式</h2><p>适合临时核对两个工作簿。左侧可编辑并可切换保存目标，右侧始终只读。</p><pre><code>sheetproof compare --left current.xlsx --right target.xlsx</code></pre></article>

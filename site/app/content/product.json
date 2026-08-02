@@ -47,6 +47,12 @@
       "summaryZh": "只把选中的单元格或行合并到可写左侧，记录处理结果，并让编辑与合并都可撤销。"
     },
     {
+      "title": "Hold to compare before and after",
+      "titleZh": "按住就能回看修改前",
+      "summary": "Hold the before-and-after control, or hold Tab while either grid is focused, to peek at the left workbook exactly as it was opened.",
+      "summaryZh": "改完不放心时，按住左侧的“前后对比”，或在任一表格聚焦后按住 Tab，就能暂时看到刚打开时的原样；松手马上回到最新结果，改过的格子也会单独标出来。"
+    },
+    {
       "title": "Git repository mode",
       "titleZh": "本地 Git 仓库模式",
       "summary": "Reads the real worktree on the left and a validated local Git ref on the right without checkout, fetch, or branch mutation.",

@@ -730,6 +730,85 @@ describe("App", () => {
     expect(wrapper.find(".editor").exists()).toBe(false);
   });
 
+  it("shows the opening left state only while the preview button or grid-scoped Tab is held", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.dirty = true;
+    loaded.undoCount = 1;
+    loaded.diff.sheetCount = 1;
+    loaded.diff.sheets = [{
+      name: "数据 表", status: "equal", orderDifferent: false,
+      differenceCount: 0, maxRow: 1, maxCol: 2, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 0,
+      rows: []
+    }];
+    loaded.selectedSheet = "数据 表";
+    const empty = { present: false, raw: "", display: "", type: "unset" };
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: async () => ({
+            sheet: "数据 表", fromRow: 1, toRow: 1, fromCol: 1, toCol: 2,
+            cells: [{
+              row: 1, col: 1, axis: "A1", status: "unchanged", rowStatus: "unchanged",
+              left: { ...empty, present: true, raw: "最新状态", display: "最新状态", type: "string" },
+              originalLeft: { ...empty, present: true, raw: "打开时状态", display: "打开时状态", type: "string" },
+              right: { ...empty }
+            }, {
+              row: 1, col: 2, axis: "B1", status: "unchanged", rowStatus: "unchanged",
+              left: { ...empty, present: true, raw: "一直没改", display: "一直没改", type: "string" },
+              originalLeft: { ...empty, present: true, raw: "一直没改", display: "一直没改", type: "string" },
+              right: { ...empty }
+            }]
+          })
+        }
+      }
+    };
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    const leftPanel = wrapper.findAll(".grid-panel")[0];
+    const previewButton = leftPanel.get(".original-preview-button");
+    expect(leftPanel.text()).toContain("最新状态");
+    expect(leftPanel.text()).not.toContain("打开时状态");
+
+    await previewButton.trigger("pointerdown");
+    expect(leftPanel.classes()).toContain("original-preview");
+    expect(leftPanel.text()).toContain("打开时状态");
+    const previewCells = leftPanel.findAll(".cell");
+    expect(previewCells[0].classes()).toContain("original-preview-changed");
+    expect(previewCells[1].classes()).not.toContain("original-preview-changed");
+    window.dispatchEvent(new Event("pointerup"));
+    await wrapper.vm.$nextTick();
+    expect(leftPanel.text()).toContain("最新状态");
+
+    const outsideTab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    document.body.dispatchEvent(outsideTab);
+    expect(outsideTab.defaultPrevented).toBe(false);
+    expect(leftPanel.text()).toContain("最新状态");
+
+    const leftGrid = leftPanel.get(".grid-scroll");
+    (leftGrid.element as HTMLElement).focus();
+    const heldTab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    leftGrid.element.dispatchEvent(heldTab);
+    await wrapper.vm.$nextTick();
+    expect(heldTab.defaultPrevented).toBe(true);
+    expect(leftPanel.text()).toContain("打开时状态");
+    leftGrid.element.dispatchEvent(new KeyboardEvent("keyup", { key: "Tab", bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(leftPanel.text()).toContain("最新状态");
+
+    const rightGrid = wrapper.findAll(".grid-panel")[1].get(".grid-scroll");
+    (rightGrid.element as HTMLElement).focus();
+    rightGrid.element.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    await wrapper.vm.$nextTick();
+    expect(leftPanel.text()).toContain("打开时状态");
+    rightGrid.element.dispatchEvent(new KeyboardEvent("keyup", { key: "Tab", bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(leftPanel.text()).toContain("最新状态");
+  });
+
   it("prefetches a buffered region while scrolling before the current cells leave the viewport", async () => {
     const loaded = structuredClone(emptySummary);
     loaded.diff.sheetCount = 1;

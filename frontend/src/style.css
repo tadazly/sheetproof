@@ -759,6 +759,30 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 .panel-permission.editable { color: #245f89; background: #e5f0f8; }
 .panel-permission.readonly { color: #5c6877; background: #e4e7eb; }
 .panel-heading select { min-width: 100px; max-width: 45%; height: 23px; padding: 0 5px; border: 1px solid var(--color-border-strong); border-radius: 4px; font-size: 10px; }
+.original-preview-button {
+  min-height: 22px;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 0 6px;
+  color: #365d7d;
+  border-color: #afc5d7;
+  border-radius: 5px;
+  background: #f8fbfd;
+  box-shadow: none;
+  font-size: 9px;
+}
+.original-preview-button kbd {
+  padding: 0 4px;
+  color: #536d82;
+  border: 1px solid #c3d1dc;
+  border-radius: 3px;
+  background: #edf3f7;
+  font: inherit;
+}
+.original-preview-button.active { color: #fff; border-color: #426f92; background: #426f92; transform: translateY(1px); }
+.original-preview-button.active kbd { color: #284b66; border-color: #d8e5ef; background: #e7f0f7; }
+.grid-panel.original-preview { border-color: #7f9eb8; }
+.grid-panel.original-preview .panel-heading { color: #244b69; background: #e9f1f7; }
 .panel-empty {
   min-height: 0;
   display: grid;
@@ -799,6 +823,7 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   scrollbar-color: #b9c0c8 transparent;
   scrollbar-width: thin;
 }
+.grid-scroll:focus-visible { outline: 2px solid var(--selection); outline-offset: -2px; }
 .grid-scroll::-webkit-scrollbar, .repository-tree::-webkit-scrollbar, .repository-sheet-pane::-webkit-scrollbar { width: 10px; height: 10px; }
 .grid-scroll::-webkit-scrollbar-thumb, .repository-tree::-webkit-scrollbar-thumb, .repository-sheet-pane::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
@@ -822,6 +847,13 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 }
 .cell { background: var(--color-surface); cursor: cell; }
 .cell:hover { background: #f4f7fa; }
+.cell.original-preview-cell { background: var(--color-surface); box-shadow: none; }
+.cell.original-preview-cell:hover { background: #f4f7fa; }
+.cell.original-preview-cell.original-preview-changed { color: #284f70; background: #e8f2f9; box-shadow: inset 3px 0 #6d9fbe; }
+.cell.original-preview-cell.original-preview-changed:hover { background: #dfedf6; }
+.cell.original-preview-cell.selected { background: var(--selection-soft); box-shadow: inset 0 0 0 1px #78acd6; }
+.cell.original-preview-cell.selected.active { background: #d7eaf9; box-shadow: inset 0 0 0 2px var(--selection); }
+.cell.original-preview-cell.original-preview-changed.selected { background: #deedf7; box-shadow: inset 0 0 0 2px var(--selection), inset 3px 0 #6d9fbe; }
 .inline-cell-editor {
   position: absolute;
   z-index: 10;

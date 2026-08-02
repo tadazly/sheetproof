@@ -173,6 +173,45 @@ func TestSessionBatchCopyIsOneUndoCommand(t *testing.T) {
 	}
 }
 
+func TestSessionRegionKeepsOpeningLeftValueAfterEditAndSave(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := Open(pair.Left, pair.Right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	before, err := session.Region("数据 表", 1, 1, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openingValue := before.Cells[0].Left
+	if before.Cells[0].OriginalLeft != openingValue {
+		t.Fatalf("opening value = %+v, want %+v", before.Cells[0].OriginalLeft, openingValue)
+	}
+
+	if err := session.EditLeft(workbook.CellRef{Sheet: "数据 表", Row: 1, Col: 1}, "会话最新值", "text"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Save(""); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := session.Region("数据 表", 1, 1, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Cells[0].Left.Raw != "会话最新值" {
+		t.Fatalf("latest left value = %q, want 会话最新值", after.Cells[0].Left.Raw)
+	}
+	if after.Cells[0].OriginalLeft != openingValue {
+		t.Fatalf("opening value changed after edit/save: got %+v, want %+v", after.Cells[0].OriginalLeft, openingValue)
+	}
+}
+
 func TestSessionRowCopyKeepsStyleOnlyBlankCellsUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	left := filepath.Join(dir, "blank-left.xlsx")

@@ -88,6 +88,7 @@ export interface RegionCell {
   col: number;
   axis: string;
   left: CellValue;
+  originalLeft?: CellValue;
   right: CellValue;
   status: string;
   rowStatus: RowStatus;

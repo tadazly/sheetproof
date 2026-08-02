@@ -78,6 +78,7 @@ const repositorySearchFocused = ref(false);
 const repositorySearchInput = ref<HTMLInputElement | null>(null);
 const repositorySidebarTab = ref<"files" | "differences" | "sheets">("files");
 const inlineEdit = ref<{ row: number; col: number; value: string; original: RegionCell } | null>(null);
+const previewOriginal = ref(false);
 const repoSidebar = ref<HTMLElement | null>(null);
 let loadingTimer = 0;
 let differenceIndexTimer = 0;
@@ -96,6 +97,8 @@ let dragAnchor: CellPoint | null = null;
 let resizeState: { col: number; startX: number; startWidth: number } | null = null;
 let repositoryResize: { startX: number; startWidth: number } | null = null;
 let stopDropListener: (() => void) | undefined;
+let previewFromKeyboard = false;
+let previewFromPointer = false;
 
 interface RepositoryTreeRow {
   kind: "directory" | "file";
@@ -181,6 +184,9 @@ const activeCell = computed(() => {
   const point = activePoint.value;
   return point ? region.value?.cells.find((cell) => cell.row === point.row && cell.col === point.col) ?? null : null;
 });
+const canPreviewOriginal = computed(() => Boolean(
+  summary.value?.undoCount && region.value && !inlineEdit.value
+));
 const copyTargets = computed(() => {
   if (!selection.value) return [];
   const result = diffs.value
@@ -441,6 +447,7 @@ function clearWorkbook() {
   activePoint.value = null;
   selection.value = null;
   inlineEdit.value = null;
+  stopOriginalPreview();
 }
 
 async function chooseRepository() {
@@ -561,6 +568,7 @@ async function acceptSummary(data: Summary, preferredSheet = sheet.value, resetS
 }
 
 async function loadSheet(name: string, resetSelection = true) {
+  stopOriginalPreview();
   const request = ++sheetRequest;
   const changed = sheet.value !== name;
   sheet.value = name;
@@ -905,7 +913,7 @@ async function confirmSpecifiedIDs() {
 }
 
 function startInlineEdit(cell: RegionCell) {
-  if (busy.value || summary.value?.options.readonlyLeft) return;
+  if (busy.value || previewOriginal.value || summary.value?.options.readonlyLeft) return;
   setSingleSelection(cell);
   inlineEdit.value = {
     row: cell.row,
@@ -959,11 +967,72 @@ function inlineEditing(cell: RegionCell) {
 
 function displayDifferenceValue(cell: RegionCell | null, side: "left" | "right") {
   if (!cell) return "请选择一个单元格";
-  const value = cell[side];
+  const value = displayedCellValue(cell, side);
   if (!value.present) return "（不存在）";
   if (value.formula) return `=${value.formula}`;
   if (value.raw === "") return '""（空字符串）';
   return value.display || value.raw;
+}
+
+function displayedCellValue(cell: RegionCell, side: "left" | "right") {
+  if (side === "left" && previewOriginal.value) {
+    return cell.originalLeft ?? cell.left;
+  }
+  return cell[side];
+}
+
+function displayedCellText(cell: RegionCell, side: "left" | "right") {
+  const value = displayedCellValue(cell, side);
+  return value.formula ? `=${value.formula}` : value.display;
+}
+
+function leftChangedSinceOpen(cell: RegionCell) {
+  const original = cell.originalLeft ?? cell.left;
+  const current = cell.left;
+  if (!original.present && !current.present) return false;
+  return original.present !== current.present ||
+    original.raw !== current.raw ||
+    (original.formula ?? "") !== (current.formula ?? "") ||
+    original.type !== current.type;
+}
+
+function syncOriginalPreview() {
+  previewOriginal.value = canPreviewOriginal.value && (previewFromKeyboard || previewFromPointer);
+}
+
+function startOriginalPreviewFromPointer(event: PointerEvent) {
+  if (!canPreviewOriginal.value) return;
+  event.preventDefault();
+  previewFromPointer = true;
+  syncOriginalPreview();
+}
+
+function startOriginalPreviewFromKeyboardButton() {
+  if (!canPreviewOriginal.value) return;
+  previewFromPointer = true;
+  syncOriginalPreview();
+}
+
+function stopOriginalPreviewFromPointer() {
+  previewFromPointer = false;
+  syncOriginalPreview();
+}
+
+function stopOriginalPreview() {
+  previewFromKeyboard = false;
+  previewFromPointer = false;
+  previewOriginal.value = false;
+}
+
+function focusGrid(event: PointerEvent) {
+  const target = event.target;
+  if (target instanceof Element && target.matches("input, textarea, [contenteditable='true']")) return;
+  (event.currentTarget as HTMLElement).focus({ preventScroll: true });
+}
+
+function gridOwnsKeyboardFocus(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest(".grid-scroll")) &&
+    !target.matches("input, textarea, [contenteditable='true']");
 }
 
 async function undo() {
@@ -974,6 +1043,12 @@ async function undo() {
 function onWindowKeyDown(event: KeyboardEvent) {
   if (event.key === "Escape" && repositorySwitchDialog.value.visible) {
     repositorySwitchDialog.value.visible = false;
+    return;
+  }
+  if (event.key === "Tab" && gridOwnsKeyboardFocus(event.target) && canPreviewOriginal.value) {
+    event.preventDefault();
+    previewFromKeyboard = true;
+    syncOriginalPreview();
     return;
   }
   if (!event.ctrlKey && !event.metaKey) return;
@@ -994,6 +1069,12 @@ function onWindowKeyDown(event: KeyboardEvent) {
   if (!summary.value?.undoCount || busy.value) return;
   event.preventDefault();
   undo();
+}
+
+function onWindowKeyUp(event: KeyboardEvent) {
+  if (event.key !== "Tab" || !previewFromKeyboard) return;
+  previewFromKeyboard = false;
+  syncOriginalPreview();
 }
 
 async function saveFromShortcut(as: boolean) {
@@ -1057,6 +1138,15 @@ function resolutionLabel(item: RowResolution) {
 }
 
 function cellClass(cell: RegionCell, side: "left" | "right") {
+  if (side === "left" && previewOriginal.value) {
+    return {
+      cell: true,
+      "original-preview-cell": true,
+      "original-preview-changed": leftChangedSinceOpen(cell),
+      selected: containsCell(selection.value, cell.row, cell.col),
+      active: activePoint.value?.row === cell.row && activePoint.value?.col === cell.col
+    };
+  }
   const rowState = cell.rowStatus || rowStatus(cell.row);
   const appendedTarget = side === "left" ? rowResolution(cell.row, "left") : null;
   let changeState: Exclude<RowStatus, "unchanged" | "conflict"> | "" = "";
@@ -1090,6 +1180,12 @@ function cellClass(cell: RegionCell, side: "left" | "right") {
 }
 
 function rowClass(row: number, side: "left" | "right") {
+  if (side === "left" && previewOriginal.value) {
+    return {
+      "row-header": true,
+      selected: Boolean(selection.value && row >= selection.value.startRow && row <= selection.value.endRow)
+    };
+  }
   const status = rowStatus(row);
   const appendedTarget = side === "left" ? rowResolution(row, "left") : null;
   return {
@@ -1311,8 +1407,12 @@ onMounted(() => {
   window.addEventListener("pointermove", resizeColumn);
   window.addEventListener("pointermove", resizeRepositorySidebar);
   window.addEventListener("pointerup", finishPointerAction);
+  window.addEventListener("pointerup", stopOriginalPreviewFromPointer);
+  window.addEventListener("pointercancel", stopOriginalPreviewFromPointer);
   window.addEventListener("pointerdown", closeContextMenu);
   window.addEventListener("keydown", onWindowKeyDown);
+  window.addEventListener("keyup", onWindowKeyUp);
+  window.addEventListener("blur", stopOriginalPreview);
   if ((window as Window & { runtime?: unknown }).runtime) {
     stopDropListener = EventsOn("repository-drop-result", (result: RepositoryResult | null, message: string) => {
       if (message) {
@@ -1332,8 +1432,12 @@ onBeforeUnmount(() => {
   window.removeEventListener("pointermove", resizeColumn);
   window.removeEventListener("pointermove", resizeRepositorySidebar);
   window.removeEventListener("pointerup", finishPointerAction);
+  window.removeEventListener("pointerup", stopOriginalPreviewFromPointer);
+  window.removeEventListener("pointercancel", stopOriginalPreviewFromPointer);
   window.removeEventListener("pointerdown", closeContextMenu);
   window.removeEventListener("keydown", onWindowKeyDown);
+  window.removeEventListener("keyup", onWindowKeyUp);
+  window.removeEventListener("blur", stopOriginalPreview);
   stopDropListener?.();
 });
 </script>
@@ -1830,7 +1934,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="grids">
-          <section class="grid-panel">
+          <section class="grid-panel" :class="{ 'original-preview': previewOriginal }">
             <div class="panel-heading">
               <strong>
                 <span class="panel-indicator" :class="leftReadonly ? 'readonly' : 'editable'"></span>
@@ -1839,8 +1943,22 @@ onBeforeUnmount(() => {
               <span class="panel-permission" :class="leftReadonly ? 'readonly' : 'editable'">
                 <AppIcon :name="leftReadonly ? 'files' : 'edit'" :size="12" />{{ leftReadonly ? "只读" : "可编辑" }}
               </span>
-              <small v-if="summary?.options.gitDiff">由 Git 提供，不能编辑或保存</small>
-              <small v-else-if="summary && !summary.options.readonlyLeft">双击单元格编辑</small>
+              <small v-if="previewOriginal" class="grid-edit-hint">正在看打开时的状态</small>
+              <small v-else-if="summary?.options.gitDiff" class="grid-edit-hint">由 Git 提供，不能编辑或保存</small>
+              <small v-else-if="summary && !summary.options.readonlyLeft" class="grid-edit-hint">双击单元格编辑</small>
+              <button
+                v-if="!leftReadonly"
+                class="original-preview-button"
+                :class="{ active: previewOriginal }"
+                :disabled="!canPreviewOriginal"
+                :aria-pressed="previewOriginal"
+                :title="canPreviewOriginal ? '按住查看打开表格时的状态；表格聚焦时也可按住 Tab' : '修改左侧表格后即可回看打开时的状态'"
+                @pointerdown="startOriginalPreviewFromPointer"
+                @keydown.space.prevent="startOriginalPreviewFromKeyboardButton"
+                @keyup.space.prevent="stopOriginalPreviewFromPointer"
+                @keydown.enter.prevent="startOriginalPreviewFromKeyboardButton"
+                @keyup.enter.prevent="stopOriginalPreviewFromPointer"
+              ><AppIcon name="undo" :size="12" />{{ previewOriginal ? "松开看最新" : "前后对比 · 按住" }}<kbd>Tab</kbd></button>
             </div>
             <div v-if="repository && repository.leftState !== 'ready'" class="panel-empty">
               <template v-if="repository.leftState === 'loading' || repository.leftState === 'comparing'">
@@ -1854,7 +1972,7 @@ onBeforeUnmount(() => {
                 description="从左侧目录树选择一个 XLSX 表格开始对比。"
               />
             </div>
-            <div v-else ref="leftScroll" class="grid-scroll" @scroll="onScroll('left')" @wheel="onGridWheel">
+            <div v-else ref="leftScroll" class="grid-scroll" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('left')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
                 <template v-if="region">
                   <div class="col-header-layer">
@@ -1904,7 +2022,7 @@ onBeforeUnmount(() => {
                       height: `${rowHeight}px`,
                       fontSize: `${scaledFontSize}px`
                     }"
-                    :title="cell.left.formula ? `=${cell.left.formula}` : cell.left.raw"
+                    :title="displayedCellValue(cell, 'left').formula ? `=${displayedCellValue(cell, 'left').formula}` : displayedCellValue(cell, 'left').raw"
                     @pointerdown="beginCellSelection(cell, $event)"
                     @pointerenter="extendCellSelection(cell)"
                     @contextmenu="openCellMenu($event, cell, 'left')"
@@ -1921,7 +2039,7 @@ onBeforeUnmount(() => {
                       @keydown.esc.prevent.stop="cancelInlineEdit"
                       @blur="commitInlineEdit"
                     />
-                    <template v-else>{{ cell.left.formula ? `=${cell.left.formula}` : cell.left.display }}</template>
+                    <template v-else>{{ displayedCellText(cell, "left") }}</template>
                   </div>
                 </template>
               </div>
@@ -1945,7 +2063,7 @@ onBeforeUnmount(() => {
                 description="选择可用分支后，将通过 Git 对象只读加载同路径表格。"
               />
             </div>
-            <div v-else ref="rightScroll" class="grid-scroll" @scroll="onScroll('right')" @wheel="onGridWheel">
+            <div v-else ref="rightScroll" class="grid-scroll" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('right')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
                 <template v-if="region">
                   <div class="col-header-layer">
@@ -2014,12 +2132,12 @@ onBeforeUnmount(() => {
 
         <div v-if="summary && activeCell && selectionSize === 1" class="difference-inspector">
           <div class="difference-line left">
-            <span class="difference-side">当前工作区</span>
+            <span class="difference-side">{{ previewOriginal ? "打开时状态" : "当前工作区" }}</span>
             <strong>{{ activeCell.axis }}</strong>
-            <span class="difference-value" :title="activeCell.left.raw">
+            <span class="difference-value" :title="displayedCellValue(activeCell, 'left').raw">
               {{ displayDifferenceValue(activeCell, "left") }}
             </span>
-            <span class="difference-type">{{ activeCell.left.type || "unset" }}</span>
+            <span class="difference-type">{{ displayedCellValue(activeCell, "left").type || "unset" }}</span>
           </div>
           <div class="difference-line right">
             <span class="difference-side">对比来源</span>

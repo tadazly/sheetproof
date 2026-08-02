@@ -132,6 +132,11 @@ launch-and-capture step in the flow even then.
 Report automated tests, desktop packaging, and real GUI acceptance separately. Do not claim a
 manual flow passed unless it was actually exercised and visually inspected.
 
+Until the user explicitly switches the official site to their own server, every change to
+`../../../site/` or synchronized website content must be built, tested, and deployed to
+`https://sheetproof-app.kuyami.chatgpt.site/`. Confirm the Sites deployment succeeds; a local-only
+site update is not a complete delivery.
+
 ## Keep handoff material current
 
 When behavior or constraints change, update the relevant parts of:

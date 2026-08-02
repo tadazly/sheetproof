@@ -63,13 +63,14 @@ type RowResolution struct {
 }
 
 type RegionCell struct {
-	Row       int                `json:"row"`
-	Col       int                `json:"col"`
-	Axis      string             `json:"axis"`
-	Left      workbook.CellValue `json:"left"`
-	Right     workbook.CellValue `json:"right"`
-	Status    diff.CellStatus    `json:"status"`
-	RowStatus diff.RowStatus     `json:"rowStatus"`
+	Row          int                `json:"row"`
+	Col          int                `json:"col"`
+	Axis         string             `json:"axis"`
+	Left         workbook.CellValue `json:"left"`
+	OriginalLeft workbook.CellValue `json:"originalLeft"`
+	Right        workbook.CellValue `json:"right"`
+	Status       diff.CellStatus    `json:"status"`
+	RowStatus    diff.RowStatus     `json:"rowStatus"`
 }
 
 type Region struct {
@@ -87,23 +88,24 @@ type CellCoordinate struct {
 }
 
 type Session struct {
-	mu          sync.RWMutex
-	leftFile    *excelize.File
-	rightFile   *excelize.File
-	left        *workbook.WorkbookSnapshot
-	right       *workbook.WorkbookSnapshot
-	rightSource *workbook.WorkbookSnapshot
-	rightRows   map[string]map[int]int
-	currentDiff *diff.WorkbookDiff
-	history     history.Stack
-	options     Options
-	dirty       bool
-	warnings    []string
-	mergeNotice string
-	stateID     uint64
-	savedState  uint64
-	nextState   uint64
-	resolutions []RowResolution
+	mu           sync.RWMutex
+	leftFile     *excelize.File
+	rightFile    *excelize.File
+	left         *workbook.WorkbookSnapshot
+	originalLeft *workbook.WorkbookSnapshot
+	right        *workbook.WorkbookSnapshot
+	rightSource  *workbook.WorkbookSnapshot
+	rightRows    map[string]map[int]int
+	currentDiff  *diff.WorkbookDiff
+	history      history.Stack
+	options      Options
+	dirty        bool
+	warnings     []string
+	mergeNotice  string
+	stateID      uint64
+	savedState   uint64
+	nextState    uint64
+	resolutions  []RowResolution
 }
 
 func Open(leftPath, rightPath string, options Options) (*Session, error) {
@@ -168,7 +170,8 @@ func OpenContext(ctx context.Context, leftPath, rightPath string, options Option
 	options = defaultOptions(options)
 	return &Session{
 		leftFile: leftFile, rightFile: rightFile,
-		left: left, right: right, rightSource: rightSource, rightRows: rightRows,
+		left: left, originalLeft: cloneWorkbookSnapshot(left),
+		right: right, rightSource: rightSource, rightRows: rightRows,
 		currentDiff: currentDiff, warnings: alignmentWarnings, mergeNotice: mergeNotice,
 		options: options, stateID: 1, savedState: 1, nextState: 2,
 	}, nil
@@ -204,7 +207,7 @@ func OpenLeft(leftPath string, options Options) (*Session, error) {
 	}
 	options = defaultOptions(options)
 	return &Session{
-		leftFile: leftFile, left: left, options: options,
+		leftFile: leftFile, left: left, originalLeft: cloneWorkbookSnapshot(left), options: options,
 		stateID: 1, savedState: 1, nextState: 2,
 	}, nil
 }
@@ -363,6 +366,7 @@ func (s *Session) Region(sheet string, fromRow, rowCount, fromCol, colCount int)
 		return Region{}, fmt.Errorf("invalid region (maximum 300 rows by 100 columns)")
 	}
 	leftSheet := s.left.ByName[sheet]
+	originalLeftSheet := s.originalLeft.ByName[sheet]
 	var rightSheet *workbook.SheetSnapshot
 	if s.right != nil {
 		rightSheet = s.right.ByName[sheet]
@@ -404,12 +408,38 @@ func (s *Session) Region(sheet string, fromRow, rowCount, fromCol, colCount int)
 			}
 			region.Cells = append(region.Cells, RegionCell{
 				Row: row, Col: col, Axis: ref.Axis(),
-				Left: leftSheet.Cell(row, col), Right: rightSheet.Cell(row, col),
+				Left: leftSheet.Cell(row, col), OriginalLeft: originalLeftSheet.Cell(row, col),
+				Right:  rightSheet.Cell(row, col),
 				Status: status, RowStatus: rowStatus,
 			})
 		}
 	}
 	return region, nil
+}
+
+func cloneWorkbookSnapshot(source *workbook.WorkbookSnapshot) *workbook.WorkbookSnapshot {
+	if source == nil {
+		return nil
+	}
+	result := &workbook.WorkbookSnapshot{
+		Path: source.Path, Identity: source.Identity,
+		Sheets: make([]*workbook.SheetSnapshot, 0, len(source.Sheets)),
+		ByName: make(map[string]*workbook.SheetSnapshot, len(source.ByName)),
+	}
+	for _, sourceSheet := range source.Sheets {
+		sheet := &workbook.SheetSnapshot{
+			Name: sourceSheet.Name, Index: sourceSheet.Index,
+			MaxRow: sourceSheet.MaxRow, MaxCol: sourceSheet.MaxCol,
+			Cells:    make(map[workbook.CellKey]workbook.CellValue, len(sourceSheet.Cells)),
+			CellList: append([]workbook.CellKey(nil), sourceSheet.CellList...),
+		}
+		for key, value := range sourceSheet.Cells {
+			sheet.Cells[key] = value
+		}
+		result.Sheets = append(result.Sheets, sheet)
+		result.ByName[sheet.Name] = sheet
+	}
+	return result
 }
 
 func (s *Session) CopyRightToLeft(ref workbook.CellRef) error {
