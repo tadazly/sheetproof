@@ -9,16 +9,15 @@ export default function HomePage() {
       <main>
         <section className="hero page-width">
           <div className="hero-copy">
-            <p className="eyebrow">XLSX 对比与合并</p>
-            <h1>{product.name}<span>{product.nameZh}</span></h1>
-            <p className="hero-slogan">{product.slogan}</p>
+            <p className="eyebrow">面向 Git 工作流的 XLSX 差异审阅</p>
+            <h1>让配置表变更也能逐格审阅<span>{product.name} · {product.nameZh}</span></h1>
             <p className="hero-description">{product.descriptionZh}</p>
             <div className="hero-actions">
               <Link className="button button-primary" href="/download">获取 SheetProof</Link>
               <Link className="button button-secondary" href="/guide">查看使用方式</Link>
             </div>
             <div className="truth-row" aria-label="产品边界">
-              <span>文件留在本机</span><span>专注 .xlsx</span><span>支持 Git / UGit</span>
+              <span>文件留在本机</span><span>理解 XLSX 语义</span><span>为 Git 工作流设计</span>
             </div>
           </div>
           <ScreenshotViewer className="hero-shot" src="/screenshots/sheetproof-review-difference.png" alt="SheetProof 聚焦显示游戏角色数值差异" caption="赛季角色数值差异 · 点击查看原图" />
@@ -70,6 +69,13 @@ export default function HomePage() {
           <div className="section-heading compact"><p className="eyebrow">适用场景</p><h2>适合需要认真核对版本变化的表格</h2></div>
           <div className="use-case-grid">
             {useCases.map((item) => <article key={item.title}><h3>{item.titleZh}</h3><p>{item.summaryZh}</p></article>)}
+          </div>
+        </section>
+
+        <section className="section page-width ugit-section">
+          <div className="ugit-card">
+            <div><p className="eyebrow">UGit 集成</p><h2>继续在熟悉的 UGit 流程里审阅 XLSX</h2></div>
+            <div><p>SheetProof 可注册为 UGit 的 .xlsx 差异与合并工具。工作区文件保持在可编辑左侧，版本快照只读；保存仍由你明确触发。</p><Link className="text-link" href="/guide">查看接入与使用方式 →</Link></div>
           </div>
         </section>
 

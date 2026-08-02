@@ -298,13 +298,21 @@ SheetProof compare \
 
 官网变更后：
 
-1. 运行内容同步、网站 lint 和 `npm test`，确认 `site/dist/client/` 中生成首页、功能、
+1. 在 960px 以下的手机和平板视口确认头部显示至少 44×44px 的菜单按钮；展开后
+   抽屉包含功能、使用说明、下载、更新日志和 GitHub，当前页面有选中状态，背景
+   页面不能滚动。确认焦点自动进入菜单，Tab/Shift+Tab 不会离开抽屉，按 Escape、
+   点击遮罩或关闭按钮后恢复到菜单按钮；选择内部页面后菜单关闭且路由正确。
+2. 运行内容同步、网站 lint 和 `npm test`，确认 `site/dist/client/` 中生成首页、功能、
    使用说明、下载和更新日志的静态页面。
-2. 检查更新日志只包含用户能看到的功能与修复，不包含提示词、内部任务、测试安排、
+3. 检查更新日志只包含用户能看到的功能与修复，不包含提示词、内部任务、测试安排、
    发布计划、私人路径、账号或凭据。
-3. 发布后分别检查源站和 `https://sheetproof.luyilabs.com/`，确认主要路由、favicon、
+4. 确认首页首屏明确面向 Git 工作流中的配置表和数据表，不暗示格式、图表、宏或
+   Excel 级编辑能力；UGit 作为独立集成模块出现。页头和页脚 GitHub 入口应指向
+   `https://github.com/tadazly/sheetproof`，页脚显示
+   `Copyright (c) 2026 tadazly`。
+5. 发布后分别检查源站和 `https://sheetproof.luyilabs.com/`，确认主要路由、favicon、
    截图和 Open Graph 图片正常，并确认同一 Caddy 实例上的既有站点未受影响。
-4. 手动运行 GitHub Actions 的 Release workflow，确认可以生成 Windows amd64 和 macOS
+6. 手动运行 GitHub Actions 的 Release workflow，确认可以生成 Windows amd64 和 macOS
    universal artifacts，但不会创建 Release；推送与产品版本一致的测试标签时，确认只
    创建 Draft Release，并包含两个平台产物与 `SHA256SUMS.txt`。正式标签只能在准备
    发布时使用，不能为了验收污染公开版本记录。

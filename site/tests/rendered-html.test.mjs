@@ -20,11 +20,30 @@ async function render(path = "/") {
 test("exports the SheetProof home page", async () => {
   const html = await render();
   assert.match(html, /SheetProof/);
-  assert.match(html, /逐格看清 XLSX 差异/);
+  assert.match(html, /面向 Git 工作流的 XLSX 差异审阅/);
+  assert.match(html, /让配置表变更也能逐格审阅/);
+  assert.match(html, /帮助游戏开发和数据团队核对变更/);
+  assert.match(html, /理解 XLSX 语义/);
+  assert.match(html, /UGit 集成/);
   assert.match(html, /赛季角色数值差异/);
   assert.match(html, /放大查看/);
   assert.match(html, /https:\/\/sheetproof\.luyilabs\.com\/og\.png/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
+});
+
+test("exports mobile navigation affordance, canonical GitHub link, and copyright", async () => {
+  for (const route of routes.keys()) {
+    const html = await render(route);
+    assert.match(html, /aria-controls="mobile-site-menu"/);
+    assert.match(html, /https:\/\/github\.com\/tadazly\/sheetproof/);
+    assert.match(html, /Copyright \(c\) 2026 tadazly/);
+  }
+});
+
+test("normalizes static-export trailing slashes before marking the current navigation item", async () => {
+  const shell = await readFile(fileURLToPath(new URL("../app/components/SiteShell.tsx", import.meta.url)), "utf8");
+  assert.match(shell, /pathname\.replace\(\/\\\/\$\/, ""\) \|\| "\/"/);
+  assert.match(shell, /aria-current=\{isCurrent\(href\) \? "page"/);
 });
 
 test("exports product routes", async () => {
