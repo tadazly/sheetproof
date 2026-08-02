@@ -1,70 +1,64 @@
 # 官网部署
 
-当前正式站点为 `https://sheetproof-app.kuyami.chatgpt.site/`。在维护者明确通知切换到
-自有服务器之前，每次修改 `site/` 或由产品事实源同步出网站内容后，都要在构建和
-渲染测试通过后发布到该地址并确认部署成功，不能只停留在本地构建。
+SheetProof 官网发布在 `https://sheetproof.luyilabs.com/`。生产环境使用 Cloudflare 代理、AWS Lightsail 和 Caddy；网站构建为静态文件，不需要在服务器上运行 Node.js、数据库或后台进程。
 
-`site/` 是一个 vinext 网站，当前没有数据库、登录、上传或运行时密钥。最简单可靠的
-自有服务器方案是以 Node.js 服务运行构建产物，并由现有 Caddy 或 Nginx 负责 HTTPS
-和反向代理。
+公开仓库不得保存服务器 IP、SSH 用户名、主机别名、密钥路径、本机认证配置、证书私钥或其他凭据。部署时由维护者在命令行传入本机已有的 SSH 目标。
 
 ## 构建
 
-```bash
+在仓库根目录执行：
+
+```powershell
 node scripts/sync-product-content.mjs
-cd site
+Set-Location site
 npm ci
-npm run build
+npm run lint
 npm test
 ```
 
-生产服务器使用 Node.js 22.13 或更高版本。在服务器中保留 `site/package.json`、锁文件、
-依赖和构建产物，然后执行项目的生产启动命令：
+`npm test` 会先构建静态站点，再检查首页、功能、使用说明、下载和更新日志的输出。可部署文件位于 `site/dist/client/`，各路由使用独立的 `index.html`。
 
-```bash
-cd site
-npm ci
-npm run start
+## 发布静态文件
+
+网站构建和测试通过后，在仓库根目录执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/deploy-site-lightsail.ps1 -SshHost <ssh-host>
 ```
 
-vinext 的生产启动器当前由项目锁文件统一安装，因此服务器阶段保留完整的锁定依赖。
-将服务绑定到回环地址，再由反向代理把域名转发到该端口。进程可交给 systemd、
-supervisord、Docker Compose 或服务器已有的进程管理器；优先复用现有运维方式。
+脚本把静态文件上传到临时目录，检查入口文件和权限后再切换到 `/var/www/sheetproof.luyilabs.com`。上一个版本保留在相邻的回退目录中。脚本不会写入 SSH 配置，也不会读取或复制密钥文件。
 
-## 自动部署所需信息
+## Caddy
 
-要由维护者或自动化直接部署到自有服务器，需要提供：
+站点配置为：
 
-- SSH 主机、端口、用户名和认证方式；
-- 目标目录以及该用户的写入权限；
-- 正式域名、DNS 是否已指向服务器；
-- 当前使用 Caddy、Nginx、Docker 还是其他进程管理方式；
-- 服务监听端口和防火墙约束；
-- 是否允许部署脚本重启该网站服务。
+```caddyfile
+sheetproof.luyilabs.com {
+  root * /var/www/sheetproof.luyilabs.com
+  encode zstd gzip
+  header {
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+  file_server
+}
+```
 
-当前网站不需要业务环境变量。若日后加入统计、下载镜像或错误上报，应把相关变量写入
-服务器密钥管理，不提交到仓库。
+首次加入站点时必须先读取并备份现有 Caddyfile，只增加新的站点块，不改动已有虚拟主机。候选配置通过 `caddy fmt` 和 `caddy validate` 后才能替换并 reload；reload 失败时恢复备份。
 
-## 推荐发布流程
-
-1. CI 完成内容同步检查、网站构建和渲染测试。
-2. 把已验证的 `site/` 源码和构建产物上传到带时间戳的新目录。
-3. 在新目录安装生产依赖并启动临时端口，先做本机健康检查。
-4. 原子切换 `current` 软链接或反向代理目标并重载服务。
-5. 保留上一版本，验证失败时切回，不在原目录覆盖部署。
+Cloudflare 应使用 **Full (strict)**。橙云不会代替源站与 Cloudflare 之间的 TLS；Caddy 通常可以自动申请并续期公开证书，因此暂时不需要 Cloudflare Origin Certificate。只有自动签发确实受阻，或运维策略明确要求 Origin Certificate 时，才把证书和私钥放在服务器的受限目录中，绝不能提交到仓库。
 
 ## 验证
 
-部署后至少检查：
+部署后检查：
 
 ```bash
-curl -fI https://example.com/
-curl -fI https://example.com/features
-curl -fI https://example.com/guide
-curl -fI https://example.com/download
-curl -fI https://example.com/changelog
-curl -fI https://example.com/favicon.ico
+curl -fI https://sheetproof.luyilabs.com/
+curl -fI https://sheetproof.luyilabs.com/features/
+curl -fI https://sheetproof.luyilabs.com/guide/
+curl -fI https://sheetproof.luyilabs.com/download/
+curl -fI https://sheetproof.luyilabs.com/changelog/
+curl -fI https://sheetproof.luyilabs.com/brand/favicon.ico
 ```
 
-随后在桌面与移动端目视确认导航、16:10 完整截图、下载状态、版本号和 Open Graph
-分享图。只有域名、TLS、页面和静态资源均实际验证通过后，才能记录为部署成功。
+还要绕过 Cloudflare 从服务器本机检查源站，确认正式域名返回当前版本，并确认同一 Caddy 实例上的既有站点仍可访问。域名、TLS、页面、截图、图标和 Open Graph 图片都通过检查后，才算部署完成。

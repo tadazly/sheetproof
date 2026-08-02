@@ -1,0 +1,149 @@
+name: Build desktop release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  WAILS_VERSION: "2.10.2"
+  NODE_VERSION: "22"
+
+jobs:
+  verify:
+    name: Verify source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            site/package-lock.json
+      - name: Test Go packages
+        run: go test ./...
+      - name: Vet Go packages
+        run: go vet ./...
+      - name: Verify desktop frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm run test
+          npm run build
+      - name: Verify website
+        working-directory: site
+        run: |
+          npm ci
+          npm run lint
+          npm test
+
+  build-windows:
+    name: Build Windows amd64
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v${{ env.WAILS_VERSION }}
+      - name: Build application
+        run: wails build -clean -platform windows/amd64
+      - name: Prepare artifact
+        shell: pwsh
+        run: Copy-Item build/bin/SheetProof.exe SheetProof-windows-amd64.exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sheetproof-windows-amd64
+          path: SheetProof-windows-amd64.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS universal
+    needs: verify
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v${WAILS_VERSION}
+      - name: Build application
+        run: wails build -clean -platform darwin/universal
+      - name: Prepare artifact
+        run: ditto -c -k --sequesterRsrc --keepParent build/bin/SheetProof.app SheetProof-macos-universal.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sheetproof-macos-universal
+          path: SheetProof-macos-universal.zip
+          if-no-files-found: error
+
+  draft-release:
+    name: Create draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Verify tag matches product version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          product_version="$(node -p "require('./product/product.json').product.version")"
+          test "$tag_version" = "$product_version"
+      - name: Write checksums
+        working-directory: release-assets
+        run: sha256sum SheetProof-* > SHA256SUMS.txt
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --draft \
+              --verify-tag \
+              --generate-notes \
+              --title "SheetProof $GITHUB_REF_NAME"
+          fi

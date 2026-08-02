@@ -4,11 +4,11 @@
     "nameZh": "表鉴",
     "legacyName": "ugxlsx",
     "slogan": "See every change. Merge with intent.",
-    "taglineZh": "看清每一处差异，再决定如何合并。",
+    "taglineZh": "逐格看清 XLSX 差异，再把需要的改动合进来。",
     "description": "A local-first desktop tool for reviewing and merging changes between Excel .xlsx workbooks, with first-class Git and UGit workflows.",
-    "descriptionZh": "一款本地优先的 .xlsx 对比与合并桌面工具，面向双文件、Git 仓库与 UGit 工作流。",
+    "descriptionZh": "SheetProof 用左右对照方式检查 .xlsx 的值、公式和类型，支持直接比较两个文件，也支持 Git 仓库与 UGit 工作流。文件始终留在本机。",
     "version": "0.1.0",
-    "channel": "Preview",
+    "channel": "预览版",
     "formats": [
       ".xlsx"
     ],
@@ -25,67 +25,67 @@
     "windows": null,
     "macos": null,
     "source": "https://github.com/tadazly/ugxlsx/archive/refs/heads/main.zip",
-    "status": "Desktop installers are under construction. Source builds are available now."
+    "status": "Executable downloads are not published yet. Source builds are available."
   },
   "features": [
     {
       "title": "Workbook-aware comparison",
       "titleZh": "理解工作簿语义的对比",
       "summary": "Compares sheets, values, formulas, explicit blanks, types, and worksheet order instead of diffing OOXML text.",
-      "summaryZh": "按工作表、值、公式、显式空值、类型与工作表顺序比较，不把 OOXML 文本噪声当成业务差异。"
+      "summaryZh": "比较工作表、值、公式、显式空值、类型和工作表顺序，避开重新保存 XLSX 时产生的结构噪声。"
     },
     {
       "title": "Side-by-side review",
       "titleZh": "双栏差异审阅",
       "summary": "Uses synchronized, virtualized grids with focused navigation and Git-style added, removed, modified, and conflict states.",
-      "summaryZh": "使用同步滚动的窗口化双栏网格，按增加、删除、修改和冲突分类定位真实差异。"
+      "summaryZh": "左右表格同步滚动，差异按新增、删除、修改和冲突分类，可以直接跳到需要核对的位置。"
     },
     {
       "title": "Current-sheet row filters",
       "titleZh": "只看当前工作表需要核对的行",
       "summary": "Shows row counts for the selected worksheet and lets you combine added, removed, modified, and conflict filters with keys 1–5; every new session starts unfiltered and filter changes keep your source-row position.",
-      "summaryZh": "摘要只显示当前工作表的行数；增加、删除、修改、冲突可多选，快捷键 1–4 切换分类、5 切换全部差异行与完整表格。每次启动默认显示完整数据，切换筛选会保留正在核对的原始行位置。"
+      "summaryZh": "当前工作表可以组合筛选新增、删除、修改和冲突行。快捷键 1–4 切换分类，5 在全部差异行和完整表格之间切换。"
     },
     {
       "title": "Controlled merge and undo",
       "titleZh": "可控合并与撤销",
       "summary": "Copies selected cells or rows into the writable left workbook, records merge decisions, and keeps every edit undoable.",
-      "summaryZh": "只把选中的单元格或行合并到可写左侧，记录处理结果，并让编辑与合并都可撤销。"
+      "summaryZh": "只把确认过的单元格或整行写入左侧。编辑和合并都会进入撤销记录，保存前可以随时回退。"
     },
     {
       "title": "Hold to compare before and after",
       "titleZh": "按住就能回看修改前",
       "summary": "Hold the before-and-after control, or hold Tab while either grid is focused, to peek at the left workbook exactly as it was opened.",
-      "summaryZh": "改完不放心时，按住左侧的“前后对比”，或在任一表格聚焦后按住 Tab，就能暂时看到刚打开时的原样；松手马上回到最新结果，改过的格子也会单独标出来。"
+      "summaryZh": "按住左侧的“前后对比”，或在表格内按住 Tab，可以临时查看刚打开文件时的内容；松开后回到当前结果。"
     },
     {
       "title": "Git repository mode",
       "titleZh": "本地 Git 仓库模式",
       "summary": "Reads the real worktree on the left and a validated local Git ref on the right without checkout, fetch, or branch mutation.",
-      "summaryZh": "左侧读取真实工作区，右侧从已验证的本地 Git 引用读取；不 checkout、不 fetch、不改分支。"
+      "summaryZh": "左侧读取真实工作区，右侧读取已有 Git 引用。比较过程不会 checkout、fetch 或切换分支。"
     },
     {
       "title": "Safe local save",
       "titleZh": "安全的本地保存",
       "summary": "Detects external changes and uses same-directory temporary files, verification, sync, and atomic replacement.",
-      "summaryZh": "保存前检测外部修改，经过同目录临时文件、重开校验、同步与原子替换写回。"
+      "summaryZh": "保存前检查文件是否被其他程序改动，再通过同目录临时文件、重开校验和原子替换写回。"
     }
   ],
   "useCases": [
     {
       "title": "Review configuration workbooks",
       "titleZh": "审阅配置表变更",
-      "summaryZh": "在提交或发版前核对数值、公式、类型与行级变化。"
+      "summaryZh": "在提交或发版前核对数值、公式、类型和整行变化。"
     },
     {
       "title": "Resolve XLSX changes in Git",
       "titleZh": "处理 Git 中的 XLSX 变化",
-      "summaryZh": "直接比较工作区与本地分支或远端跟踪引用，不切换当前分支。"
+      "summaryZh": "比较工作区与本地分支或远端跟踪引用，不打断当前分支上的工作。"
     },
     {
       "title": "Merge selected corrections",
       "titleZh": "选择性合并修正",
-      "summaryZh": "把确认过的单元格或整行复制到左侧，并在保存前随时撤销。"
+      "summaryZh": "只接收确认过的单元格或整行，保存前仍可撤销。"
     }
   ],
   "screenshots": [
@@ -93,19 +93,19 @@
       "id": "direct-compare",
       "src": "/screenshots/sheetproof-game-balance-overview.png",
       "alt": "SheetProof 对比游戏项目的角色成长配置表",
-      "caption": "打开赛季角色数值配置后，工作表、差异分类、双栏网格和当前值集中显示。"
+      "caption": "角色数值配置表：工作表、差异分类、左右内容和当前值在同一窗口中查看。"
     },
     {
       "id": "review-difference",
       "src": "/screenshots/sheetproof-review-difference.png",
       "alt": "SheetProof 聚焦显示角色名称和数值差异",
-      "caption": "聚焦差异区域：角色名称、生命和攻击调整以左右语义色展示，新增角色显示为绿色。"
+      "caption": "角色名称、生命和攻击调整按左右差异色显示，新增角色单独标出。"
     },
     {
       "id": "merge-applied",
       "src": "/screenshots/sheetproof-merge-result.png",
       "alt": "SheetProof 将角色名称合并到左侧并保存后的界面",
-      "caption": "将右侧角色名称复制到左侧并保存后，该单元格恢复一致，总差异从 31 降为 30。"
+      "caption": "把右侧角色名称合并到左侧后，该单元格恢复一致，其他差异保持不变。"
     }
   ]
 }

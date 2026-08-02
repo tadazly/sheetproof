@@ -849,6 +849,32 @@ go test -race ./...                                未通过：启用 CGO 后本
 单独完成四项检查和生产构建，随后同一离线优先脚本以 `build -s` 成功生成
 `build/bin/SheetProof.exe`。这不是 Wails 或依赖缓存缺失。
 
+## 2026-08-02 官网自托管与发行自动化
+
+官网正式地址切换为 `https://sheetproof.luyilabs.com/`。`site/` 使用静态导出，生产
+文件由 Caddy 从 `/var/www/sheetproof.luyilabs.com` 直接提供，不需要 Node.js 进程。
+部署脚本要求执行者在本机传入 SSH 目标，不在公开仓库保存服务器 IP、SSH 用户名或
+别名、本机用户路径、本机认证配置、密钥、证书私钥或令牌。
+
+官网硬编码文案和产品事实源改为直接说明实际能力；更新日志只保留用户可感知的功能
+与修复，补入共享/内联字符串归一、差异表容错、筛选位置、Git/UGit 对齐、文本 ID
+冲突追加、前后对比和 Windows 后台命令等近期修复，不再把品牌、截图、测试或发布
+安排写成产品更新。
+
+新增 `.github/workflows/release.yml`：手动运行只生成 Actions artifacts；推送与产品
+版本一致的 `v*` 标签时，生成 Windows amd64、macOS universal 和 SHA-256 校验文件，
+并创建 Draft Release。产物当前没有代码签名或 macOS 公证，后续凭据只能存入 GitHub
+Actions Secrets。
+
+项目规则、开发技能、架构、发布、部署和手工验收文档已同步。以后每次用户可见的
+功能迭代或修复都必须同步官网内容，完成静态构建和测试，并发布到正式域名；旧 Sites
+地址不再是正式发布目标。
+
+本次静态站点已实际发布。Caddy 候选配置和安装后的完整配置均通过校验，服务 reload
+成功；源站与 Cloudflare 公网入口的首页、功能、指南、下载、更新日志、favicon 和
+Open Graph 图片均返回 200，公网响应确认经过 Cloudflare，既有虚拟主机复核正常。
+Caddy 已正常提供源站 HTTPS，因此没有配置额外的 Origin Certificate。
+
 ## 后续风险与建议
 
 - 下一轮开始时先确认 `git status --short` 包含本轮现代化 UI、生产前端和文档

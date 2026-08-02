@@ -293,3 +293,18 @@ SheetProof compare \
    文件。自动化进程属性测试不能替代任务栏观察。
 3. 在资源管理器、任务栏和 Alt+Tab 检查图标。确认 EXE 资源和运行窗口的大小
    图标均为项目图标，而非默认 W 或未知图标；必要时刷新 Windows 图标缓存后复核。
+
+## 官网与 GitHub Release
+
+官网变更后：
+
+1. 运行内容同步、网站 lint 和 `npm test`，确认 `site/dist/client/` 中生成首页、功能、
+   使用说明、下载和更新日志的静态页面。
+2. 检查更新日志只包含用户能看到的功能与修复，不包含提示词、内部任务、测试安排、
+   发布计划、私人路径、账号或凭据。
+3. 发布后分别检查源站和 `https://sheetproof.luyilabs.com/`，确认主要路由、favicon、
+   截图和 Open Graph 图片正常，并确认同一 Caddy 实例上的既有站点未受影响。
+4. 手动运行 GitHub Actions 的 Release workflow，确认可以生成 Windows amd64 和 macOS
+   universal artifacts，但不会创建 Release；推送与产品版本一致的测试标签时，确认只
+   创建 Draft Release，并包含两个平台产物与 `SHA256SUMS.txt`。正式标签只能在准备
+   发布时使用，不能为了验收污染公开版本记录。

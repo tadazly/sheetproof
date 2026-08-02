@@ -58,8 +58,9 @@ switch 或 fetch。临时文件位于系统临时目录，切换来源和退出�
 - `product/changelog.json` 是面向用户的版本记录事实源。
 - `scripts/sync-product-content.mjs` 从上述数据生成 README、CHANGELOG、CLI 版本文件，
   并把网站所需 JSON 同步到 `site/app/content/`。
-- `site/` 是独立可构建的 vinext 多页网站。它只读取同步后的内容，不接触工作簿，
-  也不复制桌面端业务逻辑。
+- `site/` 是独立可构建的 vinext 多页网站。生产构建静态导出到 `site/dist/client/`，
+  由正式域名上的 Caddy 从 `/var/www/sheetproof.luyilabs.com` 直接提供；生产环境不运行
+  Node.js。网站只读取同步后的内容，不接触工作簿，也不复制桌面端业务逻辑。
 - `build/appicon.svg` 是品牌图标源文件；`scripts/generate-brand-assets.py` 负责生成
   PNG、Windows ICO、favicon 和前端/网站副本。
 - `cmd/genproductdemo` 生成角色成长、关卡掉落和技能参数工作簿，只用于产品演示与

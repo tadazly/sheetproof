@@ -11,7 +11,7 @@ const walkthrough = [
 
 export default function GuidePage() {
   return <SiteShell><main>
-    <PageIntro eyebrow="GUIDE" title="完成一次对比与合并" description="以角色平衡配置表为例，三个关键画面覆盖从打开到保存的主流程。" />
+    <PageIntro eyebrow="使用说明" title="完成一次对比与合并" description="下面用三个画面说明怎样打开文件、核对差异并保存结果。" />
     <section className="section page-width guide-layout">
       <div className="guide-scenes">{walkthrough.map((step) => {
         const shot = screenshots.find((item) => item.id === step.id)!;
@@ -20,12 +20,12 @@ export default function GuidePage() {
           <ScreenshotViewer src={shot.src} alt={shot.alt} caption={shot.caption} />
         </article>;
       })}</div>
-      <aside className="shortcut-card"><p className="eyebrow">SHORTCUTS</p><h2>常用操作</h2><dl><div><dt>差异行筛选</dt><dd>1–4 切换分类，5 切换全部 / 不筛选</dd></div><div><dt>回看修改前</dt><dd>表格聚焦后按住 Tab</dd></div><div><dt>保存</dt><dd>Ctrl / Command + S</dd></div><div><dt>另存为</dt><dd>Ctrl / Command + Shift + S</dd></div><div><dt>撤销</dt><dd>Ctrl / Command + Z</dd></div><div><dt>缩放</dt><dd>Ctrl / Command + 滚轮</dd></div><div><dt>编辑左侧</dt><dd>双击单元格</dd></div></dl></aside>
+      <aside className="shortcut-card"><p className="eyebrow">快捷键</p><h2>常用操作</h2><dl><div><dt>差异行筛选</dt><dd>1–4 切换分类，5 切换全部 / 不筛选</dd></div><div><dt>回看修改前</dt><dd>表格聚焦后按住 Tab</dd></div><div><dt>保存</dt><dd>Ctrl / Command + S</dd></div><div><dt>另存为</dt><dd>Ctrl / Command + Shift + S</dd></div><div><dt>撤销</dt><dd>Ctrl / Command + Z</dd></div><div><dt>缩放</dt><dd>Ctrl / Command + 滚轮</dd></div><div><dt>编辑左侧</dt><dd>双击单元格</dd></div></dl></aside>
     </section>
     <section className="section page-width mode-grid">
-      <article><p className="eyebrow">DIRECT FILES</p><h2>双文件模式</h2><p>适合临时核对两个工作簿。左侧可编辑并可切换保存目标，右侧始终只读。</p><pre><code>sheetproof compare --left current.xlsx --right target.xlsx</code></pre></article>
-      <article><p className="eyebrow">LOCAL REPOSITORY</p><h2>Git 仓库模式</h2><p>适合配置表与版本库。左侧读取真实工作区，右侧从 Git 对象导出到系统临时目录。</p><pre><code>sheetproof repo --path /repo --file config.xlsx --ref origin/main</code></pre></article>
+      <article><p className="eyebrow">直接打开文件</p><h2>双文件模式</h2><p>适合临时核对两个工作簿。左侧可编辑并可切换保存目标，右侧始终只读。</p><pre><code>sheetproof compare --left current.xlsx --right target.xlsx</code></pre></article>
+      <article><p className="eyebrow">打开本地仓库</p><h2>Git 仓库模式</h2><p>适合纳入版本管理的配置表。左侧读取真实工作区，右侧读取选中的 Git 版本。</p><pre><code>sheetproof repo --path /repo --file config.xlsx --ref origin/main</code></pre></article>
     </section>
-    <section className="section page-width faq-section"><div className="section-heading compact"><p className="eyebrow">FAQ</p><h2>常见问题</h2></div><details open><summary>工作簿会上传吗？</summary><p>不会。当前版本只在本机读取和处理文件，官网也没有工作簿上传入口。</p></details><details><summary>保存会自动提交到 Git 吗？</summary><p>不会。保存只修改当前工作区文件；暂存、提交和推送仍由你使用原有 Git 工具完成。</p></details><details><summary>能处理宏工作簿吗？</summary><p>不能。当前只支持 .xlsx，.xlsm 会在打开前被拒绝。</p></details></section>
+    <section className="section page-width faq-section"><div className="section-heading compact"><p className="eyebrow">常见问题</p><h2>使用前可能想知道</h2></div><details open><summary>工作簿会上传吗？</summary><p>不会。当前版本只在本机读取和处理文件，官网也没有工作簿上传入口。</p></details><details><summary>保存会自动提交到 Git 吗？</summary><p>不会。保存只修改当前工作区文件；暂存、提交和推送仍由你使用原有 Git 工具完成。</p></details><details><summary>能处理宏工作簿吗？</summary><p>不能。当前只支持 .xlsx，.xlsm 会在打开前被拒绝。</p></details></section>
   </main></SiteShell>;
 }

@@ -70,11 +70,11 @@ ${useCases}
 
 ## 下载与发布
 
-当前版本是 **${p.version} ${p.channel}**。Windows 与 macOS 桌面安装包正在建设中。
+当前版本是 **${p.version} ${p.channel}**。目前尚未发布可执行文件，可以从源码构建。
 
-- [查看 GitHub Releases](${product.downloads.releases})：安装包发布后可在这里下载。
+- [查看 GitHub Releases](${product.downloads.releases})：正式发布后可在这里下载安装包和校验文件。
 - [下载源码](${product.downloads.source})：用于本地构建与开发。
-- 维护者可按照 [发布指南](docs/releasing.md) 制作发行包并更新下载地址。
+- 维护者可按照 [发布指南](docs/releasing.md) 通过 GitHub Actions 生成 Windows 和 macOS 发行包。
 
 ## 快速开始
 
@@ -107,7 +107,7 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 4. 按增加、删除、修改和冲突审阅差异；需要时把右侧单元格或整行复制到左侧。
 5. 保存到当前工作区文件。SheetProof 不会自动 add、commit、push、fetch 或切换分支。
 
-对比结果中的四类数字只统计当前选中的工作表。四类筛选默认全部不选并显示完整表格；选中后左右两侧只保留对应差异行，缺失侧仍显示配对空行。快捷键 \`1\`、\`2\`、\`3\`、\`4\` 依次切换新增、删除、修改、冲突，\`5\` 切换“全部差异行 / 完整表格”。切换或取消筛选会保留正在核对的原始行及其视口位置；筛选状态不会跨启动保留。没有 \`id\` 列时，右键菜单显示“将整行新增到左侧”，并把右侧行追加到左侧数据末尾。
+对比结果中的四类数字只统计当前选中的工作表。四类筛选默认全部不选并显示完整表格；选中后左右两侧只保留对应差异行，缺失侧仍显示配对空行。快捷键 \`1\`、\`2\`、\`3\`、\`4\` 依次切换新增、删除、修改、冲突，\`5\` 切换“全部差异行 / 完整表格”。切换或取消筛选会保留正在核对的原始行及其视口位置；筛选状态不会跨启动保留。冲突行可整行覆盖或追加：整数 ID 可自动续号或指定新 ID，文本 ID 保留原值；普通修改行不会显示追加操作。
 
 ### 直接比较两个文件
 
@@ -159,7 +159,7 @@ build/          应用图标源与本地桌面构建产物
 
 ## Roadmap
 
-- 建立可复现、签名的 Windows/macOS GitHub Releases。
+- 为 Windows 发行包接入代码签名，并为 macOS 应用接入签名和公证。
 - 完成 Windows 与 macOS 发布环境的完整 GUI 验收矩阵。
 - 为超过 10,000 条的差异索引增加分页 UI。
 - 在保留请求防乱序与 Region API 的前提下继续拆分前端大型视图组件。
@@ -196,7 +196,7 @@ npm run build
 node scripts/sync-product-content.mjs
 \`\`\`
 
-该脚本同步生成 README、CHANGELOG 和官网内容副本。完整发布顺序见 [docs/releasing.md](docs/releasing.md)。
+该脚本同步生成 README、CHANGELOG 和官网内容副本。每次面向用户的功能变更或修复都要更新官网；更新记录只写用户能看到的变化，不写内部任务、提示词或实现过程。完成网站构建与测试后，按 [docs/deployment.md](docs/deployment.md) 发布到正式域名。完整发布顺序见 [docs/releasing.md](docs/releasing.md)。
 
 ## License
 

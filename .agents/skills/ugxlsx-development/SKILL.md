@@ -1,6 +1,6 @@
 ---
 name: ugxlsx-development
-description: Continue, review, debug, test, or document the ugxlsx Go/Wails/Vue project, especially its local Git repository mode, XLSX comparison, merge, inline editing, undo, safe save, CLI, asynchronous UI state, and release validation. Use for any implementation or handoff work inside the ugxlsx repository.
+description: Continue, review, debug, test, release, deploy, or document the ugxlsx Go/Wails/Vue project and SheetProof website, especially local Git repository mode, XLSX comparison, merge, editing, undo, safe save, CLI, asynchronous UI state, GitHub Releases, website content, and Lightsail/Caddy delivery. Use for any implementation or handoff work inside the ugxlsx repository.
 ---
 
 # Develop ugxlsx
@@ -132,10 +132,29 @@ launch-and-capture step in the flow even then.
 Report automated tests, desktop packaging, and real GUI acceptance separately. Do not claim a
 manual flow passed unless it was actually exercised and visually inspected.
 
-Until the user explicitly switches the official site to their own server, every change to
-`../../../site/` or synchronized website content must be built, tested, and deployed to
-`https://sheetproof-app.kuyami.chatgpt.site/`. Confirm the Sites deployment succeeds; a local-only
-site update is not a complete delivery.
+## Keep website and releases in sync
+
+- Treat `../../../product/product.json` and `../../../product/changelog.json` as the public facts.
+  Record only user-visible behavior and fixes. Do not publish prompts, internal tasks, test plans,
+  implementation chatter, private paths, credentials, or infrastructure identities.
+- Update the website and changelog for every user-visible feature or fix. Run the content sync,
+  website lint, static build, and rendered-page tests before deployment.
+- Keep production as a static export served by Caddy at `https://sheetproof.luyilabs.com/` unless
+  the maintainer explicitly redesigns hosting. Do not add a production Node process without such a
+  decision.
+- Deploy each website change with `../../../scripts/deploy-site-lightsail.ps1`, passing the SSH
+  target at runtime. Verify the origin, Cloudflare URL, important routes/assets, and existing Caddy
+  virtual hosts. Do not publish to the former Sites URL unless the maintainer explicitly switches
+  back.
+- Read and back up the live Caddy configuration before adding this site. Preserve existing blocks,
+  validate the candidate and final configuration, reload only after validation, and restore the
+  backup if reload fails.
+- Keep server IPs, SSH usernames and aliases, local user paths, local authentication configuration,
+  private keys, origin certificates, and tokens out of the repository and logs intended for
+  publication.
+- Keep `.github/workflows/release.yml` aligned with the product version. A `v*` tag creates a draft
+  release with Windows/macOS assets and checksums. Do not describe unsigned or unnotarized builds
+  as signed releases.
 
 ## Keep handoff material current
 
