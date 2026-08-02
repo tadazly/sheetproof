@@ -227,7 +227,7 @@ func TestControllerRepositoryWorkflowPreservesBranchAndSavesOnlyWorktreeFile(t *
 	if afterBranch := strings.TrimSpace(controllerGit(t, root, "branch", "--show-current")); afterBranch != beforeBranch {
 		t.Fatalf("repository workflow switched branch from %q to %q", beforeBranch, afterBranch)
 	}
-	status := controllerGit(t, root, "status", "--porcelain=v1", "--", relative)
+	status := controllerGit(t, root, "status", "--porcelain=v1", "-z", "--", relative)
 	if !strings.Contains(status, relative) {
 		t.Fatalf("saved worktree file is not modified: %q", status)
 	}
