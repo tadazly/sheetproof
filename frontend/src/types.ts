@@ -60,6 +60,7 @@ export interface Summary {
     rightLabel: string;
     readonlyLeft: boolean;
     gitDiff: boolean;
+    ugitWorktree: boolean;
     gitMerge: boolean;
     output: string;
     repositoryPath?: string;

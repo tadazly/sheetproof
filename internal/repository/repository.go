@@ -50,6 +50,13 @@ type Repository struct {
 	root string
 }
 
+type WorktreeFile struct {
+	Root         string
+	GitDirectory string
+	RelativePath string
+	Path         string
+}
+
 type MissingFileError struct {
 	Ref  string
 	Path string
@@ -108,6 +115,73 @@ func FindRoot(path string) (string, error) {
 		return "", fmt.Errorf("解析 Git 仓库根目录失败: %w", err)
 	}
 	return filepath.Clean(resolved), nil
+}
+
+// IdentifyWorktreeFile verifies that path is an existing XLSX file inside a
+// Git worktree and returns the worktree and Git metadata paths that own it.
+// External integrations use this to distinguish a real save target from an
+// exported Git object without relying on filename conventions.
+func IdentifyWorktreeFile(path string) (WorktreeFile, error) {
+	if strings.TrimSpace(path) == "" {
+		return WorktreeFile{}, errors.New("工作区文件路径不能为空")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return WorktreeFile{}, fmt.Errorf("解析工作区文件路径失败: %w", err)
+	}
+	abs = filepath.Clean(abs)
+	stat, err := os.Stat(abs)
+	if err != nil {
+		return WorktreeFile{}, fmt.Errorf("无法访问工作区文件 %s: %w", abs, err)
+	}
+	if stat.IsDir() || !strings.EqualFold(filepath.Ext(abs), ".xlsx") {
+		return WorktreeFile{}, fmt.Errorf("工作区文件必须是现有的 .xlsx 文件: %s", abs)
+	}
+
+	root, err := FindRoot(filepath.Dir(abs))
+	if err != nil {
+		return WorktreeFile{}, err
+	}
+	relative, err := filepath.Rel(root, abs)
+	if err != nil {
+		return WorktreeFile{}, fmt.Errorf("计算工作区相对路径失败: %w", err)
+	}
+	normalized, err := normalizeRelativePath(filepath.ToSlash(relative))
+	if err != nil {
+		return WorktreeFile{}, err
+	}
+	if normalized == ".git" || strings.HasPrefix(normalized, ".git/") {
+		return WorktreeFile{}, fmt.Errorf("Git 元数据目录中的文件不能作为工作区文件: %s", abs)
+	}
+	repo := &Repository{root: root}
+	resolved, err := repo.ResolveRelativePath(normalized)
+	if err != nil {
+		return WorktreeFile{}, err
+	}
+	resolvedStat, err := os.Stat(resolved)
+	if err != nil || !os.SameFile(stat, resolvedStat) {
+		return WorktreeFile{}, fmt.Errorf("工作区文件无法规范化到仓库内: %s", abs)
+	}
+
+	gitDirOutput, err := runGit(root, nil, "rev-parse", "--absolute-git-dir")
+	if err != nil {
+		return WorktreeFile{}, fmt.Errorf("读取 Git 元数据目录失败: %w", err)
+	}
+	gitDirectory := strings.TrimSpace(string(gitDirOutput))
+	if gitDirectory == "" {
+		return WorktreeFile{}, errors.New("Git 元数据目录为空")
+	}
+	gitDirectory, err = filepath.Abs(gitDirectory)
+	if err != nil {
+		return WorktreeFile{}, fmt.Errorf("解析 Git 元数据目录失败: %w", err)
+	}
+
+	return WorktreeFile{
+		Root:         root,
+		GitDirectory: filepath.Clean(gitDirectory),
+		RelativePath: normalized,
+		Path:         filepath.Clean(resolved),
+	}, nil
 }
 
 func (r *Repository) Root() string {

@@ -263,6 +263,17 @@ func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher)
 		fmt.Fprintln(stderr, err)
 		return true, exitCode(err)
 	}
+	if worktree, snapshot, snapshotLabel, ok := identifyUGitWorktreeComparison(listPath, paths[0], paths[1]); ok {
+		options := app.Options{
+			LeftLabel: "当前工作区", RightLabel: snapshotLabel,
+			UGitWorktree: true,
+		}
+		if err := launch(worktree, snapshot, options); err != nil {
+			fmt.Fprintln(stderr, err)
+			return true, exitCode(err)
+		}
+		return true, ExitOK
+	}
 	rightLabel := "对比版本"
 	if !pathWithinDirectory(paths[1], filepath.Dir(listPath)) {
 		rightLabel = "工作区"
@@ -276,6 +287,40 @@ func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher)
 		return true, exitCode(err)
 	}
 	return true, ExitOK
+}
+
+func identifyUGitWorktreeComparison(listPath, snapshotPath, workspacePath string) (
+	worktree string,
+	snapshot string,
+	snapshotLabel string,
+	ok bool,
+) {
+	listDir := filepath.Dir(listPath)
+	snapshotName := strings.ToLower(filepath.Base(snapshotPath))
+	if !strings.HasPrefix(snapshotName, "temp-") ||
+		!pathWithinDirectory(snapshotPath, listDir) ||
+		pathWithinDirectory(workspacePath, listDir) {
+		return "", "", "", false
+	}
+	worktreeFile, err := repository.IdentifyWorktreeFile(workspacePath)
+	if err != nil {
+		return "", "", "", false
+	}
+	expectedDiffDir := filepath.Join(worktreeFile.GitDirectory, "ugit", "diff")
+	if !sameExistingDirectory(listDir, expectedDiffDir) {
+		return "", "", "", false
+	}
+	label := "选中版本"
+	if strings.HasPrefix(strings.ToUpper(filepath.Base(snapshotPath)), "TEMP-HEAD-") {
+		label = "HEAD"
+	}
+	return worktreeFile.Path, snapshotPath, label, true
+}
+
+func sameExistingDirectory(left, right string) bool {
+	leftInfo, leftErr := os.Stat(left)
+	rightInfo, rightErr := os.Stat(right)
+	return leftErr == nil && rightErr == nil && leftInfo.IsDir() && rightInfo.IsDir() && os.SameFile(leftInfo, rightInfo)
 }
 
 func pathWithinDirectory(path, directory string) bool {

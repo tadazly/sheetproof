@@ -123,8 +123,8 @@ const visibleRows = computed(() => {
 });
 const visibleCells = computed(() => region.value?.cells.filter((cell) => cell.row <= totalRows.value && cell.col <= totalCols.value) ?? []);
 
-function sourcePathLabel(path: string): string {
-  if (!summary.value?.options.gitDiff) return path;
+function sourcePathLabel(path: string, snapshot: boolean): string {
+  if (!snapshot) return path;
   const filename = path.split(/[\\/]/).filter(Boolean).at(-1);
   if (filename === "missing-left.xlsx" || filename === "missing-right.xlsx") {
     return "Git 快照 · 该版本不存在";
@@ -1523,7 +1523,7 @@ onBeforeUnmount(() => {
           @click="save(false)"
         >
           <AppIcon name="save" />
-          <span>{{ repository ? "保存到当前工作区" : "保存左侧" }}</span>
+          <span>{{ repository || summary?.options.ugitWorktree ? "保存到当前工作区" : "保存左侧" }}</span>
         </button>
       </div>
       <div class="toolbar-group integration-actions" aria-label="外部工具配置">
@@ -1882,23 +1882,23 @@ onBeforeUnmount(() => {
             <div class="source-card-heading">
               <span class="source-icon"><AppIcon :name="leftReadonly ? 'files' : 'edit'" /></span>
               <span>
-                <small>{{ summary.options.gitDiff ? "Git 差异快照 · 只读" : summary.options.gitMerge ? "Git 合并来源 · 可编辑" : leftReadonly ? "原始表格 · 只读" : "原始表格 · 可编辑" }}</small>
+                <small>{{ summary.options.ugitWorktree ? "当前工作区 · 可编辑" : summary.options.gitDiff ? "Git 差异快照 · 只读" : summary.options.gitMerge ? "Git 合并来源 · 可编辑" : leftReadonly ? "原始表格 · 只读" : "原始表格 · 可编辑" }}</small>
                 <strong>{{ summary.options.leftLabel }}</strong>
               </span>
               <span class="source-state"><AppIcon name="check" :size="12" />{{ leftReadonly ? "只读" : "已解析" }}</span>
             </div>
             <span class="source-path" :title="summary.options.gitDiff ? '由 Git 提供的临时只读快照' : summary.diff.leftFile">
-              {{ sourcePathLabel(summary.diff.leftFile) }}
+              {{ sourcePathLabel(summary.diff.leftFile, summary.options.gitDiff) }}
             </span>
           </div>
           <div class="source-card readonly-source">
             <div class="source-card-heading">
               <span class="source-icon"><AppIcon name="files" /></span>
-              <span><small>{{ summary.options.gitDiff ? "Git 差异快照 · 只读" : summary.options.gitMerge ? "Git 合并来源 · 只读" : "目标表格 · 只读" }}</small><strong>{{ summary.options.rightLabel }}</strong></span>
+              <span><small>{{ summary.options.ugitWorktree ? "Git 版本快照 · 只读" : summary.options.gitDiff ? "Git 差异快照 · 只读" : summary.options.gitMerge ? "Git 合并来源 · 只读" : "目标表格 · 只读" }}</small><strong>{{ summary.options.rightLabel }}</strong></span>
               <span class="source-state"><AppIcon name="check" :size="12" />只读</span>
             </div>
-            <span class="source-path" :title="summary.options.gitDiff ? '由 Git 提供的临时只读快照' : summary.diff.rightFile">
-              {{ sourcePathLabel(summary.diff.rightFile) }}
+            <span class="source-path" :title="summary.options.gitDiff || summary.options.ugitWorktree ? '由 Git 提供的临时只读快照' : summary.diff.rightFile">
+              {{ sourcePathLabel(summary.diff.rightFile, summary.options.gitDiff || summary.options.ugitWorktree) }}
             </span>
           </div>
         </div>
@@ -1938,7 +1938,7 @@ onBeforeUnmount(() => {
             <div class="panel-heading">
               <strong>
                 <span class="panel-indicator" :class="leftReadonly ? 'readonly' : 'editable'"></span>
-                {{ repository ? "当前分支中的表格" : summary?.options.gitDiff ? "原始快照" : "原始表格" }}
+                {{ repository || summary?.options.ugitWorktree ? "当前工作区中的表格" : summary?.options.gitDiff ? "原始快照" : "原始表格" }}
               </strong>
               <span class="panel-permission" :class="leftReadonly ? 'readonly' : 'editable'">
                 <AppIcon :name="leftReadonly ? 'files' : 'edit'" :size="12" />{{ leftReadonly ? "只读" : "可编辑" }}

@@ -228,8 +228,174 @@ func TestUGitSpreadsheetCompareListAlwaysLaunchesReadOnly(t *testing.T) {
 	if launchedLeft != pair.Left || launchedRight != pair.Right {
 		t.Fatalf("launched paths = %q / %q", launchedLeft, launchedRight)
 	}
-	if !launched.GitDiff || !launched.ReadonlyLeft || launched.LeftLabel != "选中版本" || launched.RightLabel != "工作区" {
+	if !launched.GitDiff || !launched.ReadonlyLeft || launched.UGitWorktree || launched.LeftLabel != "选中版本" || launched.RightLabel != "工作区" {
 		t.Fatalf("UGit direct options = %+v", launched)
+	}
+}
+
+func TestUGitSpreadsheetCompareMakesVerifiedWorktreeEditableOnLeft(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "repo 中文")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runCLIGit(t, root, "init", "-b", "main")
+	runCLIGit(t, root, "config", "user.email", "test@example.com")
+	runCLIGit(t, root, "config", "user.name", "ugxlsx test")
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := filepath.Join(root, "配置 目录", "reward.xlsx")
+	if err := os.MkdirAll(filepath.Dir(worktree), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	copyFileForCLITest(t, pair.Left, worktree)
+	runCLIGit(t, root, "add", "--", "配置 目录/reward.xlsx")
+	runCLIGit(t, root, "commit", "-m", "base")
+
+	diffDir := filepath.Join(root, ".git", "ugit", "diff")
+	if err := os.MkdirAll(diffDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := filepath.Join(diffDir, "temp-HEAD-配置 目录-reward.xlsx")
+	copyFileForCLITest(t, pair.Right, snapshot)
+	listPath := filepath.Join(diffDir, "SpreadsheetCompare-123.txt")
+	if err := os.WriteFile(listPath, []byte(snapshot+"\r\n"+worktree+"\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var launchedLeft, launchedRight string
+	var launched app.Options
+	launcher := func(left, right string, options app.Options) error {
+		launchedLeft, launchedRight, launched = left, right, options
+		return nil
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{listPath}, &stdout, &stderr, launcher); code != ExitOK {
+		t.Fatalf("exit = %d stderr=%s", code, stderr.String())
+	}
+	if launchedLeft != worktree || launchedRight != snapshot {
+		t.Fatalf("launched paths = %q / %q, want worktree / snapshot", launchedLeft, launchedRight)
+	}
+	if launched.ReadonlyLeft || launched.GitDiff || !launched.UGitWorktree {
+		t.Fatalf("UGit worktree options = %+v, want editable UGitWorktree session", launched)
+	}
+	if launched.LeftLabel != "当前工作区" || launched.RightLabel != "HEAD" {
+		t.Fatalf("UGit worktree labels = %q / %q", launched.LeftLabel, launched.RightLabel)
+	}
+}
+
+func TestUGitSpreadsheetCompareKeepsTwoSnapshotsReadOnlyInVerifiedDiffDirectory(t *testing.T) {
+	root := t.TempDir()
+	runCLIGit(t, root, "init", "-b", "main")
+	diffDir := filepath.Join(root, ".git", "ugit", "diff")
+	if err := os.MkdirAll(diffDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pair, err := testutil.CreatePair(diffDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listPath := filepath.Join(diffDir, "SpreadsheetCompare-456.txt")
+	if err := os.WriteFile(listPath, []byte(pair.Left+"\n"+pair.Right+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var launched app.Options
+	launcher := func(_, _ string, options app.Options) error {
+		launched = options
+		return nil
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{listPath}, &stdout, &stderr, launcher); code != ExitOK {
+		t.Fatalf("exit = %d stderr=%s", code, stderr.String())
+	}
+	if !launched.GitDiff || !launched.ReadonlyLeft || launched.UGitWorktree {
+		t.Fatalf("two-snapshot options = %+v, want read-only Git diff", launched)
+	}
+}
+
+func TestUGitSpreadsheetCompareRequiresMatchingRepositoryGitDirectory(t *testing.T) {
+	root := t.TempDir()
+	runCLIGit(t, root, "init", "-b", "main")
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := filepath.Join(root, "reward.xlsx")
+	copyFileForCLITest(t, pair.Left, worktree)
+	foreignDiffDir := filepath.Join(t.TempDir(), "ugit", "diff")
+	if err := os.MkdirAll(foreignDiffDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := filepath.Join(foreignDiffDir, "temp-HEAD-reward.xlsx")
+	copyFileForCLITest(t, pair.Right, snapshot)
+	listPath := filepath.Join(foreignDiffDir, "SpreadsheetCompare-789.txt")
+	if err := os.WriteFile(listPath, []byte(snapshot+"\n"+worktree+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var launchedLeft, launchedRight string
+	var launched app.Options
+	launcher := func(left, right string, options app.Options) error {
+		launchedLeft, launchedRight, launched = left, right, options
+		return nil
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{listPath}, &stdout, &stderr, launcher); code != ExitOK {
+		t.Fatalf("exit = %d stderr=%s", code, stderr.String())
+	}
+	if launchedLeft != snapshot || launchedRight != worktree {
+		t.Fatalf("unverified paths were reordered: %q / %q", launchedLeft, launchedRight)
+	}
+	if !launched.GitDiff || !launched.ReadonlyLeft || launched.UGitWorktree {
+		t.Fatalf("mismatched Git directory options = %+v, want read-only fallback", launched)
+	}
+}
+
+func TestUGitSpreadsheetCompareRecognizesLinkedWorktreeGitDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "main")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runCLIGit(t, root, "init", "-b", "main")
+	runCLIGit(t, root, "config", "user.email", "test@example.com")
+	runCLIGit(t, root, "config", "user.name", "ugxlsx test")
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainFile := filepath.Join(root, "reward.xlsx")
+	copyFileForCLITest(t, pair.Left, mainFile)
+	runCLIGit(t, root, "add", "reward.xlsx")
+	runCLIGit(t, root, "commit", "-m", "base")
+
+	linked := filepath.Join(filepath.Dir(root), "linked 中文")
+	runCLIGit(t, root, "worktree", "add", "-b", "linked-test", linked)
+	gitDirectory := runCLIGitOutput(t, linked, "rev-parse", "--absolute-git-dir")
+	diffDir := filepath.Join(gitDirectory, "ugit", "diff")
+	if err := os.MkdirAll(diffDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := filepath.Join(diffDir, "temp-HEAD-reward.xlsx")
+	copyFileForCLITest(t, pair.Right, snapshot)
+	worktree := filepath.Join(linked, "reward.xlsx")
+	listPath := filepath.Join(diffDir, "SpreadsheetCompare-linked.txt")
+	if err := os.WriteFile(listPath, []byte(snapshot+"\n"+worktree+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var launchedLeft, launchedRight string
+	var launched app.Options
+	launcher := func(left, right string, options app.Options) error {
+		launchedLeft, launchedRight, launched = left, right, options
+		return nil
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{listPath}, &stdout, &stderr, launcher); code != ExitOK {
+		t.Fatalf("exit = %d stderr=%s", code, stderr.String())
+	}
+	if launchedLeft != worktree || launchedRight != snapshot || !launched.UGitWorktree || launched.ReadonlyLeft {
+		t.Fatalf("linked worktree launch = %q / %q %+v", launchedLeft, launchedRight, launched)
 	}
 }
 
@@ -421,6 +587,27 @@ func runCLIGit(t *testing.T, directory string, args ...string) {
 	command := exec.Command("git", append([]string{"-C", directory}, args...)...)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, output)
+	}
+}
+
+func runCLIGitOutput(t *testing.T, directory string, args ...string) string {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", directory}, args...)...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, output)
+	}
+	return string(bytes.TrimSpace(output))
+}
+
+func copyFileForCLITest(t *testing.T, source, target string) {
+	t.Helper()
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, data, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

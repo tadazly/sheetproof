@@ -15,9 +15,16 @@ CSV 或其他外部工具设置。
 compare --left "$LOCAL" --right "$REMOTE"
 ```
 
-从 Git difftool 或 UGit 启动时，应用会根据完整的 Git difftool 环境进入双侧只读模式。
-它也处理新增或删除文件传入的 `/dev/null`（Windows 上兼容 `NUL`），临时占位簿只在
-系统临时目录创建并在退出时清理。
+UGit 的 `SpreadsheetCompare` 会把路径列表写到当前仓库实际 Git 目录下的
+`ugit/diff`。当列表第一项是该目录中的版本快照、第二项是同一仓库中的真实工作区
+`.xlsx` 时，SheetProof 会交叉核对 `git rev-parse --absolute-git-dir`，然后把工作区
+交换到可编辑左侧、把版本快照放到只读右侧。保存仍需用户明确操作，并继续走外部
+修改检测和原子替换；不会自动 add、commit 或 push。
+
+两个历史版本、已删除文件或无法通过上述仓库归属校验的调用继续保持双侧只读。
+普通 Git difftool 也仍根据完整的 Git difftool 环境进入双侧只读模式。它同时处理
+新增或删除文件传入的 `/dev/null`（Windows 上兼容 `NUL`），临时占位簿只在系统
+临时目录创建并在退出时清理。
 
 ## 合并工具参数
 
@@ -30,7 +37,7 @@ compare --left "$LOCAL" --right "$REMOTE" --base "$BASE" --output "$MERGED"
 
 ## 普通可写比较
 
-如果希望直接修改真实工作区文件，不要从 difftool 入口启动；显式运行：
+如果宿主没有提供可验证的 UGit 工作区路径，也可以显式运行：
 
 ```bash
 SheetProof compare \

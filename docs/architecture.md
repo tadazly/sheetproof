@@ -116,9 +116,18 @@ Git difftool 同时向工具进程传递 `GIT_DIFF_PATH_COUNTER` 和
 UGit 5.51 对工具名 `SpreadsheetCompare` 走独立于 `git difftool` 的路径：UGit
 自行导出两侧文件，把绝对路径逐行写入 `SpreadsheetCompare-*.txt`，然后直接
 执行配置中的程序。`internal/cli` 在普通子命令分派前识别这个单参数协议，严格
-要求两个有效 XLSX 路径，并建立 `GitDiff + ReadonlyLeft` 会话。因为该流程不再
-依赖 Git 先确认字节差异，“与工作区对比”在所选版本和工作区内容相同时也能
-拉起窗口；列表和 UGit 导出的工作簿仍位于宿主临时目录，不写入用户仓库。
+要求两个有效 XLSX 路径。UGit 把列表和版本快照放在当前仓库实际 Git 目录的
+`ugit/diff`，把真实工作区文件作为列表第二项；CLI 只有在第一项位于该目录、第二项
+可规范化到有效 Git 工作区，并且该工作区的 `--absolute-git-dir` 与列表所属目录
+完全一致时，才交换两侧并建立 `UGitWorktree` 可写会话。这样左侧继续是唯一写入
+目标，右侧版本快照继续只读，编辑、撤销和安全保存无需另写实现，也支持独立 Git
+目录的 linked worktree。两个路径都在 `ugit/diff`、工作区文件不存在或任一归属
+校验失败时，仍建立 `GitDiff + ReadonlyLeft` 双快照会话。
+
+因为该流程不再依赖 Git 先确认字节差异，“与工作区对比”在所选版本和工作区内容
+相同时也能拉起窗口。版本快照和列表仍位于 Git 元数据目录；界面只显示快照文件名，
+不会把该目录当成可写目标。工作区保存仍经过文件身份检测和原子替换，不执行任何
+Git 状态写操作。
 
 UGit 5.51.0 会额外注入 `LOCAL_TITLE`、`REMOTE_TITLE` 和 `WORKSPACE_PATH`。
 直接 `compare` 在对应 `--left-label` / `--right-label` 为空时逐侧读取前两个

@@ -24,6 +24,7 @@ type Options struct {
 	RightLabel     string `json:"rightLabel"`
 	ReadonlyLeft   bool   `json:"readonlyLeft"`
 	GitDiff        bool   `json:"gitDiff"`
+	UGitWorktree   bool   `json:"ugitWorktree"`
 	GitMerge       bool   `json:"gitMerge"`
 	Output         string `json:"output"`
 	MergeBase      string `json:"-"`

@@ -165,7 +165,8 @@ difftool 的成对路径计数环境变量时会强制整个会话只读，界�
 明确显示两侧都是 Git 只读快照；普通双文件和 Git mergetool 不受影响。UGit
 5.51.0 注入的 `LOCAL_TITLE` / `REMOTE_TITLE` 会在未显式传 label 参数时
 自动成为两侧展示名，显式参数逐侧优先。UGit 的 XLSX 差异工具现注册为
-`SpreadsheetCompare` 直接路径列表协议；合并工具必须同时传
+`SpreadsheetCompare` 直接路径列表协议；当列表经实际 Git 目录确认包含真实工作区
+文件时，该文件会交换到可编辑左侧，两个历史快照或归属不明时仍双侧只读。合并工具必须同时传
 `--base "$BASE" --output "$MERGED"`。`$BASE` 用于三方语义说明，实际覆盖、
 追加和结果保存仍由 `$LOCAL` / `$REMOTE` 会话完成。
 
@@ -680,6 +681,41 @@ Session 现在会在打开左侧工作簿时保留一份稀疏只读快照。Reg
 `build/acceptance/before-after-v3/`。自动化验证包括 Go 全量测试与 vet、前端 lint、
 typecheck、30 项测试与生产构建、官网构建和 3 项路由渲染测试、Windows Wails
 v2.10.2 构建；竞态测试因本机 CGO 关闭且没有 GCC，仍不能执行。
+
+## 2026-08-02 UGit 工作区差异可写
+
+本机 UGit 5.51 源码确认 `SpreadsheetCompare` 的工作区比较协议：路径列表和版本
+快照位于当前仓库实际 Git 目录的 `ugit/diff`，第一项是版本快照，第二项是工作树
+中的真实文件；两个历史版本比较时两项都在 `ugit/diff`。此前 CLI 虽能用目录位置
+把第二项标成“工作区”，仍固定按 UGit 顺序打开并设置 `ReadonlyLeft=true`，因此
+工作区位于永远只读的右侧且整个会话被锁定。
+
+CLI 现通过 `internal/repository.IdentifyWorktreeFile` 规范化候选工作区路径，并把其
+`git rev-parse --absolute-git-dir` 与列表所属 `<git-dir>/ugit/diff` 做目录身份比较。
+只有版本快照位于该目录、工作区候选属于同一仓库且是现有 `.xlsx` 时，才把真实
+工作区交换到左侧并设置 `UGitWorktree`；普通仓库与独立 Git 目录的 linked worktree
+都适用。两个快照、错误 Git 目录、缺失文件或任一归属不明情况继续进入原有
+`GitDiff + ReadonlyLeft` 安全回退，不会仅凭列表顺序开放写入。
+
+前端把该模式显示为“当前工作区 · 可编辑 / Git 版本快照 · 只读”，工作区显示真实
+路径，右侧只显示快照文件名，保存按钮明确写“保存到当前工作区”。编辑、复制、
+撤销和保存继续复用同一 Session 与安全写入器，不自动 add、commit、push 或改变
+分支。Go 回归覆盖普通仓库、linked worktree、两快照和错误 Git 目录；前端回归覆盖
+来源卡、路径隐藏、左侧编辑权限和保存文案。
+
+当次 Windows Wails 产物以真实临时 Git 仓库及其
+`.git/ugit/diff/SpreadsheetCompare-*.txt` 启动。整窗截图确认工作区位于左侧并显示
+“当前工作区 · 可编辑”，右侧显示“Git 版本快照 · 只读”，快照目录未暴露，保存按钮
+写明“保存到当前工作区”。实机双击左侧 C2 写入 `UGIT_EDIT_OK` 并按 `Ctrl+S` 后，
+工作区 XLSX 的 SHA-256 从
+`6BA7A8721028D140B95690D1E2FAB3DCBE1BA57B7F1A17EA9BFCDC572C83E3BC` 变为
+`7609DE5D99BE1FF95ACB65F3D8E5B3F7F84517458846792AD03BA6F7E197072F`，保存值存在于
+`xl/sharedStrings.xml`，Git 状态仍仅为未暂存的 modified。再用同一 Git 目录中的
+两个版本快照启动，整窗截图确认两侧均显示“Git 差异快照 · 只读”，左侧提示不能
+编辑或保存。截图位于 `build/acceptance/ugit-worktree/`，验收后窗口均正常退出。
+
+本次验证：`go test ./...`、`go vet ./...`、前端 lint/typecheck/31 项测试/build、
+`git diff --check` 和 Windows Wails v2.10.2 build 均通过；未执行竞态测试。
 
 ## 后续风险与建议
 

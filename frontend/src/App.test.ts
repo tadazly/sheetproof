@@ -10,6 +10,7 @@ const emptySummary: Summary = {
     rightLabel: "对比来源（只读）",
     readonlyLeft: false,
     gitDiff: false,
+    ugitWorktree: false,
     gitMerge: false,
     output: ""
   },
@@ -145,6 +146,37 @@ describe("App", () => {
       expect(button.attributes("disabled")).toBeDefined();
     }
     expect(wrapper.get(".merge-action").attributes("disabled")).toBeDefined();
+  });
+
+  it("renders a verified UGit worktree on the editable left and hides the snapshot directory", async () => {
+    const ugitWorktree = structuredClone(emptySummary);
+    ugitWorktree.options.ugitWorktree = true;
+    ugitWorktree.options.leftLabel = "当前工作区";
+    ugitWorktree.options.rightLabel = "HEAD";
+    ugitWorktree.diff.leftFile = "D:/repo 中文/config/reward.xlsx";
+    ugitWorktree.diff.rightFile = "D:/repo 中文/.git/ugit/diff/temp-HEAD-config-reward.xlsx";
+    ugitWorktree.dirty = true;
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => ugitWorktree
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("当前工作区 · 可编辑");
+    expect(wrapper.text()).toContain("Git 版本快照 · 只读");
+    expect(wrapper.text()).toContain("D:/repo 中文/config/reward.xlsx");
+    expect(wrapper.text()).toContain("Git 快照 · temp-HEAD-config-reward.xlsx");
+    expect(wrapper.text()).not.toContain("/.git/ugit/diff/");
+    expect(wrapper.findAll(".file-strip .editable-source")).toHaveLength(1);
+    expect(wrapper.findAll(".file-strip .readonly-source")).toHaveLength(1);
+    expect(wrapper.findAll(".grid-panel")[0].get(".panel-permission").text()).toBe("可编辑");
+    expect(wrapper.text()).toContain("双击单元格编辑");
+    expect(wrapper.text()).toContain("保存到当前工作区");
   });
 
   it("opens a repository and shows the tree plus two explicit no-file states", async () => {
