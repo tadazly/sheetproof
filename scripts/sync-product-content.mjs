@@ -70,11 +70,14 @@ ${useCases}
 
 ## 下载与发布
 
-当前版本是 **${p.version} ${p.channel}**。目前尚未发布可执行文件，可以从源码构建。
+当前版本是 **${p.version} ${p.channel}**。Windows 与 macOS 预览版通过 GitHub Releases 提供；当前产物未进行代码签名，macOS 版本也未公证。
 
-- [查看 GitHub Releases](${product.downloads.releases})：正式发布后可在这里下载安装包和校验文件。
-- [下载源码](${product.downloads.source})：用于本地构建与开发。
-- 维护者可按照 [发布指南](docs/releasing.md) 通过 GitHub Actions 生成 Windows 和 macOS 发行包。
+- [下载 Windows amd64](${product.downloads.windows})
+- [下载 macOS universal](${product.downloads.macos})
+- [下载源码](${product.downloads.source})
+- [查看 GitHub Releases](${product.downloads.releases})：包含版本说明和 \`SHA256SUMS.txt\` 校验文件。
+
+首次运行未签名产物时，操作系统可能显示安全提示。请先从 GitHub Releases 下载并核对 SHA-256；维护者发布步骤见 [发布指南](docs/releasing.md)。
 
 ## 快速开始
 

@@ -80,7 +80,7 @@ export default function HomePage() {
         </section>
 
         <section className="cta-section page-width">
-          <div><p className="eyebrow">版本 {product.version}</p><h2>{product.taglineZh}</h2><p>当前尚未发布可执行文件，开发者可以先从源码构建。</p></div>
+          <div><p className="eyebrow">版本 {product.version}</p><h2>{product.taglineZh}</h2><p>Windows 与 macOS 预览版已通过 GitHub Releases 提供，并附带 SHA-256 校验文件。</p></div>
           <Link className="button button-primary" href="/download">获取 SheetProof</Link>
         </section>
       </main>

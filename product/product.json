@@ -17,10 +17,10 @@
   },
   "downloads": {
     "releases": "https://github.com/tadazly/ugxlsx/releases",
-    "windows": null,
-    "macos": null,
-    "source": "https://github.com/tadazly/ugxlsx/archive/refs/heads/main.zip",
-    "status": "Executable downloads are not published yet. Source builds are available."
+    "windows": "https://github.com/tadazly/ugxlsx/releases/download/v0.1.0/SheetProof-windows-amd64.exe",
+    "macos": "https://github.com/tadazly/ugxlsx/releases/download/v0.1.0/SheetProof-macos-universal.zip",
+    "source": "https://github.com/tadazly/ugxlsx/archive/refs/tags/v0.1.0.zip",
+    "status": "Windows and macOS preview downloads are available from GitHub Releases. The desktop artifacts are unsigned, and the macOS build is not notarized."
   },
   "features": [
     {

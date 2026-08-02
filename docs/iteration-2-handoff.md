@@ -70,13 +70,12 @@ ACL 造成拒绝访问。`go run ...@v2.10.2` 即使已有源码也可能为弃�
   TaskDialog 失败时先去掉 owner 重试，再回退到标准 `MessageBoxW`，并明确映射
   两按钮与三按钮的业务含义。新增回归覆盖 TaskDialog 返回 `E_INVALIDARG` 后选择
   “确定”仍返回“配置 UGit”，从而继续调用原有 `internal/ugit` 事务式写入流程。
-- 本机 UGit 是 5.51.0，安装于
-  `C:\\Users\\luyi\\AppData\\Local\\UGit\\app-5.51.0`。UGit 自带 Git 2.45.2，
+- 本机 UGit 是 5.51.0。UGit 自带 Git 2.45.2，
   系统 PATH Git 是 2.37.1.windows.1。Windows 配置逻辑现优先按自然版本选择
   UGit 自带 `cmd\\git.exe`，并回读 `--show-origin`；界面显示 Git 路径和配置来源。
 - 已在真实全局配置中覆盖错误 XLSX 旧路径，先写入带中文和空格的固定测试路径，
-  再覆盖为最终 `build\\bin\\ugxlsx.exe`；回读来源为
-  `file:C:/Users/luyi/.gitconfig`，命令中的 `$LOCAL`、`$REMOTE`、`$MERGED`
+  再覆盖为最终 `build\\bin\\ugxlsx.exe`；回读来源为用户全局 Git 配置文件，命令中的
+  `$LOCAL`、`$REMOTE`、`$MERGED`
   保持原样。临时 EXE 已删除。UGit 已强制退出并重启，且从 UGit 打开 250 变更验证仓库。
   由于 Windows 10 图形捕获接口不支持当前自动化截图，尚未从 UGit 文件行真实
   触发差异和合并各一次。
@@ -874,6 +873,43 @@ Actions Secrets。
 成功；源站与 Cloudflare 公网入口的首页、功能、指南、下载、更新日志、favicon 和
 Open Graph 图片均返回 200，公网响应确认经过 Cloudflare，既有虚拟主机复核正常。
 Caddy 已正常提供源站 HTTPS，因此没有配置额外的 Origin Certificate。
+
+正式版本发布流程进一步固化到项目技能：收到“发布”“发布正式版本”或“推送
+vX.Y.Z”后，先以上一个公开 Release 为基线整理用户可见差异；未指定版本时按 SemVer
+影响范围推导版本号。产品事实、更新日志、README、CHANGELOG、版本文件、发布文档和
+官网在准备阶段同步并完成验证，但在维护者确认前不执行 commit、push、标签、Release
+发布或生产官网部署。确认后先以手动 workflow 验证双平台构建，再推送标签、检查并
+发布 Draft Release，最后自动部署 Lightsail 官网并核验源站、Cloudflare 和既有站点。
+正式发布候选汇总和最终报告还必须给出隐私扫描结论；若发现敏感数据，仅报告位置、
+类别、风险与处理/轮换状态，不复述敏感值，处理完成前停止 push。任何公开历史重写都
+需要维护者另行明确授权。
+
+## 2026-08-02 v0.1.0 发布候选准备
+
+GitHub 只读核验确认仓库尚无公开 Release 和标签，`v0.1.0` 因此是有效的首次公开
+预览版本。候选已把 Windows amd64、macOS universal、源码归档和 Releases 地址同步到
+产品事实、README 与官网；下载页明确说明当前桌面产物未签名，macOS 版本未公证，并
+要求核对随 Release 提供的 `SHA256SUMS.txt`。收到维护者正式确认前，这些稳定 URL
+保持为可预测的候选地址，官网不部署到生产环境。
+
+候选自动化结果：Go 全量测试与 vet、前端 lint/typecheck/33 项测试/build、官网 lint、
+静态导出和 4 项渲染测试均通过；官网 lint 保留 4 条既有 `<img>` 优化警告但没有错误。
+`go test -race ./...` 在启用 CGO 后仍因本机缺少 GCC 无法构建，未记为通过。Windows
+使用规定的离线优先脚本完成 Wails v2.10.2 正式构建，本地验收产物为
+`build/bin/SheetProof.exe`。
+
+桌面实机验收使用当次构建和代表性双文件夹具完成。默认状态截图确认来源卡、差异摘要、
+双网格、语义颜色、底部两行详情和状态栏均完整；实际点击无结果的“删除行”筛选后，
+左右网格正确显示成对空状态且布局未重叠。截图位于
+`build/acceptance/release-v0.1.0/`，验收进程均正常退出。两个既有真实 Git mergetool
+会话保持不动，本次验收使用同一构建的临时命名副本隔离 WebView2 数据目录。
+
+官网下载页的真实浏览器检查确认 DOM 只有一个主内容区、一个标题和四张下载卡；
+Windows/macOS 资产地址、源码地址、SHA-256 提示、签名限制和页脚均正常。隐私扫描未
+发现私钥标记、凭据赋值或敏感文件名；当前树中的真实本机用户路径已从本文移除，测试
+代码只保留合成路径夹具。既有公开 Git 历史仍包含低风险本机路径记录，未发现对应凭据，
+无需轮换；本次不重写历史。当前仍没有 `LICENSE` 文件，维护者选择并加入明确许可证前，
+不得确认公开发布。候选尚未 commit、push、打标签、运行远端发布工作流或部署官网。
 
 ## 后续风险与建议
 

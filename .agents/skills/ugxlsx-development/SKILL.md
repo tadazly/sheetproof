@@ -1,6 +1,6 @@
 ---
 name: ugxlsx-development
-description: Continue, review, debug, test, release, deploy, or document the ugxlsx Go/Wails/Vue project and SheetProof website, especially local Git repository mode, XLSX comparison, merge, editing, undo, safe save, CLI, asynchronous UI state, GitHub Releases, website content, and Lightsail/Caddy delivery. Use for any implementation or handoff work inside the ugxlsx repository.
+description: Continue, review, debug, test, release, deploy, or document the ugxlsx Go/Wails/Vue project and SheetProof website. Use for implementation and handoff work, and whenever the user says to release, publish a formal version, push a version such as v0.1.0, infer the next release version, build GitHub Release executables, or synchronize and deploy the release website to Lightsail/Caddy.
 ---
 
 # Develop ugxlsx
@@ -155,6 +155,78 @@ manual flow passed unless it was actually exercised and visually inspected.
 - Keep `.github/workflows/release.yml` aligned with the product version. A `v*` tag creates a draft
   release with Windows/macOS assets and checksums. Do not describe unsigned or unnotarized builds
   as signed releases.
+
+## Prepare a formal release
+
+Treat requests such as “发布”, “发布正式版本”, “推送正式版本”, or “推送 v0.1.0 版本” as a
+two-phase formal release. A request that explicitly says only “发布官网” remains a website-only
+deployment.
+
+1. Identify the latest published, non-draft GitHub Release and its tag. Compare that release with
+   the intended release state using Git history, code diffs, tests, and current handoff material.
+   Include approved release-scope working-tree changes, but keep unrelated user changes out.
+   If no prior Release exists, prepare a first-release summary from the implemented product state.
+2. Collect only user-visible features, behavior changes, performance improvements, and bug fixes.
+   Exclude prompts, internal tasks, test work, screenshots, implementation chatter, and private
+   information.
+3. Honor an explicit semantic version after removing an optional leading `v`; require it to be
+   valid and newer than the previous published version. When no version is supplied, choose the
+   highest applicable SemVer change:
+   - patch: compatible bug fixes, performance corrections, copy, or documentation;
+   - minor: backward-compatible user-facing capabilities or meaningful workflow expansion;
+   - major: incompatible stable public contracts or a deliberate new product generation.
+
+   Before 1.0, treat incompatible preview changes as at least a minor bump. For the first public
+   Release, default to `0.1.0` unless the product facts already justify a newer version.
+4. Update `product/product.json` and `product/changelog.json`, including predictable final asset
+   URLs, then run `scripts/sync-product-content.mjs`. Synchronize README, CHANGELOG, CLI/package
+   versions, release documentation, handoff material, and all website content. Keep a `0.x` release
+   labeled preview unless product maturity independently justifies a stable channel.
+5. Run the release-appropriate Go, frontend, website, Wails packaging, privacy, and acceptance
+   checks. Exercise affected desktop UI flows when the release contains UI changes. Do not claim
+   macOS signing, notarization, or Windows signing unless actually configured and verified. Scan
+   the candidate files, diff, generated artifacts, release notes, website output, and relevant Git
+   history for credentials, private paths, account/server identities, and personal files. Never
+   print a discovered secret value into commentary, logs, commits, release notes, or the report.
+   Stop before any push when an actual credential or private file is in scope. Remove it safely and
+   require credential revocation/rotation when exposure is possible. Treat history rewriting as a
+   separate destructive operation that requires explicit user approval.
+6. Present one release-candidate summary containing the previous tag, proposed version and bump
+   rationale, curated changelog, included file/change scope, validation results, unsigned status,
+   privacy audit result, and the exact planned commit, branch push, tag, GitHub Release, and website
+   deployment actions. If sensitive data was found, report its location/category, exposure risk,
+   remediation and rotation status without reproducing its value, even when already removed.
+   Ask “是否确认正式发布 vX.Y.Z？” and stop. Do not commit, push, tag, publish a Release, update
+   production downloads, or deploy the prepared website before explicit confirmation. This pause
+   is an intentional exception to the normal same-turn website deployment rule.
+
+## Execute only after confirmation
+
+1. Recheck the worktree, release scope, current/default branch relationship, remote, credentials,
+   sensitive-data scan, and tag/Release nonexistence. Never force-push, move an existing tag, expose
+   local authentication details, or include unrelated files. Stop if the intended tag points to a
+   different commit or the release state has changed since confirmation.
+2. Stage only the confirmed scope, create an intentional `Release SheetProof vX.Y.Z` commit when
+   needed, and push the release commit without force. Run the GitHub Release workflow manually on
+   that commit first and wait for its verification plus Windows/macOS artifacts. If it fails, do
+   not create the version tag; report the failure and return to release preparation if changes are
+   required.
+3. Create and push the confirmed `vX.Y.Z` tag only after the manual workflow succeeds. Wait for the
+   tag-triggered workflow. Do not publish anything if verification, either platform build,
+   checksums, or Draft Release creation fails.
+4. Inspect the Draft Release assets and `SHA256SUMS.txt`. Replace auto-generated notes with the
+   curated user-facing changelog so internal commit/task wording is not published. Confirm the tag,
+   asset names, download URLs, and checksums, then publish the Draft Release through GitHub.
+5. After the Release is publicly downloadable, rerun content synchronization and website lint,
+   static build, and rendered-page tests if final URLs or notes changed. Deploy with
+   `scripts/deploy-site-lightsail.ps1`, passing the local SSH target only at runtime. Verify the
+   origin, Cloudflare public routes, downloads, favicon/Open Graph assets, TLS, and existing Caddy
+   virtual hosts. Keep the previous site available through the deployment script rollback path.
+6. Report the release commit, tag, public Release URL, assets/checksums, Actions results, official
+   website deployment, signing limitations, and final privacy audit. Always state whether sensitive
+   data was found. When it was, report the affected location/category and final remediation or
+   credential-rotation status without reproducing the sensitive value. A release is complete only
+   when both GitHub Release and the official website pass verification.
 
 ## Keep handoff material current
 

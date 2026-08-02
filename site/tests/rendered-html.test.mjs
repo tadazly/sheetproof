@@ -28,9 +28,18 @@ test("exports the SheetProof home page", async () => {
 });
 
 test("exports product routes", async () => {
-  for (const [path, text] of [["/features", "支持范围"], ["/guide", "完成一次对比与合并"], ["/download", "当前尚未发布"], ["/changelog", "更新日志"]]) {
+  for (const [path, text] of [["/features", "支持范围"], ["/guide", "完成一次对比与合并"], ["/download", "Windows 预览版"], ["/changelog", "更新日志"]]) {
     assert.match(await render(path), new RegExp(text), path);
   }
+});
+
+test("release download page contains stable v0.1.0 assets and signing limitations", async () => {
+  const html = await render("/download");
+  assert.match(html, /releases\/download\/v0\.1\.0\/SheetProof-windows-amd64\.exe/);
+  assert.match(html, /releases\/download\/v0\.1\.0\/SheetProof-macos-universal\.zip/);
+  assert.match(html, /SHA-256/);
+  assert.match(html, /未进行代码签名/);
+  assert.match(html, /未公证/);
 });
 
 test("all internal navigation links resolve to a product route", async () => {
