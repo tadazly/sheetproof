@@ -1,9 +1,11 @@
 package diff
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/xuri/excelize/v2"
 )
 
 func TestCompareCellKindsAndSheetStates(t *testing.T) {
@@ -55,6 +57,73 @@ func TestCompareIdentical(t *testing.T) {
 	result := Compare(left, right)
 	if !result.Equal || result.DifferenceCount != 0 {
 		t.Fatalf("expected equal: %+v", result)
+	}
+}
+
+func TestCompareTreatsSharedAndInlineStringsAsEqual(t *testing.T) {
+	dir := t.TempDir()
+	sharedPath := filepath.Join(dir, "shared.xlsx")
+	inlinePath := filepath.Join(dir, "inline.xlsx")
+
+	shared := excelize.NewFile()
+	if err := shared.SetCellStr("Sheet1", "A1", "相同文本"); err != nil {
+		t.Fatal(err)
+	}
+	if err := shared.SaveAs(sharedPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := shared.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	inline := excelize.NewFile()
+	writer, err := inline.NewStreamWriter("Sheet1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.SetRow("A1", []any{"相同文本"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := inline.SaveAs(inlinePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := inline.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	leftFile, left, err := (workbook.Reader{}).Open(sharedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leftFile.Close()
+	rightFile, right, err := (workbook.Reader{}).Open(inlinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rightFile.Close()
+	leftStorageType, err := leftFile.GetCellType("Sheet1", "A1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightStorageType, err := rightFile.GetCellType("Sheet1", "A1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leftStorageType != excelize.CellTypeSharedString || rightStorageType != excelize.CellTypeInlineString {
+		t.Fatalf("fixture storage types = %v/%v, want shared/inline", leftStorageType, rightStorageType)
+	}
+
+	leftCell := left.ByName["Sheet1"].Cell(1, 1)
+	rightCell := right.ByName["Sheet1"].Cell(1, 1)
+	if leftCell.Type != "string" || rightCell.Type != "string" {
+		t.Fatalf("normalized types = %q/%q, want string/string", leftCell.Type, rightCell.Type)
+	}
+	result := Compare(left, right)
+	if !result.Equal || result.DifferenceCount != 0 {
+		t.Fatalf("storage-only string encoding produced differences: %+v", result)
 	}
 }
 

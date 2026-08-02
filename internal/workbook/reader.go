@@ -294,12 +294,12 @@ func ClassifyCellType(f *excelize.File, t excelize.CellType, formula, raw string
 		return "error"
 	case excelize.CellTypeFormula:
 		return "formula"
-	case excelize.CellTypeInlineString:
-		return "inline-string"
+	case excelize.CellTypeInlineString, excelize.CellTypeSharedString:
+		// OOXML permits equivalent text in the shared-string table or inline in
+		// the cell. That storage choice is not a semantic cell-type difference.
+		return "string"
 	case excelize.CellTypeNumber:
 		return "number"
-	case excelize.CellTypeSharedString:
-		return "string"
 	default:
 		if raw != "" {
 			if styleID != 0 {
