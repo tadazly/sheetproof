@@ -167,6 +167,8 @@ sheetproof repo \
 3. 再次点击并确认。重启 UGit，检查 XLSX 差异工具名为
    `SpreadsheetCompare`，参数保留 `compare --left "$LOCAL" --right "$REMOTE"`；
    同后缀还存在供普通 Git 显式选择的 `Custom` difftool 命令；
+   确认 UGit 因此显示两行 `*.xlsx` 差异工具，并将其判定为预期的两个协议入口，
+   而不是重复配置；
    合并工具参数额外包含 `--base "$BASE" --output "$MERGED"`，且
    `trustExitCode=false`；原有 CSV 工具仍存在。
 4. 不移动应用再次点击，确认提示已经指向当前应用且不会重复写入配置。

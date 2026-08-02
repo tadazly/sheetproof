@@ -105,7 +105,7 @@ sheetproof repo --path /path/to/repository --file config/example.xlsx --ref orig
 
 ## UGit 集成
 
-把应用放到固定目录后，点击顶部“配置 UGit”即可注册当前 `.xlsx` 差异与合并工具。应用只更新 XLSX 对应项，写入后重新读取校验，失败时恢复原配置。UGit 从变更列表对比真实工作区时，SheetProof 会在核对仓库 Git 目录后把工作区放到可编辑左侧，保存仍需用户明确操作；两个历史版本或无法确认写入目标的差异会话继续保持双侧只读。合并会话只有在用户明确保存后才写入 Git 提供的输出路径。
+把应用放到固定目录后，点击顶部“配置 UGit”即可注册当前 `.xlsx` 差异与合并工具。配置完成后，UGit 的差异工具中会正常出现 `SpreadsheetCompare` 和 `Custom` 两行：前者是 UGit 5.51 专用入口，后者保留标准 Git difftool 兼容性，并非重复配置。应用只更新 XLSX 对应项，写入后重新读取校验，失败时恢复原配置。UGit 从变更列表对比真实工作区时，SheetProof 会在核对仓库 Git 目录后把工作区放到可编辑左侧，保存仍需用户明确操作；两个历史版本或无法确认写入目标的差异会话继续保持双侧只读。合并会话只有在用户明确保存后才写入 Git 提供的输出路径。
 
 详细参数、可写判定、只读回退和手工配置方法见 [UGit 使用说明](docs/ugit-integration.md)。
 
