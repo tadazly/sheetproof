@@ -31,7 +31,10 @@ const REGION_ROW_STEP = 12;
 const REGION_COL_STEP = 4;
 const REGION_SCHEDULE_MS = 16;
 const REPOSITORY_SEARCH_HISTORY_LIMIT = 5;
-const REPOSITORY_SEARCH_HISTORY_PREFIX = "ugxlsx:repository-search-history:";
+const REPOSITORY_SEARCH_HISTORY_PREFIX = "sheetproof:repository-search-history:";
+const LEGACY_REPOSITORY_SEARCH_HISTORY_PREFIX = "ugxlsx:repository-search-history:";
+const SHEET_LAYOUT_PREFIX = "sheetproof:sheet-layout:v1:";
+const LEGACY_SHEET_LAYOUT_PREFIX = "ugxlsx.sheet-layout.v1:";
 const DIFF_FILTER_TABS: DiffFilter[] = ["added", "deleted", "modified", "conflict"];
 
 const summary = ref<Summary | null>(null);
@@ -437,13 +440,26 @@ function repositorySearchHistoryKey(path: string): string {
   return `${REPOSITORY_SEARCH_HISTORY_PREFIX}${encodeURIComponent(path)}`;
 }
 
+function legacyRepositorySearchHistoryKey(path: string): string {
+  return `${LEGACY_REPOSITORY_SEARCH_HISTORY_PREFIX}${encodeURIComponent(path)}`;
+}
+
 function loadRepositorySearchHistory(path: string): string[] {
   try {
-    const saved = JSON.parse(window.localStorage.getItem(repositorySearchHistoryKey(path)) ?? "[]");
+    const key = repositorySearchHistoryKey(path);
+    let raw = window.localStorage.getItem(key);
+    if (raw === null) {
+      raw = window.localStorage.getItem(legacyRepositorySearchHistoryKey(path));
+    }
+    const saved = JSON.parse(raw ?? "[]");
     if (!Array.isArray(saved)) return [];
-    return saved
+    const history = saved
       .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
       .slice(0, REPOSITORY_SEARCH_HISTORY_LIMIT);
+    if (raw !== null && window.localStorage.getItem(key) === null) {
+      window.localStorage.setItem(key, JSON.stringify(history));
+    }
+    return history;
   } catch {
     return [];
   }
@@ -1467,18 +1483,28 @@ function columnAtOffset(scrollLeft: number) {
 
 function layoutKey(name = sheet.value) {
   const file = summary.value?.diff.leftFile ?? "no-workbook";
-  return `ugxlsx.sheet-layout.v1:${file}:${name}`;
+  return `${SHEET_LAYOUT_PREFIX}${file}:${name}`;
+}
+
+function legacyLayoutKey(name = sheet.value) {
+  const file = summary.value?.diff.leftFile ?? "no-workbook";
+  return `${LEGACY_SHEET_LAYOUT_PREFIX}${file}:${name}`;
 }
 
 function loadLayout(name: string) {
   zoom.value = 1;
   columnWidths.value = {};
   try {
-    const saved = window.localStorage.getItem(layoutKey(name));
+    const key = layoutKey(name);
+    let saved = window.localStorage.getItem(key);
+    if (!saved) saved = window.localStorage.getItem(legacyLayoutKey(name));
     if (!saved) return;
     const value = JSON.parse(saved) as { zoom?: number; widths?: Record<number, number> };
     zoom.value = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value.zoom ?? 1));
     columnWidths.value = value.widths ?? {};
+    if (window.localStorage.getItem(key) === null) {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    }
   } catch {
     // Invalid or unavailable local storage should not block workbook comparison.
   }

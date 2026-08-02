@@ -19,7 +19,13 @@ for (const path of ["frontend/package.json", "site/package.json"]) {
   const fullPath = resolve(root, path);
   const manifest = JSON.parse(await readFile(fullPath, "utf8"));
   manifest.version = p.version;
+  manifest.license = p.license;
   await writeFile(fullPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  const lockPath = fullPath.replace(/package\.json$/, "package-lock.json");
+  const lock = JSON.parse(await readFile(lockPath, "utf8"));
+  lock.packages[""].license = p.license;
+  await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, "utf8");
 }
 
 const features = product.features
@@ -203,7 +209,7 @@ node scripts/sync-product-content.mjs
 
 ## License
 
-仓库当前没有 \`LICENSE\` 文件，因此源码公开不等于已经授予复制、修改或再分发许可。公开发布前请由项目维护者选择并加入明确许可证；同步后再更新 \`product/product.json\` 中的许可字段。
+项目源码采用 [MIT License](LICENSE)。版权声明为 \`Copyright (c) 2026 tadazly\`。
 `;
 
 await writeFile(resolve(root, "README.md"), `${readme.trim()}\n`, "utf8");

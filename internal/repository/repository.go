@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/ug-tools/ugxlsx/internal/backgroundcmd"
+	"github.com/tadazly/sheetproof/internal/backgroundcmd"
 )
 
 const commandTimeout = 15 * time.Second
@@ -315,7 +315,7 @@ func (r *Repository) ReadReferenceFileContext(
 		}
 		return "", &MissingFileError{Ref: ref.Name, Path: normalized}
 	}
-	temp, err := os.CreateTemp("", "ugxlsx-repository-*.xlsx")
+	temp, err := os.CreateTemp("", "sheetproof-repository-*.xlsx")
 	if err != nil {
 		return "", fmt.Errorf("创建分支工作簿临时文件失败: %w", err)
 	}
@@ -473,7 +473,7 @@ func (r *Repository) differenceIndexSignatureContext(
 		return "", fmt.Errorf("读取当前工作区版本失败: %w", err)
 	}
 	hash := sha256.New()
-	_, _ = fmt.Fprintf(hash, "ugxlsx-semantic-difference-index-v2\x00%s\x00%s\x00",
+	_, _ = fmt.Fprintf(hash, "sheetproof-semantic-difference-index-v2\x00%s\x00%s\x00",
 		bytes.TrimSpace(headOID), bytes.TrimSpace(refOID))
 	for _, file := range worktreeFiles {
 		if err := ctx.Err(); err != nil {

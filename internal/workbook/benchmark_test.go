@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ug-tools/ugxlsx/internal/testutil"
+	"github.com/tadazly/sheetproof/internal/testutil"
 )
 
 func BenchmarkRead100KCells(b *testing.B) {

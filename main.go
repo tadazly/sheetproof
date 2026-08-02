@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	coreapp "github.com/ug-tools/ugxlsx/internal/app"
-	"github.com/ug-tools/ugxlsx/internal/cli"
+	coreapp "github.com/tadazly/sheetproof/internal/app"
+	"github.com/tadazly/sheetproof/internal/cli"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"

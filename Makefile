@@ -1,6 +1,6 @@
 .PHONY: fmt vet test race bench frontend cli build desktop verify
 
-GOCACHE ?= /tmp/ugxlsx-gocache
+GOCACHE ?= /tmp/sheetproof-gocache
 
 fmt:
 	go fmt ./...

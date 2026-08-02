@@ -2,7 +2,7 @@
 
 执行时间：2026-07-30  
 环境：Apple M2 Pro，darwin/arm64，Go 1.26.4  
-命令：`GOCACHE=/tmp/ugxlsx-gocache go test -bench=. -benchmem ./...`
+命令：`GOCACHE=/tmp/sheetproof-gocache go test -bench=. -benchmem ./...`
 
 | 场景 | 有效单元格 | 差异数 | 耗时 | 分配量 | 分配次数 |
 |---|---:|---:|---:|---:|---:|

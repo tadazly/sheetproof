@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ug-tools/ugxlsx/internal/diff"
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/tadazly/sheetproof/internal/diff"
+	"github.com/tadazly/sheetproof/internal/workbook"
 )
 
 // alignRightRowsByID keeps the editable left workbook's physical rows as the

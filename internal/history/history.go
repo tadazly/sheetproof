@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/ug-tools/ugxlsx/internal/merge"
+	"github.com/tadazly/sheetproof/internal/merge"
 )
 
 var ErrEmpty = errors.New("nothing to undo")

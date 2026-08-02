@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ug-tools/ugxlsx/internal/backgroundcmd"
+	"github.com/tadazly/sheetproof/internal/backgroundcmd"
 )
 
 const (

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/tadazly/sheetproof/internal/workbook"
 )
 
 func BenchmarkCompare100KIdentical(b *testing.B) {

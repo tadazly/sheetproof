@@ -1,9 +1,9 @@
 ---
-name: ugxlsx-development
-description: Continue, review, debug, test, release, deploy, or document the ugxlsx Go/Wails/Vue project and SheetProof website. Use for implementation and handoff work, and whenever the user says to release, publish a formal version, push a version such as v0.1.0, infer the next release version, build GitHub Release executables, or synchronize and deploy the release website to Lightsail/Caddy.
+name: sheetproof-development
+description: Continue, review, debug, test, release, deploy, or document the SheetProof Go/Wails/Vue project and website. Use for implementation and handoff work, and whenever the user says to release, publish a formal version, push a version such as v0.1.0, infer the next release version, build GitHub Release executables, or synchronize and deploy the release website to Lightsail/Caddy.
 ---
 
-# Develop ugxlsx
+# Develop SheetProof
 
 ## Establish the baseline
 
@@ -76,7 +76,7 @@ generated XLSX fixtures over checked-in binary fixtures.
 Run the relevant checks:
 
 ```bash
-GOCACHE=/tmp/ugxlsx-go-cache go test ./...
+GOCACHE=/tmp/sheetproof-go-cache go test ./...
 
 cd frontend
 npm run lint
@@ -88,8 +88,8 @@ npm run build
 For core or concurrency changes, also run:
 
 ```bash
-GOCACHE=/tmp/ugxlsx-go-cache go vet ./...
-GOCACHE=/tmp/ugxlsx-go-cache go test -race ./...
+GOCACHE=/tmp/sheetproof-go-cache go vet ./...
+GOCACHE=/tmp/sheetproof-go-cache go test -race ./...
 ```
 
 For desktop delivery, run:
@@ -99,7 +99,7 @@ For desktop delivery, run:
 powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
 
 # macOS/Linux
-GOCACHE=/tmp/ugxlsx-go-cache \
+GOCACHE=/tmp/sheetproof-go-cache \
   go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
 ```
 

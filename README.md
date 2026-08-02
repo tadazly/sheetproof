@@ -49,10 +49,10 @@ SheetProof 用左右对照方式检查 .xlsx 的值、公式和类型，支持�
 
 当前版本是 **0.1.0 预览版**。Windows 与 macOS 预览版通过 GitHub Releases 提供；当前产物未进行代码签名，macOS 版本也未公证。
 
-- [下载 Windows amd64](https://github.com/tadazly/ugxlsx/releases/download/v0.1.0/SheetProof-windows-amd64.exe)
-- [下载 macOS universal](https://github.com/tadazly/ugxlsx/releases/download/v0.1.0/SheetProof-macos-universal.zip)
-- [下载源码](https://github.com/tadazly/ugxlsx/archive/refs/tags/v0.1.0.zip)
-- [查看 GitHub Releases](https://github.com/tadazly/ugxlsx/releases)：包含版本说明和 `SHA256SUMS.txt` 校验文件。
+- [下载 Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.1.0/SheetProof-windows-amd64.exe)
+- [下载 macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.1.0/SheetProof-macos-universal.zip)
+- [下载源码](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.1.0.zip)
+- [查看 GitHub Releases](https://github.com/tadazly/sheetproof/releases)：包含版本说明和 `SHA256SUMS.txt` 校验文件。
 
 首次运行未签名产物时，操作系统可能显示安全提示。请先从 GitHub Releases 下载并核对 SHA-256；维护者发布步骤见 [发布指南](docs/releasing.md)。
 
@@ -180,4 +180,4 @@ node scripts/sync-product-content.mjs
 
 ## License
 
-仓库当前没有 `LICENSE` 文件，因此源码公开不等于已经授予复制、修改或再分发许可。公开发布前请由项目维护者选择并加入明确许可证；同步后再更新 `product/product.json` 中的许可字段。
+项目源码采用 [MIT License](LICENSE)。版权声明为 `Copyright (c) 2026 tadazly`。

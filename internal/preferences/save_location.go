@@ -12,6 +12,8 @@ import (
 
 const (
 	preferencesFilename      = "preferences.json"
+	currentConfigDirectory   = "SheetProof"
+	legacyConfigDirectory    = "ugxlsx"
 	maxRecentRepositoryCount = 10
 )
 
@@ -32,7 +34,8 @@ type repositoryIndexRecord struct {
 // Store persists non-sensitive GUI preferences and lightweight repository
 // indexes for the current user.
 type Store struct {
-	path string
+	path       string
+	legacyPath string
 }
 
 func NewStore() Store {
@@ -40,7 +43,10 @@ func NewStore() Store {
 	if err != nil || configDir == "" {
 		return Store{}
 	}
-	return Store{path: filepath.Join(configDir, "ugxlsx", preferencesFilename)}
+	return Store{
+		path:       filepath.Join(configDir, currentConfigDirectory, preferencesFilename),
+		legacyPath: filepath.Join(configDir, legacyConfigDirectory, preferencesFilename),
+	}
 }
 
 // NewStoreAt is primarily useful for isolated tests and portable packaging.
@@ -304,6 +310,17 @@ func (s Store) load() savePreferences {
 		return savePreferences{}
 	}
 	data, err := os.ReadFile(s.path)
+	if err == nil {
+		var value savePreferences
+		if json.Unmarshal(data, &value) != nil {
+			return savePreferences{}
+		}
+		return value
+	}
+	if !os.IsNotExist(err) || s.legacyPath == "" {
+		return savePreferences{}
+	}
+	data, err = os.ReadFile(s.legacyPath)
 	if err != nil {
 		return savePreferences{}
 	}
@@ -311,6 +328,9 @@ func (s Store) load() savePreferences {
 	if json.Unmarshal(data, &value) != nil {
 		return savePreferences{}
 	}
+	// Keep the legacy file intact as a rollback path. A successful best-effort
+	// copy makes every subsequent write and read use the SheetProof location.
+	_ = s.write(value)
 	return value
 }
 

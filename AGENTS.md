@@ -1,4 +1,4 @@
-# ugxlsx 项目协作规则
+# SheetProof 项目协作规则
 
 ## 开始工作前
 
@@ -7,7 +7,7 @@
 2. 查看 `git status --short`。当前第二、三轮成果可能尚未全部提交；这些改动
    属于项目基线，不得用 `git reset`、`git checkout --` 或覆盖式操作丢弃。
 3. 涉及 GUI 行为时继续阅读 `docs/manual-acceptance.md`。
-4. 优先使用项目技能 `.agents/skills/ugxlsx-development/SKILL.md`。
+4. 优先使用项目技能 `.agents/skills/sheetproof-development/SKILL.md`。
 
 ## 必须保持的兼容不变量
 
@@ -52,7 +52,7 @@
 
 - 搜索文件和文本优先使用 `rg`、`rg --files`。
 - 修改 Go 后运行 `gofmt`，并至少执行
-  `GOCACHE=/tmp/ugxlsx-go-cache go test ./...`。
+  `GOCACHE=/tmp/sheetproof-go-cache go test ./...`。
 - 修改前端后执行：
 
   ```bash
@@ -70,7 +70,7 @@
   powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build
 
   # macOS/Linux
-  GOCACHE=/tmp/ugxlsx-go-cache \
+  GOCACHE=/tmp/sheetproof-go-cache \
     go run github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 build
   ```
 

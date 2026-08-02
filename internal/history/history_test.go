@@ -3,8 +3,8 @@ package history
 import (
 	"testing"
 
-	"github.com/ug-tools/ugxlsx/internal/merge"
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/tadazly/sheetproof/internal/merge"
+	"github.com/tadazly/sheetproof/internal/workbook"
 )
 
 func TestStackLIFOAndClear(t *testing.T) {

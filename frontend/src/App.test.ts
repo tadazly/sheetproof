@@ -95,7 +95,7 @@ describe("App", () => {
       configured: true,
       changed: true,
       cancelled: false,
-      executablePath: "/Applications/ugxlsx.app/Contents/MacOS/ugxlsx",
+      executablePath: "/Applications/SheetProof.app/Contents/MacOS/SheetProof",
       message: "UGit 的 *.xlsx 差异与合并工具已更新。"
     }));
     window.go = {
@@ -123,7 +123,7 @@ describe("App", () => {
     gitDiff.options.gitDiff = true;
     gitDiff.options.readonlyLeft = true;
     gitDiff.diff.leftFile = "/var/folders/random/git-blob-a/配置.xlsx";
-    gitDiff.diff.rightFile = "/var/folders/random/ugxlsx-git-null/missing-right.xlsx";
+    gitDiff.diff.rightFile = "/var/folders/random/sheetproof-git-null/missing-right.xlsx";
     window.go = {
       main: {
         Controller: {
@@ -273,8 +273,11 @@ describe("App", () => {
       "搜索 6", "搜索 5", "搜索 4", "搜索 3", "搜索 2"
     ]);
     expect(window.localStorage.getItem(
-      `ugxlsx:repository-search-history:${encodeURIComponent(repositoryView.path)}`
+      `sheetproof:repository-search-history:${encodeURIComponent(repositoryView.path)}`
     )).toBe(JSON.stringify(["搜索 6", "搜索 5", "搜索 4", "搜索 3", "搜索 2"]));
+    expect(window.localStorage.getItem(
+      `ugxlsx:repository-search-history:${encodeURIComponent(repositoryView.path)}`
+    )).toBeNull();
 
     const historyItem = options.find((option) => option.text() === "搜索 4");
     await historyItem!.trigger("mousedown");
@@ -308,6 +311,42 @@ describe("App", () => {
     await flushPromises();
     await otherWrapper.get('input[aria-label="筛选仓库文件或目录"]').trigger("focus");
     expect(otherWrapper.get('[role="listbox"][aria-label="最近搜索"]').text()).toContain("暂无搜索记录");
+  });
+
+  it("migrates legacy repository search history and writes only the SheetProof key", async () => {
+    const legacyKey = `ugxlsx:repository-search-history:${encodeURIComponent(repositoryView.path)}`;
+    const currentKey = `sheetproof:repository-search-history:${encodeURIComponent(repositoryView.path)}`;
+    window.localStorage.setItem(legacyKey, JSON.stringify(["旧搜索", "另一个旧搜索"]));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({
+            loading: false,
+            hasSession: false,
+            error: "",
+            mode: "repository",
+            repository: structuredClone(repositoryView)
+          })
+        }
+      }
+    };
+
+    const wrapper = mount(App);
+    await flushPromises();
+    const search = wrapper.get('input[aria-label="筛选仓库文件或目录"]');
+    await search.trigger("focus");
+    expect(wrapper.findAll('[role="option"]').map((option) => option.text())).toEqual([
+      "旧搜索", "另一个旧搜索"
+    ]);
+    expect(window.localStorage.getItem(currentKey)).toBe(JSON.stringify(["旧搜索", "另一个旧搜索"]));
+    expect(window.localStorage.getItem(legacyKey)).toBe(JSON.stringify(["旧搜索", "另一个旧搜索"]));
+
+    await search.setValue("新搜索");
+    await search.trigger("blur");
+    expect(window.localStorage.getItem(currentKey)).toBe(JSON.stringify([
+      "新搜索", "旧搜索", "另一个旧搜索"
+    ]));
+    expect(window.localStorage.getItem(legacyKey)).toBe(JSON.stringify(["旧搜索", "另一个旧搜索"]));
   });
 
   it("opens the recent repository dialog from switch repository without changing the open action", async () => {
@@ -1450,7 +1489,7 @@ describe("App", () => {
     expect(wrapper.get(".summary-context").text()).toContain("增加行、删除行");
     expect(wrapper.findAll(".grid-panel")[0].text()).toContain("删除值");
     expect(wrapper.findAll(".grid-panel")[1].text()).toContain("新增值");
-    expect(window.localStorage.getItem("ugxlsx:row-filters:v1")).toBeNull();
+    expect(window.localStorage.getItem("sheetproof:row-filters:v1")).toBeNull();
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "5" }));
     await flushPromises();
@@ -1473,7 +1512,7 @@ describe("App", () => {
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "3" }));
     await flushPromises();
-    expect(window.localStorage.getItem("ugxlsx:row-filters:v1")).toBeNull();
+    expect(window.localStorage.getItem("sheetproof:row-filters:v1")).toBeNull();
     wrapper.unmount();
     wrapper = mount(App);
     await flushPromises();

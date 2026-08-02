@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	coreapp "github.com/ug-tools/ugxlsx/internal/app"
-	"github.com/ug-tools/ugxlsx/internal/preferences"
-	"github.com/ug-tools/ugxlsx/internal/repository"
-	"github.com/ug-tools/ugxlsx/internal/testutil"
+	coreapp "github.com/tadazly/sheetproof/internal/app"
+	"github.com/tadazly/sheetproof/internal/preferences"
+	"github.com/tadazly/sheetproof/internal/repository"
+	"github.com/tadazly/sheetproof/internal/testutil"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/xuri/excelize/v2"
 )
@@ -510,7 +510,7 @@ func createControllerRepository(t *testing.T) (string, string) {
 	}
 	controllerGit(t, root, "init", "-b", "main")
 	controllerGit(t, root, "config", "user.email", "test@example.com")
-	controllerGit(t, root, "config", "user.name", "ugxlsx test")
+	controllerGit(t, root, "config", "user.name", "SheetProof test")
 	controllerGit(t, root, "remote", "add", "origin", ".")
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("base"), 0o644); err != nil {
 		t.Fatal(err)

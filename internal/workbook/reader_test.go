@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ug-tools/ugxlsx/internal/testutil"
+	"github.com/tadazly/sheetproof/internal/testutil"
 	"github.com/xuri/excelize/v2"
 )
 

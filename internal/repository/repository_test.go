@@ -17,7 +17,7 @@ func TestRepositoryDiscoveryBranchesScanAndObjectRead(t *testing.T) {
 	}
 	git(t, root, "init", "-b", "main")
 	git(t, root, "config", "user.email", "test@example.com")
-	git(t, root, "config", "user.name", "ugxlsx test")
+	git(t, root, "config", "user.name", "SheetProof test")
 	git(t, root, "remote", "add", "origin", ".")
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("base"), 0o644); err != nil {
 		t.Fatal(err)
@@ -178,7 +178,7 @@ func TestRepositoryDetachedHeadAndArgumentSafety(t *testing.T) {
 	root := t.TempDir()
 	git(t, root, "init", "-b", "main")
 	git(t, root, "config", "user.email", "test@example.com")
-	git(t, root, "config", "user.name", "ugxlsx test")
+	git(t, root, "config", "user.name", "SheetProof test")
 	relative := "目录/$(touch injected).xlsx"
 	writeWorkbook(t, filepath.Join(root, filepath.FromSlash(relative)), "safe")
 	git(t, root, "add", relative)

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ug-tools/ugxlsx/internal/diff"
-	"github.com/ug-tools/ugxlsx/internal/history"
-	"github.com/ug-tools/ugxlsx/internal/merge"
-	"github.com/ug-tools/ugxlsx/internal/storage"
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/tadazly/sheetproof/internal/diff"
+	"github.com/tadazly/sheetproof/internal/history"
+	"github.com/tadazly/sheetproof/internal/merge"
+	"github.com/tadazly/sheetproof/internal/storage"
+	"github.com/tadazly/sheetproof/internal/workbook"
 	"github.com/xuri/excelize/v2"
 )
 

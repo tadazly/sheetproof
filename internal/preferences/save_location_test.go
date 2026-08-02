@@ -177,3 +177,50 @@ func TestStoreMigratesLegacyLastRepositoryToRecentRepositories(t *testing.T) {
 		t.Fatalf("legacy last repository = %q", got)
 	}
 }
+
+func TestStoreMigratesLegacyUGXLSXPreferencesWithoutLosingData(t *testing.T) {
+	root := t.TempDir()
+	legacyPath := filepath.Join(root, legacyConfigDirectory, preferencesFilename)
+	currentPath := filepath.Join(root, currentConfigDirectory, preferencesFilename)
+	repository := filepath.Join(root, "repository")
+	saveDirectory := filepath.Join(root, "saved")
+	for _, directory := range []string{filepath.Dir(legacyPath), repository, saveDirectory} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacyData := []byte(fmt.Sprintf(
+		`{"lastSaveDirectory":%q,"lastRepository":%q,"recentRepositories":[%q],"repositoryWidth":344,"repositoryRefs":{%q:%q}}`,
+		saveDirectory, repository, repository, repository, "refs/remotes/origin/release",
+	))
+	if err := os.WriteFile(legacyPath, legacyData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := Store{path: currentPath, legacyPath: legacyPath}
+	if got := store.SaveDirectory(); got != saveDirectory {
+		t.Fatalf("migrated save directory = %q, want %q", got, saveDirectory)
+	}
+	if got := store.LastRepository(); got != repository {
+		t.Fatalf("migrated recent repository = %q, want %q", got, repository)
+	}
+	if got := store.RepositoryWidth(); got != 344 {
+		t.Fatalf("migrated repository width = %d, want 344", got)
+	}
+	if got := store.RepositoryRef(repository); got != "refs/remotes/origin/release" {
+		t.Fatalf("migrated repository ref = %q", got)
+	}
+	if _, err := os.Stat(currentPath); err != nil {
+		t.Fatalf("SheetProof preferences were not created: %v", err)
+	}
+	if got, err := os.ReadFile(legacyPath); err != nil || string(got) != string(legacyData) {
+		t.Fatalf("legacy preferences changed: err=%v data=%q", err, got)
+	}
+
+	if err := store.RecordRepositoryWidth(360); err != nil {
+		t.Fatal(err)
+	}
+	if got := NewStoreAt(currentPath).RepositoryWidth(); got != 360 {
+		t.Fatalf("new preference path was not used for writes: %d", got)
+	}
+}

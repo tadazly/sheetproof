@@ -86,7 +86,7 @@ func createWorkbook(path string, right bool) error {
 	if right {
 		comment = "右侧批注"
 	}
-	if err := f.AddComment("数据 表", excelize.Comment{Cell: "G1", Author: "ugxlsx-test", Text: comment}); err != nil {
+	if err := f.AddComment("数据 表", excelize.Comment{Cell: "G1", Author: "sheetproof-test", Text: comment}); err != nil {
 		return err
 	}
 	if _, err := f.NewSheet("共同表"); err != nil {

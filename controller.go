@@ -10,12 +10,12 @@ import (
 	"strings"
 	"sync"
 
-	coreapp "github.com/ug-tools/ugxlsx/internal/app"
-	"github.com/ug-tools/ugxlsx/internal/diff"
-	"github.com/ug-tools/ugxlsx/internal/preferences"
-	"github.com/ug-tools/ugxlsx/internal/repository"
-	"github.com/ug-tools/ugxlsx/internal/ugit"
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	coreapp "github.com/tadazly/sheetproof/internal/app"
+	"github.com/tadazly/sheetproof/internal/diff"
+	"github.com/tadazly/sheetproof/internal/preferences"
+	"github.com/tadazly/sheetproof/internal/repository"
+	"github.com/tadazly/sheetproof/internal/ugit"
+	"github.com/tadazly/sheetproof/internal/workbook"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ug-tools/ugxlsx/internal/diff"
-	"github.com/ug-tools/ugxlsx/internal/testutil"
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/tadazly/sheetproof/internal/diff"
+	"github.com/tadazly/sheetproof/internal/testutil"
+	"github.com/tadazly/sheetproof/internal/workbook"
 	"github.com/xuri/excelize/v2"
 )
 

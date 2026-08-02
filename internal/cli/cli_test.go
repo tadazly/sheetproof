@@ -6,12 +6,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/ug-tools/ugxlsx/internal/app"
-	"github.com/ug-tools/ugxlsx/internal/testutil"
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/tadazly/sheetproof/internal/app"
+	"github.com/tadazly/sheetproof/internal/testutil"
+	"github.com/tadazly/sheetproof/internal/workbook"
 )
+
+func TestHelpUsesCurrentSheetProofCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"help"}, &stdout, &stderr, noGUI); code != ExitOK {
+		t.Fatalf("exit = %d stderr=%s", code, stderr.String())
+	}
+	usage := stdout.String()
+	if !strings.Contains(usage, "sheetproof compare") || !strings.Contains(usage, "SheetProof") {
+		t.Fatalf("help does not use current product command:\n%s", usage)
+	}
+	if strings.Contains(strings.ToLower(usage), "ugxlsx") {
+		t.Fatalf("help still uses the legacy product name:\n%s", usage)
+	}
+}
 
 func TestDiffJSONWithUnicodeAndSpaces(t *testing.T) {
 	pair, err := testutil.CreatePair(t.TempDir())
@@ -240,7 +255,7 @@ func TestUGitSpreadsheetCompareMakesVerifiedWorktreeEditableOnLeft(t *testing.T)
 	}
 	runCLIGit(t, root, "init", "-b", "main")
 	runCLIGit(t, root, "config", "user.email", "test@example.com")
-	runCLIGit(t, root, "config", "user.name", "ugxlsx test")
+	runCLIGit(t, root, "config", "user.name", "SheetProof test")
 	pair, err := testutil.CreatePair(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +374,7 @@ func TestUGitSpreadsheetCompareRecognizesLinkedWorktreeGitDirectory(t *testing.T
 	}
 	runCLIGit(t, root, "init", "-b", "main")
 	runCLIGit(t, root, "config", "user.email", "test@example.com")
-	runCLIGit(t, root, "config", "user.name", "ugxlsx test")
+	runCLIGit(t, root, "config", "user.name", "SheetProof test")
 	pair, err := testutil.CreatePair(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -524,7 +539,7 @@ func TestRepositoryCommandValidatesAndPassesExactFileAndRef(t *testing.T) {
 	}
 	runCLIGit(t, root, "init", "-b", "main")
 	runCLIGit(t, root, "config", "user.email", "test@example.com")
-	runCLIGit(t, root, "config", "user.name", "ugxlsx test")
+	runCLIGit(t, root, "config", "user.name", "SheetProof test")
 	pair, err := testutil.CreatePair(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

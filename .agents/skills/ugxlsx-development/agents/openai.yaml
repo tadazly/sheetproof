@@ -1,4 +1,0 @@
-interface:
-  display_name: "ugxlsx 项目开发"
-  short_description: "接续 ugxlsx 仓库模式、表格差异、合并、安全保存与验证工作"
-  default_prompt: "使用 $ugxlsx-development 接手当前 ugxlsx 工作区，先读取交接基线并验证后再实现需求。"

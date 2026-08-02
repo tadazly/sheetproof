@@ -287,7 +287,7 @@ SheetProof compare \
 ### Windows 后台进程和图标
 
 1. 用缓存未命中的真实仓库建立差异表索引；在 Process Explorer 或等价工具中
-   记录 ugxlsx 的 `git.exe` 子进程。确认候选扫描、`cat-file -e` 和 `show`
+   记录 SheetProof 的 `git.exe` 子进程。确认候选扫描、`cat-file -e` 和 `show`
    均没有创建可见 `conhost.exe` 窗口，任务栏全程没有“未知应用程序”图标。
 2. 索引进行中关闭窗口，确认进程及时退出，且没有遗留 Git、conhost 或导出临时
    文件。自动化进程属性测试不能替代任务栏观察。

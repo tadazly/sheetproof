@@ -1,4 +1,4 @@
-module github.com/ug-tools/ugxlsx
+module github.com/tadazly/sheetproof
 
 go 1.24.0
 

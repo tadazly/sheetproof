@@ -2,7 +2,7 @@
 
 更新时间：2026-08-02
 
-本文是新会话接手 `ugxlsx` 的当前事实基线。第一轮历史交付保留在
+本文是新会话接手 SheetProof（原 `ugxlsx`）的当前事实基线。第一轮历史交付保留在
 `docs/iteration-1-handoff.md`；项目约束见根目录 `AGENTS.md`，实现设计见
 `docs/architecture.md`。
 
@@ -178,9 +178,9 @@ difftool 的成对路径计数环境变量时会强制整个会话只读，界�
 ### CLI 仓库入口
 
 ```bash
-ugxlsx repo --path "/path/to/repository"
+sheetproof repo --path "/path/to/repository"
 
-ugxlsx repo \
+sheetproof repo \
   --path "/path/to/repository" \
   --file "config/activity/reward.xlsx" \
   --ref "origin/develop"
@@ -911,6 +911,32 @@ Windows/macOS 资产地址、源码地址、SHA-256 提示、签名限制和页�
 无需轮换；本次不重写历史。当前仍没有 `LICENSE` 文件，维护者选择并加入明确许可证前，
 不得确认公开发布。候选尚未 commit、push、打标签、运行远端发布工作流或部署官网。
 
+## 2026-08-02 仓库、模块与 MIT 许可迁移
+
+当前源码把正式仓库地址统一为 `https://github.com/tadazly/sheetproof`，Go module 统一为
+`github.com/tadazly/sheetproof`，桌面与 CLI 的新安装标识统一使用 `SheetProof` / `sheetproof`。
+仓库根目录加入标准 MIT License，版权主体为 `Copyright (c) 2026 tadazly`；产品事实源、
+README、CHANGELOG、官网内容与下载地址由同步脚本保持一致。
+
+这次改名保留现有用户数据兼容：WebView 仓库搜索历史和工作表布局首次读取旧 `ugxlsx`
+key 时复制到新的 `sheetproof` key，后续只写新 key；系统配置目录从
+`ugxlsx/preferences.json` 迁移到 `SheetProof/preferences.json`，仅在新文件不存在时复制
+完整旧偏好且不删除旧文件。UGit 配置继续枚举全部 `*.xlsx` 工具项，因此能识别旧版
+`ugxlsx` 可执行文件路径，用户确认后只替换 XLSX 项并保留其他后缀配置。`legacyName`、
+兼容常量、迁移测试和此前真实交付记录中的旧名称继续保留。
+
+本次验证通过 `go test ./...`、`go vet ./...`、前端 lint/typecheck/34 项测试/build，
+以及官网 lint/5 项渲染测试。Windows Wails v2.10.2 使用隔离输出名成功完成完整构建；
+随后实际启动该产物进入仓库模式，核对品牌、仓库树与搜索面板布局，并验证搜索历史在
+退出重启后仍可恢复。截图保存在 `build/acceptance/repository-rename/`，验收进程均正常
+退出。默认 `build/bin/SheetProof.exe` 当时被既有用户进程占用，因此没有覆盖该文件。
+
+GitHub 连接只读检查确认当前账号对 `tadazly/ugxlsx` 具有管理员权限，但本机没有可用的
+GitHub CLI，连接器也不提供仓库改名写操作。因此远端仓库尚未原地改名，`origin` 暂时仍
+指向旧地址，仓库描述、主页与在线许可证识别也尚未更新；不得提前把 `origin` 指向尚不
+存在的新仓库。维护者安装并登录 `gh` 后，应按本节对应迁移清单完成远端改名和元数据
+更新。官网源码与生成内容已经验证，本轮未获得 Lightsail SSH 目标，因此尚未部署生产站。
+
 ## 后续风险与建议
 
 - 下一轮开始时先确认 `git status --short` 包含本轮现代化 UI、生产前端和文档
@@ -936,7 +962,7 @@ pwd
 sed -n '1,260p' AGENTS.md
 sed -n '1,360p' docs/iteration-2-handoff.md
 git status --short
-GOCACHE=/tmp/ugxlsx-go-cache go test ./...
+GOCACHE=/tmp/sheetproof-go-cache go test ./...
 cd frontend && npm run test && npm run typecheck
 ```
 

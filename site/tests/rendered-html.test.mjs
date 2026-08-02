@@ -35,11 +35,31 @@ test("exports product routes", async () => {
 
 test("release download page contains stable v0.1.0 assets and signing limitations", async () => {
   const html = await render("/download");
+  assert.match(html, /github\.com\/tadazly\/sheetproof\/releases\/download\/v0\.1\.0/);
   assert.match(html, /releases\/download\/v0\.1\.0\/SheetProof-windows-amd64\.exe/);
   assert.match(html, /releases\/download\/v0\.1\.0\/SheetProof-macos-universal\.zip/);
   assert.match(html, /SHA-256/);
   assert.match(html, /未进行代码签名/);
   assert.match(html, /未公证/);
+});
+
+test("product facts, generated content, repository links, and MIT license stay in sync", async () => {
+  const [sourceText, generatedText, readme, changelog] = await Promise.all([
+    readFile(fileURLToPath(new URL("../../product/product.json", import.meta.url)), "utf8"),
+    readFile(fileURLToPath(new URL("../app/content/product.json", import.meta.url)), "utf8"),
+    readFile(fileURLToPath(new URL("../../README.md", import.meta.url)), "utf8"),
+    readFile(fileURLToPath(new URL("../../CHANGELOG.md", import.meta.url)), "utf8"),
+  ]);
+  const source = JSON.parse(sourceText);
+  assert.deepEqual(JSON.parse(generatedText), source);
+  assert.equal(source.product.repository, "https://github.com/tadazly/sheetproof");
+  assert.equal(source.product.issues, "https://github.com/tadazly/sheetproof/issues");
+  assert.equal(source.product.license, "MIT");
+  assert.equal(source.product.legacyName, "ugxlsx");
+  assert.match(readme, /https:\/\/github\.com\/tadazly\/sheetproof\/releases/);
+  assert.match(readme, /MIT License/);
+  assert.match(changelog, /tadazly\/sheetproof/);
+  assert.doesNotMatch(`${readme}\n${changelog}`, /github\.com\/tadazly\/ugxlsx|github\.com\/ug-tools\/ugxlsx/);
 });
 
 test("all internal navigation links resolve to a product route", async () => {

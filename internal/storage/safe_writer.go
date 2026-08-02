@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/tadazly/sheetproof/internal/workbook"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -46,7 +46,7 @@ func (SafeWriter) Save(file *excelize.File, target string, expected *workbook.Fi
 			}
 		}
 	}
-	temp, err := os.CreateTemp(dir, ".ugxlsx-*.xlsx")
+	temp, err := os.CreateTemp(dir, ".sheetproof-*.xlsx")
 	if err != nil {
 		return workbook.FileIdentity{}, &workbook.Error{Code: workbook.ErrSave, Path: abs, Err: err}
 	}

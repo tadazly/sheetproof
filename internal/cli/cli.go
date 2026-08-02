@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ug-tools/ugxlsx/internal/app"
-	"github.com/ug-tools/ugxlsx/internal/diff"
-	"github.com/ug-tools/ugxlsx/internal/repository"
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/tadazly/sheetproof/internal/app"
+	"github.com/tadazly/sheetproof/internal/diff"
+	"github.com/tadazly/sheetproof/internal/repository"
+	"github.com/tadazly/sheetproof/internal/workbook"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -382,7 +382,7 @@ func prepareComparePaths(left, right string) (preparedLeft, preparedRight string
 		return "", "", func() {}, err
 	}
 
-	tempDir, err := os.MkdirTemp("", "ugxlsx-git-null-*")
+	tempDir, err := os.MkdirTemp("", "sheetproof-git-null-*")
 	if err != nil {
 		return "", "", func() {}, fmt.Errorf("create Git diff placeholder: %w", err)
 	}

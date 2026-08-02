@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestConfigureUpdatesMovedExecutableAndOnlyTouchesXLSXTools(t *testing.T) {
+func TestConfigureMigratesLegacyUGXLSXExecutableAndOnlyTouchesXLSXTools(t *testing.T) {
 	gitPath, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git is unavailable")
@@ -23,7 +23,15 @@ func TestConfigureUpdatesMovedExecutableAndOnlyTouchesXLSXTools(t *testing.T) {
 	runConfig(t, c, "config", "--global", "--add", "difftool.*.xlsx_BeyondCompare.cmd", "'/old/bcomp' \"$LOCAL\" \"$REMOTE\"")
 	runConfig(t, c, "config", "--global", "--add", "mergetool.*.xlsx_Custom.cmd", "'/old/ugxlsx' compare --left \"$LOCAL\" --right \"$REMOTE\"")
 
-	firstExecutable := createExecutable(t, "first location/ugxlsx")
+	legacy, err := c.inspect(ctx, createExecutable(t, "current location/SheetProof"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !legacy.NeedsUpdate || legacy.Configured || !contains(legacy.ExistingPaths, "/old/ugxlsx") {
+		t.Fatalf("legacy configuration was not detected: %+v", legacy)
+	}
+
+	firstExecutable := createExecutable(t, "first location/SheetProof")
 	first, err := c.configure(ctx, firstExecutable)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +50,7 @@ func TestConfigureUpdatesMovedExecutableAndOnlyTouchesXLSXTools(t *testing.T) {
 	assertConfigValue(t, c, "difftool.*.csv_Custom.cmd", "'/tools/csv' \"$LOCAL\" \"$REMOTE\"")
 	assertConfigMissing(t, c, "difftool.*.xlsx_BeyondCompare.cmd")
 
-	secondExecutable := createExecutable(t, "moved location/ugxlsx")
+	secondExecutable := createExecutable(t, "moved location/SheetProof")
 	beforeMove, err := c.inspect(ctx, secondExecutable)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +101,7 @@ func TestInspectRecognizesExactConfiguration(t *testing.T) {
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), ".gitconfig"))
 	c := client{gitPath: gitPath}
-	executable := createExecutable(t, "ugxlsx")
+	executable := createExecutable(t, "SheetProof")
 
 	empty, err := c.inspect(context.Background(), executable)
 	if err != nil {

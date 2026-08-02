@@ -16,15 +16,15 @@
       "Windows",
       "macOS"
     ],
-    "repository": "https://github.com/tadazly/ugxlsx",
-    "issues": "https://github.com/tadazly/ugxlsx/issues",
-    "license": "License not yet declared"
+    "repository": "https://github.com/tadazly/sheetproof",
+    "issues": "https://github.com/tadazly/sheetproof/issues",
+    "license": "MIT"
   },
   "downloads": {
-    "releases": "https://github.com/tadazly/ugxlsx/releases",
-    "windows": "https://github.com/tadazly/ugxlsx/releases/download/v0.1.0/SheetProof-windows-amd64.exe",
-    "macos": "https://github.com/tadazly/ugxlsx/releases/download/v0.1.0/SheetProof-macos-universal.zip",
-    "source": "https://github.com/tadazly/ugxlsx/archive/refs/tags/v0.1.0.zip",
+    "releases": "https://github.com/tadazly/sheetproof/releases",
+    "windows": "https://github.com/tadazly/sheetproof/releases/download/v0.1.0/SheetProof-windows-amd64.exe",
+    "macos": "https://github.com/tadazly/sheetproof/releases/download/v0.1.0/SheetProof-macos-universal.zip",
+    "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.1.0.zip",
     "status": "Windows and macOS preview downloads are available from GitHub Releases. The desktop artifacts are unsigned, and the macOS build is not notarized."
   },
   "features": [

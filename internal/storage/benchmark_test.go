@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ug-tools/ugxlsx/internal/testutil"
-	"github.com/ug-tools/ugxlsx/internal/workbook"
+	"github.com/tadazly/sheetproof/internal/testutil"
+	"github.com/tadazly/sheetproof/internal/workbook"
 )
 
 func BenchmarkSafeSave100KCells(b *testing.B) {

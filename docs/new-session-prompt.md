@@ -3,13 +3,13 @@
 在同一工作区启动新会话后，可复制以下内容。最后一段替换为下一轮实际需求。
 
 ```text
-你正在接手 ugxlsx 的后续迭代。先确认实际工作目录和操作系统版本，不要沿用旧提示中的路径或平台假设。
+你正在接手 SheetProof 的后续迭代。先确认实际工作目录和操作系统版本，不要沿用旧提示中的路径或平台假设。
 
-请使用项目技能 $ugxlsx-development。若当前会话没有自动发现该技能，则直接
+请使用项目技能 $sheetproof-development。若当前会话没有自动发现该技能，则直接
 完整阅读：
 
 1. AGENTS.md
-2. .agents/skills/ugxlsx-development/SKILL.md
+2. .agents/skills/sheetproof-development/SKILL.md
 3. docs/iteration-2-handoff.md
 4. README.md
 5. docs/architecture.md
@@ -20,7 +20,7 @@
 Get-Location
 git status --short
 git log -5 --oneline --decorate
-$env:GOCACHE = Join-Path $env:TEMP "ugxlsx-go-cache"
+$env:GOCACHE = Join-Path $env:TEMP "sheetproof-go-cache"
 go test ./...
 cd frontend
 npm run test

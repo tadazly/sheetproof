@@ -1,7 +1,8 @@
 # SheetProof（表鉴）架构
 
-SheetProof 的仓库和 Go 模块仍使用兼容名称 `ugxlsx`。Excel 处理保持在 Go 后端，
-GUI 与 CLI 复用相同领域逻辑；产品命名不会改变文件格式、会话模型或保存语义。
+SheetProof 的仓库地址为 `github.com/tadazly/sheetproof`，Go module 使用同一路径。
+Excel 处理保持在 Go 后端，GUI 与 CLI 复用相同领域逻辑；仓库迁移不会改变文件格式、
+会话模型或保存语义。
 
 ## 两种入口模式
 
@@ -363,13 +364,13 @@ Wails 暴露的 `Controller` 方法如下：
 `size + mtime(ns) + SHA-256`。临时文件与目标位于同一目录，因此最终 rename
 不跨文件系统。任何写入或校验失败都会删除临时文件，原目标保持不变。
 
-另存为对话框默认沿用左侧工作簿文件名。首次使用从平台下载目录开始；Windows 使用 Known Folder API，macOS 使用当前用户的 `Downloads`。仅在工作簿安全保存成功后，才把目标父目录写入系统用户配置目录的 `ugxlsx/preferences.json`，后续会话优先从该目录开始。
+另存为对话框默认沿用左侧工作簿文件名。首次使用从平台下载目录开始；Windows 使用 Known Folder API，macOS 使用当前用户的 `Downloads`。仅在工作簿安全保存成功后，才把目标父目录写入系统用户配置目录的 `SheetProof/preferences.json`，后续会话优先从该目录开始。若新路径不存在而旧 `ugxlsx/preferences.json` 存在，首次读取会把完整偏好复制到新路径并保留旧文件作为回退；以后只写新路径。
 
 安全保存顺序：
 
 1. 校验扩展名、目标目录和写权限。
 2. 保存当前目标时比较加载后的文件身份，阻止覆盖外部修改。
-3. 在目标同目录创建 `.ugxlsx-*.xlsx` 临时文件。
+3. 在目标同目录创建 `.sheetproof-*.xlsx` 临时文件。
 4. 写入、`fsync`、关闭并用 excelize 打开临时文件校验。
 5. 再次检查目标身份，避免保存期间发生竞争修改。
 6. 保留原权限并原子替换：Unix 使用同目录 rename，Windows 使用 `MoveFileEx(REPLACE_EXISTING | WRITE_THROUGH)`。
