@@ -47,6 +47,7 @@ const busy = ref(false);
 const error = ref("");
 const integrationNotice = ref("");
 const diffFilter = ref<DiffFilter>("modified");
+const selectedRowFilters = ref<DiffFilter[]>([]);
 const leftScroll = ref<HTMLElement | null>(null);
 const rightScroll = ref<HTMLElement | null>(null);
 const viewportTop = ref(0);
@@ -107,9 +108,54 @@ interface RepositoryTreeRow {
   depth: number;
 }
 
+interface FilteredRowMapping {
+  display: number;
+  source: number;
+  left: number;
+  right: number;
+}
+
+interface RowViewportAnchor {
+  sourceRow: number;
+  viewportOffset: number;
+}
+
 const activeSheet = computed(() => summary.value?.diff.sheets.find((item) => item.name === sheet.value));
 const leftReadonly = computed(() => Boolean(summary.value?.options.readonlyLeft));
-const totalRows = computed(() => Math.max(activeSheet.value?.maxRow ?? 0, 50) + 10);
+const rowFilterActive = computed(() => selectedRowFilters.value.length > 0);
+const selectedRowFilterSet = computed(() => new Set(selectedRowFilters.value));
+const filteredRowMappings = computed<FilteredRowMapping[]>(() => {
+  if (!rowFilterActive.value) return [];
+  const mappings: FilteredRowMapping[] = [];
+  const appendTargets = new Set(
+    (summary.value?.resolutions ?? [])
+      .filter((item) => item.sheet === sheet.value && item.targetRow && isAppendResolution(item))
+      .map((item) => item.targetRow)
+  );
+  for (const item of activeSheet.value?.rows ?? []) {
+    if (appendTargets.has(item.row) || !selectedRowFilterSet.value.has(item.status as DiffFilter)) continue;
+    let left = item.row;
+    const resolutions = summary.value?.resolutions ?? [];
+    for (let index = resolutions.length - 1; index >= 0; index--) {
+      const resolution = resolutions[index];
+      if (
+        resolution.sheet === sheet.value &&
+        resolution.sourceRow === item.row &&
+        resolution.targetRow &&
+        isAppendResolution(resolution)
+      ) {
+        left = resolution.targetRow;
+        break;
+      }
+    }
+    mappings.push({ display: mappings.length + 1, source: item.row, left, right: item.row });
+  }
+  return mappings;
+});
+const totalRows = computed(() => rowFilterActive.value
+  ? filteredRowMappings.value.length
+  : Math.max(activeSheet.value?.maxRow ?? 0, 50) + 10
+);
 const totalCols = computed(() => Math.max(activeSheet.value?.maxCol ?? 0, 14) + 4);
 const visibleColumns = computed(() => {
   if (!region.value) return [];
@@ -162,14 +208,19 @@ const diffFilterCounts = computed(() => {
   return counts;
 });
 const resultMetrics = computed(() => {
-  const metrics = { added: 0, deleted: 0, modified: 0, conflict: 0 };
-  for (const item of summary.value?.diff.sheets ?? []) {
-    metrics.added += item.addedRowCount;
-    metrics.deleted += item.deletedRowCount;
-    metrics.modified += item.modifiedRowCount;
-    metrics.conflict += item.conflictRowCount;
-  }
-  return metrics;
+  const current = activeSheet.value;
+  return {
+    added: current?.addedRowCount ?? 0,
+    deleted: current?.deletedRowCount ?? 0,
+    modified: current?.modifiedRowCount ?? 0,
+    conflict: current?.conflictRowCount ?? 0
+  };
+});
+const currentSheetDifferenceCount = computed(() => activeSheet.value?.differenceCount ?? 0);
+const rowFilterSummary = computed(() => {
+  if (!rowFilterActive.value) return "全部数据";
+  if (selectedRowFilters.value.length === DIFF_FILTER_TABS.length) return "全部差异行";
+  return selectedRowFilters.value.map((status) => `${rowStatusLabel(status)}行`).join("、");
 });
 const currentTaskName = computed(() => {
   const selectedFile = repository.value?.selectedFile;
@@ -189,6 +240,20 @@ const canPreviewOriginal = computed(() => Boolean(
 ));
 const copyTargets = computed(() => {
   if (!selection.value) return [];
+  if (rowFilterActive.value) {
+    const sourceRows = new Set(
+      filteredRowMappings.value
+        .filter((item) => item.display >= selection.value!.startRow && item.display <= selection.value!.endRow)
+        .map((item) => item.source)
+    );
+    const result = diffs.value
+      .filter((item) => sourceRows.has(item.ref.row) && item.ref.col >= selection.value!.startCol && item.ref.col <= selection.value!.endCol)
+      .map((item) => ({ row: item.ref.row, col: item.ref.col }));
+    if (result.length === 0 && selectionSize.value === 1 && activeCell.value) {
+      result.push({ row: cellSourceRow(activeCell.value), col: activeCell.value.col });
+    }
+    return result;
+  }
   const result = diffs.value
     .filter((item) => containsCell(selection.value, item.ref.row, item.ref.col))
     .map((item) => ({ row: item.ref.row, col: item.ref.col }));
@@ -199,12 +264,20 @@ const copyTargets = computed(() => {
 });
 function rowsForContext(row: number) {
   if (!selection.value || row < selection.value.startRow || row > selection.value.endRow) {
-    return [row];
+    return [sourceRowForDisplay(row)];
   }
-  return Array.from(
+  const displayRows = Array.from(
     { length: selection.value.endRow - selection.value.startRow + 1 },
     (_, index) => selection.value!.startRow + index
   );
+  if (!rowFilterActive.value) return displayRows;
+  return displayRows
+    .map((display) => filteredRowMappings.value[display - 1]?.source)
+    .filter((source): source is number => Boolean(source));
+}
+
+function isAppendResolution(item: RowResolution) {
+  return item.kind === "append-row" || item.kind === "append-auto" || item.kind === "append-specified";
 }
 const contextRows = computed(() => {
   const row = contextMenu.value.row;
@@ -212,10 +285,13 @@ const contextRows = computed(() => {
   return rowsForContext(row);
 });
 const contextActionableRows = computed(() =>
-  contextRows.value.filter((row) => rowStatus(row) !== "unchanged")
+  contextRows.value.filter((row) => rowStatusForSource(row) !== "unchanged")
+);
+const contextAppendableRows = computed(() =>
+  contextActionableRows.value.filter((row) => rowStatusForSource(row) !== "deleted")
 );
 const contextActionableStatuses = computed(() =>
-  contextActionableRows.value.map((row) => rowStatus(row))
+  contextActionableRows.value.map((row) => rowStatusForSource(row))
 );
 const contextHasConflict = computed(() =>
   contextActionableStatuses.value.some((status) => status === "conflict")
@@ -242,7 +318,11 @@ const contextStatusLabel = computed(() => {
 const contextActionDisabled = computed(() =>
   busy.value || Boolean(summary.value?.options.readonlyLeft) || !comparisonActive.value
 );
+const contextHasNumericIDColumn = computed(() =>
+  Boolean(activeSheet.value?.idColumn && activeSheet.value.nextId > 0)
+);
 const automaticIDLabel = computed(() => {
+  if (!contextHasNumericIDColumn.value) return "";
   const nextID = activeSheet.value?.nextId ?? 0;
   if (!nextID || !contextActionableRows.value.length) return "";
   const lastID = nextID + contextActionableRows.value.length - 1;
@@ -289,9 +369,10 @@ const repositoryRows = computed<RepositoryTreeRow[]>(() => {
 });
 const statusText = computed(() => {
   if (!summary.value) return repository.value ? "请选择仓库中的 XLSX 表格" : "尚未打开工作簿";
-  const axis = activePoint.value ? `${columnName(activePoint.value.col)}${activePoint.value.row}` : "—";
+  const axis = activeCell.value ? cellAxis(activeCell.value, "left") : "—";
   const selectedText = selectionSize.value > 1 ? ` · 已选 ${selectionSize.value} 格` : "";
-  return `${axis}${selectedText} · ${summary.value.diff.differenceCount} 处差异 · ${
+  const filterText = rowFilterActive.value ? ` · ${rowFilterSummary.value}` : "";
+  return `${axis}${selectedText}${filterText} · ${summary.value.diff.differenceCount} 处差异 · ${
     summary.value.dirty ? "有未保存修改" : "已保存"
   }`;
 });
@@ -585,10 +666,18 @@ async function loadSheet(name: string, resetSelection = true) {
   const list = await guard(() => backend.differences(name, 0, 10000));
   if (request !== sheetRequest || sheet.value !== name) return;
   diffs.value = list ?? [];
-  selectDiffFilter(preferredDiffFilter(diffs.value));
+  const persistedNavigation = DIFF_FILTER_TABS.find((status) =>
+    selectedRowFilterSet.value.has(status) && diffs.value.some((item) => item.rowStatus === status)
+  ) ?? selectedRowFilters.value[0];
+  setDiffNavigationFilter(persistedNavigation ?? preferredDiffFilter(diffs.value));
   if (changed || resetSelection) {
-    const target = filteredDiffEntries.value[0]?.item;
+    const target = rowFilterActive.value
+      ? diffs.value.find((item) => selectedRowFilterSet.value.has(item.rowStatus as DiffFilter))
+      : filteredDiffEntries.value[0]?.item;
     if (target) {
+      if (rowFilterActive.value && target.rowStatus !== "unchanged") {
+        setDiffNavigationFilter(target.rowStatus);
+      }
       await nextTick();
       if (request !== sheetRequest || sheet.value !== name) return;
       await scrollTo(target.ref.row, target.ref.col);
@@ -622,15 +711,29 @@ async function loadRegion(fromRow: number, fromCol: number): Promise<boolean> {
   if (!sheet.value) return false;
   const request = ++regionRequest;
   const requestedSheet = sheet.value;
+  const requestedFilters = [...selectedRowFilters.value];
   try {
-    const data = await backend.region(
-      requestedSheet,
-      Math.max(1, fromRow),
-      VIEW_ROWS,
-      Math.max(1, fromCol),
-      VIEW_COLS
-    );
-    if (request !== regionRequest || sheet.value !== requestedSheet) return false;
+    const data = requestedFilters.length
+      ? await backend.filteredRegion(
+        requestedSheet,
+        requestedFilters,
+        Math.max(1, fromRow),
+        VIEW_ROWS,
+        Math.max(1, fromCol),
+        VIEW_COLS
+      )
+      : await backend.region(
+        requestedSheet,
+        Math.max(1, fromRow),
+        VIEW_ROWS,
+        Math.max(1, fromCol),
+        VIEW_COLS
+      );
+    if (
+      request !== regionRequest ||
+      sheet.value !== requestedSheet ||
+      requestedFilters.join(",") !== selectedRowFilters.value.join(",")
+    ) return false;
     region.value = data;
     return true;
   } catch (reason) {
@@ -715,7 +818,8 @@ function setSingleSelection(cell: RegionCell) {
   activePoint.value = point;
   selectionAnchor.value = point;
   selection.value = makeRange(point, point);
-  const index = diffs.value.findIndex((item) => item.ref.row === cell.row && item.ref.col === cell.col);
+  const sourceRow = cellSourceRow(cell);
+  const index = diffs.value.findIndex((item) => item.ref.row === sourceRow && item.ref.col === cell.col);
   if (index >= 0) {
     const status = diffs.value[index].rowStatus || "modified";
     if (status !== "unchanged") diffFilter.value = status;
@@ -804,11 +908,101 @@ async function navigate(direction: 1 | -1) {
   await scrollTo(target.ref.row, target.ref.col);
 }
 
-function selectDiffFilter(status: DiffFilter) {
+function setDiffNavigationFilter(status: DiffFilter) {
   diffFilter.value = status;
   diffIndex.value = diffs.value.findIndex((item) =>
     (item.rowStatus || "modified") === status
   );
+}
+
+function captureRowViewportAnchor(): RowViewportAnchor {
+  const source = leftScroll.value ?? rightScroll.value;
+  const top = source?.scrollTop ?? viewportTop.value;
+  const firstVisible = Math.max(1, Math.floor(top / rowHeight.value) + 1);
+  const lastVisible = Math.max(
+    firstVisible,
+    Math.floor((top + Math.max(0, source?.clientHeight ?? 0)) / rowHeight.value) + 1
+  );
+  const displayRow = activePoint.value?.row &&
+    activePoint.value.row >= firstVisible && activePoint.value.row <= lastVisible
+    ? activePoint.value.row
+    : firstVisible;
+  return {
+    sourceRow: sourceRowForDisplay(displayRow),
+    viewportOffset: top - (displayRow - 1) * rowHeight.value
+  };
+}
+
+function displayRowForAnchor(sourceRow: number): number {
+  if (!rowFilterActive.value) return Math.max(1, sourceRow);
+  const exact = filteredRowMappings.value.find((item) => item.source === sourceRow);
+  if (exact) return exact.display;
+  let nearest: FilteredRowMapping | undefined;
+  for (const item of filteredRowMappings.value) {
+    if (!nearest || Math.abs(item.source - sourceRow) < Math.abs(nearest.source - sourceRow)) {
+      nearest = item;
+    }
+  }
+  return nearest?.display ?? 1;
+}
+
+async function applyRowFilters(focusStatus?: DiffFilter, anchor?: RowViewportAnchor) {
+  regionRequest++;
+  activePoint.value = null;
+  selectionAnchor.value = null;
+  selection.value = null;
+  inlineEdit.value = null;
+  if (focusStatus) setDiffNavigationFilter(focusStatus);
+  else if (rowFilterActive.value && !selectedRowFilterSet.value.has(diffFilter.value)) {
+    setDiffNavigationFilter(selectedRowFilters.value[0]);
+  }
+  await nextTick();
+  const displayRow = anchor ? displayRowForAnchor(anchor.sourceRow) : 1;
+  const desiredTop = Math.max(
+    0,
+    (displayRow - 1) * rowHeight.value + (anchor?.viewportOffset ?? 0)
+  );
+  for (const element of [leftScroll.value, rightScroll.value]) {
+    if (element) element.scrollTop = desiredTop;
+  }
+  const source = leftScroll.value ?? rightScroll.value;
+  const actualTop = source?.scrollTop ?? desiredTop;
+  for (const element of [leftScroll.value, rightScroll.value]) {
+    if (element) element.scrollTop = actualTop;
+  }
+  updateViewportOffsets(actualTop, viewportLeft.value);
+  const target = viewportRegionTarget(
+    source,
+    Math.floor(actualTop / rowHeight.value) + 1,
+    columnAtOffset(viewportLeft.value)
+  );
+  await loadRegion(target.row, target.col);
+}
+
+async function toggleRowFilter(status: DiffFilter) {
+  const anchor = captureRowViewportAnchor();
+  const next = new Set(selectedRowFilters.value);
+  if (next.has(status)) next.delete(status);
+  else next.add(status);
+  selectedRowFilters.value = DIFF_FILTER_TABS.filter((item) => next.has(item));
+  await applyRowFilters(next.has(status) ? status : undefined, anchor);
+}
+
+async function toggleAllRowFilters() {
+  const anchor = captureRowViewportAnchor();
+  selectedRowFilters.value = selectedRowFilters.value.length === DIFF_FILTER_TABS.length
+    ? []
+    : [...DIFF_FILTER_TABS];
+  await applyRowFilters(undefined, anchor);
+}
+
+async function selectDiffIndexFilter(status: DiffFilter) {
+  if (selectedRowFilters.value.length !== 1 || selectedRowFilters.value[0] !== status) {
+    selectedRowFilters.value = [status];
+    await applyRowFilters(status);
+    return;
+  }
+  setDiffNavigationFilter(status);
 }
 
 function selectDiffEntry(index: number, item: CellDiff) {
@@ -817,7 +1011,10 @@ function selectDiffEntry(index: number, item: CellDiff) {
 }
 
 async function scrollTo(row: number, col: number) {
-  const desiredTop = Math.max(0, (row - 2) * rowHeight.value);
+  const displayRow = rowFilterActive.value
+    ? (filteredRowMappings.value.find((item) => item.source === row)?.display ?? 1)
+    : row;
+  const desiredTop = Math.max(0, (displayRow - 2) * rowHeight.value);
   const desiredLeft = columnOffsets.value[Math.max(1, col - 1)] ?? 0;
   for (const element of [leftScroll.value, rightScroll.value]) {
     if (element) {
@@ -842,7 +1039,7 @@ async function scrollTo(row: number, col: number) {
   const loaded = await loadRegion(target.row, target.col);
   if (!loaded) return;
   await nextTick();
-  const cell = region.value?.cells.find((item) => item.row === row && item.col === col);
+  const cell = region.value?.cells.find((item) => cellSourceRow(item) === row && item.col === col);
   if (cell) setSingleSelection(cell);
 }
 
@@ -888,6 +1085,13 @@ async function appendContextRowsAutomatically() {
   if (!contextActionableRows.value.length || !automaticIDLabel.value) return;
   await runContextAction(() =>
     backend.appendRows(sheet.value, contextActionableRows.value, [])
+  );
+}
+
+async function appendContextRowsWithoutNumericID() {
+  if (!contextAppendableRows.value.length || contextHasNumericIDColumn.value) return;
+  await runContextAction(() =>
+    backend.appendRows(sheet.value, contextAppendableRows.value, [])
   );
 }
 
@@ -950,7 +1154,7 @@ async function commitInlineEdit() {
   inlineEdit.value = null;
   const type = inlineEditType(current.value, current.original);
   const data = await guard(() =>
-    backend.edit(sheet.value, current.row, current.col, current.value, type)
+    backend.edit(sheet.value, cellLeftRow(current.original), current.col, current.value, type)
   );
   if (data) {
     await acceptSummary(data, sheet.value, false);
@@ -1051,6 +1255,18 @@ function onWindowKeyDown(event: KeyboardEvent) {
     syncOriginalPreview();
     return;
   }
+  const target = event.target;
+  const editing = target instanceof Element && target.matches("input, textarea, select, [contenteditable='true']");
+  if (
+    summary.value && !busy.value && !editing && !event.repeat &&
+    !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+    /^[1-5]$/.test(event.key)
+  ) {
+    event.preventDefault();
+    if (event.key === "5") void toggleAllRowFilters();
+    else void toggleRowFilter(DIFF_FILTER_TABS[Number(event.key) - 1]);
+    return;
+  }
   if (!event.ctrlKey && !event.metaKey) return;
   const key = event.key.toLowerCase();
   if (key === "s") {
@@ -1064,7 +1280,6 @@ function onWindowKeyDown(event: KeyboardEvent) {
     return;
   }
   if (event.shiftKey || key !== "z") return;
-  const target = event.target;
   if (target instanceof Element && target.matches("input, textarea, [contenteditable='true']")) return;
   if (!summary.value?.undoCount || busy.value) return;
   event.preventDefault();
@@ -1087,9 +1302,38 @@ async function save(as = false) {
   if (data) await acceptSummary(data, sheet.value, false);
 }
 
+function sourceRowForDisplay(row: number): number {
+  return rowFilterActive.value ? (filteredRowMappings.value[row - 1]?.source ?? row) : row;
+}
+
+function leftRowForDisplay(row: number): number {
+  return rowFilterActive.value ? (filteredRowMappings.value[row - 1]?.left ?? row) : row;
+}
+
+function rightRowForDisplay(row: number): number {
+  return rowFilterActive.value ? (filteredRowMappings.value[row - 1]?.right ?? row) : row;
+}
+
+function cellSourceRow(cell: RegionCell): number {
+  return cell.sourceRow ?? sourceRowForDisplay(cell.row);
+}
+
+function cellLeftRow(cell: RegionCell): number {
+  return cell.leftRow ?? leftRowForDisplay(cell.row);
+}
+
+function cellRightRow(cell: RegionCell): number {
+  return cell.rightRow ?? rightRowForDisplay(cell.row);
+}
+
+function rowStatusForSource(row: number): RowStatus {
+  return activeSheet.value?.rows?.find((item) => item.row === row)?.status ?? "unchanged";
+}
+
 function rowStatus(row: number): RowStatus {
-  const classified = activeSheet.value?.rows?.find((item) => item.row === row)?.status;
-  if (classified) return classified;
+  const sourceRow = sourceRowForDisplay(row);
+  const classified = rowStatusForSource(sourceRow);
+  if (classified !== "unchanged") return classified;
   const cells = region.value?.cells.filter((item) => item.row === row) ?? [];
   const regionStatus = cells.find((item) => item.rowStatus !== "unchanged")?.rowStatus;
   if (regionStatus) return regionStatus;
@@ -1110,15 +1354,17 @@ function rowResolution(
   row: number,
   side: "left" | "right"
 ): RowResolution | null {
+  const sourceRow = sourceRowForDisplay(row);
+  const leftRow = leftRowForDisplay(row);
   const items = summary.value?.resolutions ?? [];
   for (let index = items.length - 1; index >= 0; index--) {
     const item = items[index];
     if (item.sheet !== sheet.value) continue;
-    if (side === "right" && item.sourceRow === row) return item;
+    if (side === "right" && item.sourceRow === sourceRow) return item;
     if (
       side === "left" &&
-      item.targetRow === row &&
-      (item.kind === "append-auto" || item.kind === "append-specified")
+      item.targetRow === leftRow &&
+      isAppendResolution(item)
     ) return item;
   }
   return null;
@@ -1134,6 +1380,8 @@ function resolutionLabel(item: RowResolution) {
     return `已自动新增为 ID ${item.targetId}`;
   case "append-specified":
     return `已新增为指定 ID ${item.targetId}`;
+  case "append-row":
+    return "已新增到左侧末尾";
   }
 }
 
@@ -1248,6 +1496,15 @@ function persistLayout() {
   }
 }
 
+function rowLabel(row: number, side: "left" | "right") {
+  return side === "left" ? leftRowForDisplay(row) : rightRowForDisplay(row);
+}
+
+function cellAxis(cell: RegionCell, side: "left" | "right") {
+  const row = side === "left" ? cellLeftRow(cell) : cellRightRow(cell);
+  return `${columnName(cell.col)}${row}`;
+}
+
 function queueSyncedWheel(source: HTMLElement, deltaTop: number, deltaLeft: number) {
   wheelSource = source;
   wheelDeltaTop += deltaTop;
@@ -1342,7 +1599,7 @@ function resizeRepositorySidebar(event: PointerEvent) {
 function openCellMenu(event: MouseEvent, cell: RegionCell, side: "left" | "right") {
   event.preventDefault();
   const selected = containsCell(selection.value, cell.row, cell.col);
-  const hasSelectedAction = selected && rowsForContext(cell.row).some((row) => rowStatus(row) !== "unchanged");
+  const hasSelectedAction = selected && rowsForContext(cell.row).some((row) => rowStatusForSource(row) !== "unchanged");
   if ((cell.rowStatus || rowStatus(cell.row)) === "unchanged" && cell.status === "unchanged" && !hasSelectedAction) {
     contextMenu.value.visible = false;
     return;
@@ -1363,7 +1620,7 @@ function openCellMenu(event: MouseEvent, cell: RegionCell, side: "left" | "right
 function openRowMenu(event: MouseEvent, row: number, side: "left" | "right") {
   event.preventDefault();
   const selected = Boolean(selection.value && row >= selection.value.startRow && row <= selection.value.endRow);
-  const hasSelectedAction = selected && rowsForContext(row).some((selectedRow) => rowStatus(selectedRow) !== "unchanged");
+  const hasSelectedAction = selected && rowsForContext(row).some((selectedRow) => rowStatusForSource(selectedRow) !== "unchanged");
   if (rowStatus(row) === "unchanged" && !hasSelectedAction) {
     contextMenu.value.visible = false;
     return;
@@ -1736,9 +1993,10 @@ onBeforeUnmount(() => {
                 :key="status"
                 role="tab"
                 :aria-selected="diffFilter === status"
-                :class="[status, { active: diffFilter === status }]"
+                :aria-pressed="selectedRowFilterSet.has(status)"
+                :class="[status, { active: diffFilter === status, 'row-filter-active': selectedRowFilterSet.has(status) }]"
                 :disabled="!diffFilterCounts[status]"
-                @click="selectDiffFilter(status)"
+                @click="selectDiffIndexFilter(status)"
               >
                 {{ rowStatusLabel(status) }}
                 <span>{{ diffFilterCounts[status] }}</span>
@@ -1793,9 +2051,10 @@ onBeforeUnmount(() => {
             :key="status"
             role="tab"
             :aria-selected="diffFilter === status"
-            :class="[status, { active: diffFilter === status }]"
+            :aria-pressed="selectedRowFilterSet.has(status)"
+            :class="[status, { active: diffFilter === status, 'row-filter-active': selectedRowFilterSet.has(status) }]"
             :disabled="!diffFilterCounts[status]"
-            @click="selectDiffFilter(status)"
+            @click="selectDiffIndexFilter(status)"
           >
             {{ rowStatusLabel(status) }}
             <span>{{ diffFilterCounts[status] }}</span>
@@ -1906,18 +2165,24 @@ onBeforeUnmount(() => {
         <div v-if="summary" class="comparison-summary-stack">
           <div class="result-summary" aria-label="对比结果摘要">
             <div class="result-summary-title">
-              <AppIcon :name="summary.diff.equal ? 'check' : 'selection'" />
+              <AppIcon :name="currentSheetDifferenceCount === 0 ? 'check' : 'selection'" />
               <span>
                 <small>对比结果</small>
-                <strong>{{ summary.diff.equal ? "两侧内容一致" : `${summary.diff.differenceCount} 处差异` }}</strong>
+                <strong>{{ currentSheetDifferenceCount === 0 ? "当前工作表内容一致" : `${currentSheetDifferenceCount} 处差异` }}</strong>
               </span>
             </div>
-            <span class="summary-metric added"><i></i>新增行 <strong>{{ resultMetrics.added }}</strong></span>
-            <span class="summary-metric deleted"><i></i>删除行 <strong>{{ resultMetrics.deleted }}</strong></span>
-            <span class="summary-metric modified"><i></i>修改行 <strong>{{ resultMetrics.modified }}</strong></span>
-            <span class="summary-metric conflict"><i></i>冲突行 <strong>{{ resultMetrics.conflict }}</strong></span>
+            <button
+              v-for="(status, index) in DIFF_FILTER_TABS"
+              :key="status"
+              type="button"
+              class="summary-metric"
+              :class="[status, { active: selectedRowFilterSet.has(status) }]"
+              :aria-pressed="selectedRowFilterSet.has(status)"
+              :title="`${selectedRowFilterSet.has(status) ? '关闭' : '开启'}${status === 'added' ? '新增' : rowStatusLabel(status)}行筛选（快捷键 ${index + 1}）`"
+              @click="toggleRowFilter(status)"
+            ><i></i>{{ status === "added" ? "新增" : rowStatusLabel(status) }}行 <strong>{{ resultMetrics[status] }}</strong><kbd>{{ index + 1 }}</kbd></button>
             <span class="summary-context">
-              当前筛选：{{ rowStatusLabel(diffFilter) }}
+              行筛选：{{ rowFilterSummary }} <kbd>5</kbd>
               <template v-if="selectionSize > 0"> · 已选择 {{ selectionSize }} 格</template>
             </span>
           </div>
@@ -2008,9 +2273,13 @@ onBeforeUnmount(() => {
                       @pointerenter="extendRowSelection(row)"
                       @contextmenu="openRowMenu($event, row, 'left')"
                     >
-                      {{ row }}
+                      {{ rowLabel(row, "left") }}
                     </div>
                   </div>
+                  <div
+                    v-if="rowFilterActive && !totalRows"
+                    class="filtered-grid-empty"
+                  >当前筛选没有差异行</div>
                   <div
                     v-for="cell in visibleCells"
                     :key="`l${cell.row}:${cell.col}`"
@@ -2099,7 +2368,7 @@ onBeforeUnmount(() => {
                       @pointerenter="extendRowSelection(row)"
                       @contextmenu="openRowMenu($event, row, 'right')"
                     >
-                      {{ row }}
+                      {{ rowLabel(row, "right") }}
                       <span
                         v-if="rowResolution(row, 'right')"
                         class="resolution-marker"
@@ -2108,6 +2377,10 @@ onBeforeUnmount(() => {
                       >{{ resolutionLabel(rowResolution(row, "right")!) }}</span>
                     </div>
                   </div>
+                  <div
+                    v-if="rowFilterActive && !totalRows"
+                    class="filtered-grid-empty"
+                  >当前筛选没有差异行</div>
                   <div
                     v-for="cell in visibleCells"
                     :key="`r${cell.row}:${cell.col}`"
@@ -2133,7 +2406,7 @@ onBeforeUnmount(() => {
         <div v-if="summary && activeCell && selectionSize === 1" class="difference-inspector">
           <div class="difference-line left">
             <span class="difference-side">{{ previewOriginal ? "打开时状态" : "当前工作区" }}</span>
-            <strong>{{ activeCell.axis }}</strong>
+            <strong>{{ cellAxis(activeCell, "left") }}</strong>
             <span class="difference-value" :title="displayedCellValue(activeCell, 'left').raw">
               {{ displayDifferenceValue(activeCell, "left") }}
             </span>
@@ -2141,7 +2414,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="difference-line right">
             <span class="difference-side">对比来源</span>
-            <strong>{{ activeCell.axis }}</strong>
+            <strong>{{ cellAxis(activeCell, "right") }}</strong>
             <span class="difference-value" :title="activeCell.right.raw">
               {{ displayDifferenceValue(activeCell, "right") }}
             </span>
@@ -2212,7 +2485,12 @@ onBeforeUnmount(() => {
           @click="appendContextRowsAutomatically"
         >将整行新增为 {{ automaticIDLabel }} 到左侧</button>
         <button
-          v-if="activeSheet?.idColumn"
+          v-if="!contextHasNumericIDColumn && contextAppendableRows.length"
+          :disabled="contextActionDisabled"
+          @click="appendContextRowsWithoutNumericID"
+        >将整行新增到左侧</button>
+        <button
+          v-if="contextHasNumericIDColumn"
           :disabled="contextActionDisabled"
           @click="openSpecifiedIDDialog"
         >将整行新增到指定 id 到左侧</button>

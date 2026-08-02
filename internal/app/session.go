@@ -49,9 +49,14 @@ type ResolutionKind string
 const (
 	ResolutionOverwriteCells  ResolutionKind = "overwrite-cells"
 	ResolutionOverwriteRow    ResolutionKind = "overwrite-row"
+	ResolutionAppendRow       ResolutionKind = "append-row"
 	ResolutionAppendAuto      ResolutionKind = "append-auto"
 	ResolutionAppendSpecified ResolutionKind = "append-specified"
 )
+
+func isAppendResolution(kind ResolutionKind) bool {
+	return kind == ResolutionAppendRow || kind == ResolutionAppendAuto || kind == ResolutionAppendSpecified
+}
 
 type RowResolution struct {
 	Sheet     string         `json:"sheet"`
@@ -65,6 +70,9 @@ type RowResolution struct {
 
 type RegionCell struct {
 	Row          int                `json:"row"`
+	SourceRow    int                `json:"sourceRow"`
+	LeftRow      int                `json:"leftRow"`
+	RightRow     int                `json:"rightRow"`
 	Col          int                `json:"col"`
 	Axis         string             `json:"axis"`
 	Left         workbook.CellValue `json:"left"`
@@ -75,12 +83,21 @@ type RegionCell struct {
 }
 
 type Region struct {
-	Sheet   string       `json:"sheet"`
-	FromRow int          `json:"fromRow"`
-	ToRow   int          `json:"toRow"`
-	FromCol int          `json:"fromCol"`
-	ToCol   int          `json:"toCol"`
-	Cells   []RegionCell `json:"cells"`
+	Sheet     string       `json:"sheet"`
+	FromRow   int          `json:"fromRow"`
+	ToRow     int          `json:"toRow"`
+	FromCol   int          `json:"fromCol"`
+	ToCol     int          `json:"toCol"`
+	Filtered  bool         `json:"filtered"`
+	TotalRows int          `json:"totalRows"`
+	Cells     []RegionCell `json:"cells"`
+}
+
+type regionRow struct {
+	display int
+	source  int
+	left    int
+	right   int
 }
 
 type CellCoordinate struct {
@@ -366,6 +383,112 @@ func (s *Session) Region(sheet string, fromRow, rowCount, fromCol, colCount int)
 	if fromRow < 1 || fromCol < 1 || rowCount < 1 || colCount < 1 || rowCount > 300 || colCount > 100 {
 		return Region{}, fmt.Errorf("invalid region (maximum 300 rows by 100 columns)")
 	}
+	rows := make([]regionRow, 0, rowCount)
+	for row := fromRow; row < fromRow+rowCount; row++ {
+		rows = append(rows, regionRow{display: row, source: row, left: row, right: row})
+	}
+	region, err := s.regionForRowsLocked(sheet, rows, fromCol, colCount)
+	if err != nil {
+		return Region{}, err
+	}
+	region.FromRow = fromRow
+	region.ToRow = fromRow + rowCount - 1
+	return region, nil
+}
+
+// FilteredRegion returns a packed viewport containing only rows whose semantic
+// classification matches one of statuses. Display row numbers are dense while
+// SourceRow/LeftRow/RightRow retain the physical coordinates used by edits and
+// merge operations. When a conflict source row was appended with a new ID, the
+// left side is paired with that appended target row so the filtered view shows
+// the actual merge result beside its right-side source.
+func (s *Session) FilteredRegion(
+	sheet string,
+	statuses []diff.RowStatus,
+	fromRow, rowCount, fromCol, colCount int,
+) (Region, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if fromRow < 1 || fromCol < 1 || rowCount < 1 || colCount < 1 || rowCount > 300 || colCount > 100 {
+		return Region{}, fmt.Errorf("invalid filtered region (maximum 300 rows by 100 columns)")
+	}
+	selected := make(map[diff.RowStatus]bool, len(statuses))
+	for _, status := range statuses {
+		switch status {
+		case diff.RowAdded, diff.RowDeleted, diff.RowModified, diff.RowConflict:
+			selected[status] = true
+		default:
+			return Region{}, fmt.Errorf("invalid row filter %q", status)
+		}
+	}
+	if len(selected) == 0 {
+		return Region{}, fmt.Errorf("at least one row filter is required")
+	}
+
+	var sheetDiff *diff.SheetDiff
+	if s.currentDiff != nil {
+		for _, candidate := range s.currentDiff.Sheets {
+			if candidate.Name == sheet {
+				sheetDiff = candidate
+				break
+			}
+		}
+	}
+	if sheetDiff == nil {
+		if s.left.ByName[sheet] == nil && (s.right == nil || s.right.ByName[sheet] == nil) {
+			return Region{}, fmt.Errorf("worksheet %q not found", sheet)
+		}
+		return Region{
+			Sheet: sheet, FromRow: fromRow, ToRow: fromRow - 1,
+			FromCol: fromCol, ToCol: fromCol + colCount - 1,
+			Filtered: true, Cells: []RegionCell{},
+		}, nil
+	}
+
+	allRows := make([]regionRow, 0, len(sheetDiff.Rows))
+	appendTargets := make(map[int]bool)
+	for _, resolution := range s.resolutions {
+		if resolution.Sheet == sheet && resolution.TargetRow > 0 && isAppendResolution(resolution.Kind) {
+			appendTargets[resolution.TargetRow] = true
+		}
+	}
+	for _, rowDiff := range sheetDiff.Rows {
+		if appendTargets[rowDiff.Row] || !selected[rowDiff.Status] {
+			continue
+		}
+		mapping := regionRow{source: rowDiff.Row, left: rowDiff.Row, right: rowDiff.Row}
+		for index := len(s.resolutions) - 1; index >= 0; index-- {
+			resolution := s.resolutions[index]
+			if resolution.Sheet != sheet || resolution.SourceRow != rowDiff.Row || resolution.TargetRow <= 0 {
+				continue
+			}
+			if isAppendResolution(resolution.Kind) {
+				mapping.left = resolution.TargetRow
+				break
+			}
+		}
+		mapping.display = len(allRows) + 1
+		allRows = append(allRows, mapping)
+	}
+
+	start := min(fromRow-1, len(allRows))
+	end := min(start+rowCount, len(allRows))
+	region, err := s.regionForRowsLocked(sheet, allRows[start:end], fromCol, colCount)
+	if err != nil {
+		return Region{}, err
+	}
+	region.FromRow = fromRow
+	region.ToRow = fromRow + max(0, end-start) - 1
+	region.Filtered = true
+	region.TotalRows = len(allRows)
+	return region, nil
+}
+
+func (s *Session) regionForRowsLocked(
+	sheet string,
+	rows []regionRow,
+	fromCol, colCount int,
+) (Region, error) {
 	leftSheet := s.left.ByName[sheet]
 	originalLeftSheet := s.originalLeft.ByName[sheet]
 	var rightSheet *workbook.SheetSnapshot
@@ -391,29 +514,34 @@ func (s *Session) Region(sheet string, fromRow, rowCount, fromCol, colCount int)
 		}
 	}
 	region := Region{
-		Sheet: sheet, FromRow: fromRow, ToRow: fromRow + rowCount - 1,
+		Sheet:   sheet,
 		FromCol: fromCol, ToCol: fromCol + colCount - 1,
-		Cells: make([]RegionCell, 0, rowCount*colCount),
+		Cells: make([]RegionCell, 0, len(rows)*colCount),
 	}
-	for row := region.FromRow; row <= region.ToRow; row++ {
+	for _, row := range rows {
 		for col := region.FromCol; col <= region.ToCol; col++ {
-			ref := workbook.CellRef{Sheet: sheet, Row: row, Col: col}
-			key := workbook.CellKey{Row: row, Col: col}
+			ref := workbook.CellRef{Sheet: sheet, Row: row.source, Col: col}
+			key := workbook.CellKey{Row: row.source, Col: col}
 			status := statuses[key]
 			if status == "" {
 				status = diff.Unchanged
 			}
-			rowStatus := rowStatuses[row]
+			rowStatus := rowStatuses[row.source]
 			if rowStatus == "" {
 				rowStatus = diff.RowUnchanged
 			}
 			region.Cells = append(region.Cells, RegionCell{
-				Row: row, Col: col, Axis: ref.Axis(),
-				Left: leftSheet.Cell(row, col), OriginalLeft: originalLeftSheet.Cell(row, col),
-				Right:  rightSheet.Cell(row, col),
+				Row: row.display, SourceRow: row.source, LeftRow: row.left, RightRow: row.right,
+				Col: col, Axis: ref.Axis(),
+				Left: leftSheet.Cell(row.left, col), OriginalLeft: originalLeftSheet.Cell(row.left, col),
+				Right:  rightSheet.Cell(row.right, col),
 				Status: status, RowStatus: rowStatus,
 			})
 		}
+	}
+	if len(rows) > 0 {
+		region.FromRow = rows[0].display
+		region.ToRow = rows[len(rows)-1].display
 	}
 	return region, nil
 }
@@ -529,7 +657,10 @@ func (s *Session) applyOperationsLocked(sheet string, operations []merge.Operati
 	for index, operation := range operations {
 		warnings, err := merge.Apply(s.leftFile, operation.Ref, operation.After)
 		if err != nil {
-			s.rollbackCopiesLocked(operations[:appliedCount])
+			// Apply can fail after changing the cell value but before finishing
+			// style/comment/link metadata. Include the current operation in the
+			// rollback so one malformed source cell cannot poison later actions.
+			s.rollbackCopiesLocked(operations[:index+1])
 			return fmt.Errorf("copy %s failed: %w", operation.Ref.Axis(), err)
 		}
 		applied, err := merge.Capture(s.leftFile, operation.Ref)
@@ -607,41 +738,53 @@ func (s *Session) AppendRowsRightToLeft(
 		return nil, errors.New("指定 ID 数量必须与所选行数一致")
 	}
 	sheetDiff := s.sheetDiffLocked(sheet)
-	if sheetDiff == nil || sheetDiff.IDColumn == 0 {
-		return nil, errors.New("当前工作表首行没有 id 列")
+	for _, row := range unique {
+		if s.rowStatusLocked(sheet, row) != diff.RowConflict {
+			return nil, fmt.Errorf("右侧第 %d 行不是冲突行，不能新增到左侧", row)
+		}
+	}
+	idColumn := 0
+	if sheetDiff != nil && sheetDiff.NextID > 0 {
+		idColumn = sheetDiff.IDColumn
+	}
+	if idColumn == 0 && len(requestedIDs) != 0 {
+		return nil, errors.New("当前工作表没有可用的整数 id 列，不能指定 ID")
 	}
 	maxCol := max(leftSheet.MaxCol, rightSheet.MaxCol)
 	if len(unique)*maxCol > 10000 {
 		return nil, errors.New("too many cells selected (maximum 10000)")
 	}
-	existingIDs := make(map[string]struct{})
-	for row := 2; row <= leftSheet.MaxRow; row++ {
-		id := strings.TrimSpace(leftSheet.Cell(row, sheetDiff.IDColumn).Raw)
-		if id != "" {
-			existingIDs[id] = struct{}{}
-		}
-	}
-	assigned := make([]string, len(unique))
-	if len(requestedIDs) == 0 {
-		if sheetDiff.NextID <= 0 {
-			return nil, errors.New("无法从左侧 id 列计算下一个整数 ID")
-		}
-		for index := range assigned {
-			assigned[index] = strconv.FormatInt(sheetDiff.NextID+int64(index), 10)
-		}
-	} else {
-		for index, id := range requestedIDs {
-			assigned[index] = strings.TrimSpace(id)
-			if assigned[index] == "" {
-				return nil, fmt.Errorf("第 %d 行的指定 ID 不能为空", index+1)
+	assigned := []string{}
+	if idColumn > 0 {
+		existingIDs := make(map[string]struct{})
+		for row := 2; row <= leftSheet.MaxRow; row++ {
+			id := strings.TrimSpace(leftSheet.Cell(row, idColumn).Raw)
+			if id != "" {
+				existingIDs[id] = struct{}{}
 			}
 		}
-	}
-	for _, id := range assigned {
-		if _, exists := existingIDs[id]; exists {
-			return nil, fmt.Errorf("左侧已存在 ID %s", id)
+		assigned = make([]string, len(unique))
+		if len(requestedIDs) == 0 {
+			if sheetDiff.NextID <= 0 {
+				return nil, errors.New("无法从左侧 id 列计算下一个整数 ID")
+			}
+			for index := range assigned {
+				assigned[index] = strconv.FormatInt(sheetDiff.NextID+int64(index), 10)
+			}
+		} else {
+			for index, id := range requestedIDs {
+				assigned[index] = strings.TrimSpace(id)
+				if assigned[index] == "" {
+					return nil, fmt.Errorf("第 %d 行的指定 ID 不能为空", index+1)
+				}
+			}
 		}
-		existingIDs[id] = struct{}{}
+		for _, id := range assigned {
+			if _, exists := existingIDs[id]; exists {
+				return nil, fmt.Errorf("左侧已存在 ID %s", id)
+			}
+			existingIDs[id] = struct{}{}
+		}
 	}
 
 	operations := make([]merge.Operation, 0, len(unique)*maxCol)
@@ -668,7 +811,7 @@ func (s *Session) AppendRowsRightToLeft(
 			if captureErr != nil {
 				return nil, captureErr
 			}
-			if col == sheetDiff.IDColumn {
+			if idColumn > 0 && col == idColumn {
 				after.Value.Present = true
 				after.Value.Raw = assigned[index]
 				after.Value.Display = assigned[index]
@@ -689,14 +832,20 @@ func (s *Session) AppendRowsRightToLeft(
 	if err := s.applyOperationsLocked(sheet, operations); err != nil {
 		return nil, err
 	}
-	resolutionKind := ResolutionAppendAuto
-	if len(requestedIDs) > 0 {
+	resolutionKind := ResolutionAppendRow
+	if idColumn > 0 && len(requestedIDs) == 0 {
+		resolutionKind = ResolutionAppendAuto
+	} else if idColumn > 0 {
 		resolutionKind = ResolutionAppendSpecified
 	}
 	for index, sourceRow := range unique {
+		targetID := ""
+		if idColumn > 0 {
+			targetID = assigned[index]
+		}
 		s.recordResolutionLocked(RowResolution{
 			Sheet: sheet, SourceRow: sourceRow, TargetRow: targetStart + index,
-			TargetID: assigned[index], Kind: resolutionKind,
+			TargetID: targetID, Kind: resolutionKind,
 		})
 	}
 	return assigned, nil

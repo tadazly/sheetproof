@@ -334,6 +334,22 @@ func TestSessionCopiesAndAppendsConflictRowsWithUndo(t *testing.T) {
 	if sheet.ConflictRowCount != 1 || sheet.DeletedRowCount != 1 || sheet.NextID != 3 {
 		t.Fatalf("initial row summary = %+v", sheet)
 	}
+	filtered, err := session.FilteredRegion(
+		"配置", []diff.RowStatus{diff.RowConflict, diff.RowDeleted}, 1, 10, 1, 3,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filtered.Filtered || filtered.TotalRows != 2 || len(filtered.Cells) != 6 {
+		t.Fatalf("filtered region shape = %+v", filtered)
+	}
+	if filtered.Cells[0].Row != 1 || filtered.Cells[0].SourceRow != 2 ||
+		filtered.Cells[3].Row != 2 || filtered.Cells[3].SourceRow != 3 {
+		t.Fatalf("filtered row mapping = %+v", filtered.Cells)
+	}
+	if _, err := session.FilteredRegion("配置", []diff.RowStatus{diff.RowUnchanged}, 1, 10, 1, 3); err == nil {
+		t.Fatal("unchanged row filter was accepted")
+	}
 
 	if err := session.CopyRowsRightToLeft("配置", []int{2}); err != nil {
 		t.Fatal(err)
@@ -394,6 +410,17 @@ func TestSessionCopiesAndAppendsConflictRowsWithUndo(t *testing.T) {
 		appendSummary.Resolutions[0].TargetID != "3" {
 		t.Fatalf("automatic append resolution = %+v", appendSummary.Resolutions)
 	}
+	filtered, err = session.FilteredRegion(
+		"配置", []diff.RowStatus{diff.RowConflict}, 1, 10, 1, 3,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filtered.TotalRows != 1 || filtered.Cells[0].SourceRow != 2 ||
+		filtered.Cells[0].LeftRow != 4 || filtered.Cells[0].RightRow != 2 ||
+		filtered.Cells[0].Left.Raw != "3" || filtered.Cells[0].Right.Raw != "1" {
+		t.Fatalf("appended conflict pairing = %+v", filtered.Cells)
+	}
 	if err := session.Undo(); err != nil {
 		t.Fatal(err)
 	}
@@ -432,6 +459,103 @@ func TestSessionCopiesAndAppendsConflictRowsWithUndo(t *testing.T) {
 	if err != nil || appended.Cells[0].Left.Raw != "custom-id" ||
 		appended.Cells[0].Left.Type != "string" {
 		t.Fatalf("text specified ID cell = %+v, err=%v", appended.Cells, err)
+	}
+}
+
+func TestSessionRejectsAppendingNonConflictRows(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "no-id-left.xlsx")
+	right := filepath.Join(dir, "no-id-right.xlsx")
+	for path, changed := range map[string]bool{left: false, right: true} {
+		file := excelize.NewFile()
+		rows := [][]any{{"属性", "值"}, {"速度", 10}, {"末行", 99}}
+		if changed {
+			rows[1][1] = 20
+		}
+		for rowIndex, row := range rows {
+			for colIndex, value := range row {
+				axis, _ := excelize.CoordinatesToCellName(colIndex+1, rowIndex+1)
+				if err := file.SetCellValue("Sheet1", axis, value); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if err := file.SaveAs(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if got := session.Summary().Diff.Sheets[0].IDColumn; got != 0 {
+		t.Fatalf("ID column = %d, want 0", got)
+	}
+	if _, err := session.AppendRowsRightToLeft("Sheet1", []int{2}, nil); err == nil {
+		t.Fatal("modified row append was accepted")
+	}
+	if session.Dirty() || len(session.Summary().Resolutions) != 0 {
+		t.Fatalf("rejected append changed session state: %+v", session.Summary())
+	}
+}
+
+func TestSessionAppendsTextIDConflictWithoutReplacingID(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "text-id-left.xlsx")
+	right := filepath.Join(dir, "text-id-right.xlsx")
+	for path, changed := range map[string]bool{left: false, right: true} {
+		file := excelize.NewFile()
+		rows := [][]any{{"id", "值"}, {"活动id", "旧值"}, {"关卡名字", "相同"}}
+		if changed {
+			rows[1][1] = "新值"
+		}
+		for rowIndex, row := range rows {
+			for colIndex, value := range row {
+				axis, _ := excelize.CoordinatesToCellName(colIndex+1, rowIndex+1)
+				if err := file.SetCellValue("Sheet1", axis, value); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if err := file.SaveAs(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	sheet := session.Summary().Diff.Sheets[0]
+	if sheet.IDColumn != 1 || sheet.NextID != 0 || sheet.ConflictRowCount != 1 {
+		t.Fatalf("text ID summary = %+v", sheet)
+	}
+	assigned, err := session.AppendRowsRightToLeft("Sheet1", []int{2}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(assigned) != 0 {
+		t.Fatalf("text ID append assigned IDs: %#v", assigned)
+	}
+	region, err := session.Region("Sheet1", 4, 1, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Left.Raw != "活动id" || region.Cells[1].Left.Raw != "新值" {
+		t.Fatalf("text ID appended row = %+v", region.Cells)
+	}
+	resolution := session.Summary().Resolutions
+	if len(resolution) != 1 || resolution[0].Kind != ResolutionAppendRow || resolution[0].TargetID != "" {
+		t.Fatalf("text ID resolution = %+v", resolution)
 	}
 }
 

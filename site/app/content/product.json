@@ -41,6 +41,12 @@
       "summaryZh": "使用同步滚动的窗口化双栏网格，按增加、删除、修改和冲突分类定位真实差异。"
     },
     {
+      "title": "Current-sheet row filters",
+      "titleZh": "只看当前工作表需要核对的行",
+      "summary": "Shows row counts for the selected worksheet and lets you combine added, removed, modified, and conflict filters with keys 1–5; every new session starts unfiltered and filter changes keep your source-row position.",
+      "summaryZh": "摘要只显示当前工作表的行数；增加、删除、修改、冲突可多选，快捷键 1–4 切换分类、5 切换全部差异行与完整表格。每次启动默认显示完整数据，切换筛选会保留正在核对的原始行位置。"
+    },
+    {
       "title": "Controlled merge and undo",
       "titleZh": "可控合并与撤销",
       "summary": "Copies selected cells or rows into the writable left workbook, records merge decisions, and keeps every edit undoable.",

@@ -118,6 +118,26 @@ func TestCompareClassifiesAddedDeletedModifiedAndConflictRows(t *testing.T) {
 	}
 }
 
+func TestCompareDoesNotOfferNextIDForTextIDData(t *testing.T) {
+	left := book("left.xlsx", sheet("属性", 0, map[workbook.CellKey]workbook.CellValue{
+		{Row: 1, Col: 1}: value("id", "string"),
+		{Row: 1, Col: 2}: value("name", "string"),
+		{Row: 2, Col: 1}: value("活动id", "string"),
+		{Row: 2, Col: 2}: value("left", "string"),
+	}))
+	right := book("right.xlsx", sheet("属性", 0, map[workbook.CellKey]workbook.CellValue{
+		{Row: 1, Col: 1}: value("id", "string"),
+		{Row: 1, Col: 2}: value("name", "string"),
+		{Row: 2, Col: 1}: value("活动id", "string"),
+		{Row: 2, Col: 2}: value("right", "string"),
+	}))
+
+	data := Compare(left, right).Sheets[0]
+	if data.IDColumn != 1 || data.NextID != 0 || data.ConflictRowCount != 1 {
+		t.Fatalf("text ID metadata = column %d next %d conflicts %d", data.IDColumn, data.NextID, data.ConflictRowCount)
+	}
+}
+
 func value(raw, kind string) workbook.CellValue {
 	return workbook.CellValue{Present: true, Raw: raw, Display: raw, Type: kind}
 }

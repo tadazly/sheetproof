@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	coreapp "github.com/ug-tools/ugxlsx/internal/app"
+	"github.com/ug-tools/ugxlsx/internal/diff"
 	"github.com/ug-tools/ugxlsx/internal/preferences"
 	"github.com/ug-tools/ugxlsx/internal/repository"
 	"github.com/ug-tools/ugxlsx/internal/ugit"
@@ -917,6 +918,18 @@ func (c *Controller) Region(sheet string, fromRow, rowCount, fromCol, colCount i
 		return coreapp.Region{}, err
 	}
 	return session.Region(sheet, fromRow, rowCount, fromCol, colCount)
+}
+
+func (c *Controller) FilteredRegion(
+	sheet string,
+	statuses []diff.RowStatus,
+	fromRow, rowCount, fromCol, colCount int,
+) (coreapp.Region, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Region{}, err
+	}
+	return session.FilteredRegion(sheet, statuses, fromRow, rowCount, fromCol, colCount)
 }
 
 func (c *Controller) Differences(sheet string, offset, limit int) (any, error) {

@@ -118,7 +118,15 @@ func Apply(f *excelize.File, ref workbook.CellRef, state CellState) ([]string, e
 		}
 	}
 	if state.Style != nil {
-		styleID, err := f.NewStyle(state.Style)
+		style := *state.Style
+		if style.Fill.Pattern < 0 || style.Fill.Pattern > 18 {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s 的填充样式编号 %d 超出支持范围，已保留内容并忽略该填充",
+				axis, style.Fill.Pattern,
+			))
+			style.Fill = excelize.Fill{}
+		}
+		styleID, err := f.NewStyle(&style)
 		if err != nil {
 			return warnings, err
 		}

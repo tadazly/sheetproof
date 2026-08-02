@@ -1237,6 +1237,49 @@ describe("App", () => {
       appended = true;
       return handled;
     });
+    const filteredRegion = vi.fn(async (
+      _sheet: string,
+      statuses: string[],
+      fromRow: number,
+      _rowCount: number,
+      fromCol: number,
+      colCount: number
+    ) => {
+      const currentSummary = appended ? handled : loaded;
+      const sourceRows = (currentSummary.diff.sheets[0].rows ?? [])
+        .filter((row) => statuses.includes(row.status) && row.row <= 3);
+      const currentCells = appended ? [...cells, ...appendedCells] : cells;
+      const packed = sourceRows.flatMap((row, index) => {
+        const resolution = currentSummary.resolutions.find((item) => item.sourceRow === row.row);
+        const leftRow = resolution?.targetRow ?? row.row;
+        return Array.from({ length: colCount }, (_, colIndex) => {
+          const col = fromCol + colIndex;
+          const sourceCell = currentCells.find((cell) => cell.row === row.row && cell.col === col) ?? {
+            row: row.row,
+            col,
+            axis: `${String.fromCharCode(64 + col)}${row.row}`,
+            status: "unchanged",
+            rowStatus: row.status,
+            left: missing,
+            right: missing
+          };
+          const leftCell = currentCells.find((cell) => cell.row === leftRow && cell.col === col) ?? sourceCell;
+          return {
+            ...sourceCell,
+            row: index + 1,
+            sourceRow: row.row,
+            leftRow,
+            rightRow: row.row,
+            left: leftCell.left
+          };
+        });
+      });
+      return {
+        sheet: "冲突", fromRow, toRow: sourceRows.length,
+        fromCol, toCol: fromCol + colCount - 1,
+        filtered: true, totalRows: sourceRows.length, cells: packed
+      };
+    });
     window.go = {
       main: {
         Controller: {
@@ -1255,6 +1298,7 @@ describe("App", () => {
             sheet: "冲突", fromRow: 1, toRow: 6, fromCol: 1, toCol: 3,
             cells: appended ? [...cells, ...appendedCells] : cells
           }),
+          FilteredRegion: filteredRegion,
           AppendRowsRightToLeft: appendRows
         }
       }
@@ -1278,8 +1322,8 @@ describe("App", () => {
 
     const rightPanel = wrapper.findAll(".grid-panel")[1];
     const rowHeaders = rightPanel.findAll(".row-header");
-    await rowHeaders[1].trigger("pointerdown", { button: 0 });
-    await rowHeaders[2].trigger("pointerenter");
+    await rowHeaders[0].trigger("pointerdown", { button: 0 });
+    await rowHeaders[1].trigger("pointerenter");
     const rowThreeCell = rightPanel.findAll(".cell").find((cell) => cell.text() === "2");
     await rowThreeCell!.trigger("contextmenu", { clientX: 120, clientY: 120 });
     const menuText = wrapper.get(".context-menu").text();
@@ -1307,6 +1351,134 @@ describe("App", () => {
       .find((cell) => cell.text() === "10");
     expect(appendedLeftCell?.classes()).toContain("cell-added");
     expect(appendedLeftCell?.classes()).not.toContain("cell-deleted");
+  });
+
+  it("filters packed rows with current-sheet metrics, shortcuts, and no persistence", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.equal = false;
+    loaded.diff.sheetCount = 1;
+    loaded.diff.differentSheetCount = 1;
+    loaded.diff.differenceCount = 37;
+    loaded.diff.sheets = [{
+      name: "筛选", status: "modified", orderDifferent: false,
+      differenceCount: 4, maxRow: 95, maxCol: 1, idColumn: 0, nextId: 0,
+      addedRowCount: 1, deletedRowCount: 1, modifiedRowCount: 1, conflictRowCount: 1,
+      rows: [
+        { row: 2, status: "added" },
+        { row: 3, status: "deleted" },
+        { row: 95, status: "modified" },
+        { row: 5, status: "conflict" }
+      ]
+    }, {
+      name: "其他表", status: "modified", orderDifferent: false,
+      differenceCount: 33, maxRow: 34, maxCol: 1, idColumn: 1, nextId: 35,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 33,
+      rows: []
+    }];
+    loaded.selectedSheet = "筛选";
+    const value = (raw: string) => ({ present: true, raw, display: raw, type: "string" });
+    const missing = { present: false, raw: "", display: "", type: "unset" };
+    const cells = [
+      { row: 1, col: 1, axis: "A1", status: "unchanged", rowStatus: "unchanged", left: value("表头"), right: value("表头") },
+      { row: 2, col: 1, axis: "A2", status: "right-added", rowStatus: "added", left: missing, right: value("新增值") },
+      { row: 3, col: 1, axis: "A3", status: "left-added", rowStatus: "deleted", left: value("删除值"), right: missing },
+      { row: 95, col: 1, axis: "A95", status: "modified", rowStatus: "modified", left: value("修改前"), right: value("修改后") },
+      { row: 5, col: 1, axis: "A5", status: "modified", rowStatus: "conflict", left: value("冲突左"), right: value("冲突右") }
+    ] as Region["cells"];
+    const differences = cells.slice(1).map((cell) => ({
+      ref: { sheet: "筛选", row: cell.row, col: cell.col },
+      status: cell.status,
+      rowStatus: cell.rowStatus,
+      left: cell.left,
+      right: cell.right
+    }));
+    const region = vi.fn(async () => ({
+      sheet: "筛选", fromRow: 1, toRow: 5, fromCol: 1, toCol: 20, cells
+    }));
+    const filteredRegion = vi.fn(async (
+      _sheet: string,
+      statuses: string[],
+      fromRow: number,
+      _rowCount: number,
+      fromCol: number,
+      colCount: number
+    ) => {
+      const rows = (loaded.diff.sheets[0].rows ?? []).filter((row) => statuses.includes(row.status));
+      const packed = rows.flatMap((row, index) => Array.from({ length: colCount }, (_, offset) => {
+        const col = fromCol + offset;
+        const source = cells.find((cell) => cell.row === row.row && cell.col === col) ?? {
+          row: row.row, col, axis: `A${row.row}`, status: "unchanged", rowStatus: row.status,
+          left: missing, right: missing
+        };
+        return {
+          ...source,
+          row: index + 1,
+          sourceRow: row.row,
+          leftRow: row.row,
+          rightRow: row.row
+        };
+      }));
+      return {
+        sheet: "筛选", fromRow, toRow: rows.length,
+        fromCol, toCol: fromCol + colCount - 1,
+        filtered: true, totalRows: rows.length, cells: packed
+      };
+    });
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => differences,
+          Region: region,
+          FilteredRegion: filteredRegion
+        }
+      }
+    };
+
+    let wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.get(".summary-context").text()).toContain("全部数据");
+    expect(wrapper.findAll(".summary-metric").every((button) => button.attributes("aria-pressed") === "false")).toBe(true);
+    expect(wrapper.get(".result-summary-title strong").text()).toBe("4 处差异");
+    expect(wrapper.findAll(".summary-metric").map((button) => button.get("strong").text())).toEqual(["1", "1", "1", "1"]);
+
+    await wrapper.findAll(".summary-metric")[0].trigger("click");
+    await wrapper.findAll(".summary-metric")[1].trigger("click");
+    await flushPromises();
+    expect(filteredRegion).toHaveBeenLastCalledWith("筛选", ["added", "deleted"], 1, 48, 1, 20);
+    expect(wrapper.get(".summary-context").text()).toContain("增加行、删除行");
+    expect(wrapper.findAll(".grid-panel")[0].text()).toContain("删除值");
+    expect(wrapper.findAll(".grid-panel")[1].text()).toContain("新增值");
+    expect(window.localStorage.getItem("ugxlsx:row-filters:v1")).toBeNull();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "5" }));
+    await flushPromises();
+    expect(wrapper.get(".summary-context").text()).toContain("全部差异行");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "5" }));
+    await flushPromises();
+    expect(wrapper.get(".summary-context").text()).toContain("全部数据");
+    expect(region).toHaveBeenCalled();
+
+    const grids = wrapper.findAll<HTMLElement>(".grid-scroll");
+    grids[0].element.scrollTop = 94 * 23;
+    grids[1].element.scrollTop = 94 * 23;
+    await wrapper.findAll(".summary-metric")[2].trigger("click");
+    await flushPromises();
+    expect(grids[0].element.scrollTop).toBe(0);
+    await wrapper.findAll(".summary-metric")[2].trigger("click");
+    await flushPromises();
+    expect(grids[0].element.scrollTop).toBe(94 * 23);
+    expect(grids[1].element.scrollTop).toBe(94 * 23);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "3" }));
+    await flushPromises();
+    expect(window.localStorage.getItem("ugxlsx:row-filters:v1")).toBeNull();
+    wrapper.unmount();
+    wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.get(".summary-context").text()).toContain("全部数据");
+    expect(wrapper.findAll(".summary-metric").every((button) => button.attributes("aria-pressed") === "false")).toBe(true);
   });
 
   it("keeps copy actions for selections containing unchanged rows and separates conflicts", async () => {
@@ -1344,6 +1516,12 @@ describe("App", () => {
     }));
     const copyMany = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
     const copyRows = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
+    const appendRows = vi.fn(async () => ({
+      ...loaded,
+      dirty: true,
+      undoCount: 1,
+      resolutions: [{ sheet: "混合选择", sourceRow: 2, targetRow: 6, kind: "append-row" }]
+    }));
     window.go = {
       main: {
         Controller: {
@@ -1354,7 +1532,8 @@ describe("App", () => {
             sheet: "混合选择", fromRow: 1, toRow: 5, fromCol: 1, toCol: 1, cells
           }),
           CopyRightToLeftMany: copyMany,
-          CopyRowsRightToLeft: copyRows
+          CopyRowsRightToLeft: copyRows,
+          AppendRowsRightToLeft: appendRows
         }
       }
     };
@@ -1368,6 +1547,7 @@ describe("App", () => {
     await rightPanel.findAll(".cell")[0].trigger("contextmenu", { clientX: 120, clientY: 120 });
     expect(wrapper.get(".context-menu").text()).toContain("复制单元格到左侧");
     expect(wrapper.get(".context-menu").text()).toContain("复制整行到左侧");
+    expect(wrapper.get(".context-menu").text()).not.toContain("将整行新增到左侧");
     await wrapper.findAll(".context-menu button")[0].trigger("click");
     await flushPromises();
     expect(copyMany).toHaveBeenCalledWith("混合选择", [
@@ -1384,6 +1564,8 @@ describe("App", () => {
     await flushPromises();
     expect(copyRows).toHaveBeenCalledWith("混合选择", [2, 3, 4]);
 
+    expect(appendRows).not.toHaveBeenCalled();
+
     rightPanel = wrapper.findAll(".grid-panel")[1];
     rowHeaders = rightPanel.findAll(".row-header");
     await rowHeaders[0].trigger("pointerdown", { button: 0 });
@@ -1392,5 +1574,64 @@ describe("App", () => {
     const menu = wrapper.get(".context-menu");
     expect(menu.text()).toContain("选中的内容中包含冲突，请单独处理冲突部分");
     expect(menu.findAll("button")).toHaveLength(0);
+  });
+
+  it("uses raw row append only for conflicts whose id column is not numeric", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.equal = false;
+    loaded.diff.sheetCount = 1;
+    loaded.diff.differentSheetCount = 1;
+    loaded.diff.differenceCount = 1;
+    loaded.diff.sheets = [{
+      name: "属性", status: "modified", orderDifferent: false,
+      differenceCount: 1, maxRow: 2, maxCol: 2, idColumn: 1, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 1,
+      rows: [{ row: 2, id: "活动id", status: "conflict" }]
+    }];
+    loaded.selectedSheet = "属性";
+    const value = (raw: string) => ({ present: true, raw, display: raw, type: "string" });
+    const cells = [
+      { row: 1, col: 1, axis: "A1", status: "unchanged", rowStatus: "unchanged", left: value("id"), right: value("id") },
+      { row: 1, col: 2, axis: "B1", status: "unchanged", rowStatus: "unchanged", left: value("name"), right: value("name") },
+      { row: 2, col: 1, axis: "A2", status: "unchanged", rowStatus: "conflict", left: value("活动id"), right: value("活动id") },
+      { row: 2, col: 2, axis: "B2", status: "modified", rowStatus: "conflict", left: value("旧值"), right: value("新值") }
+    ] as Region["cells"];
+    const appendRows = vi.fn(async () => ({
+      ...loaded,
+      dirty: true,
+      undoCount: 1,
+      resolutions: [{ sheet: "属性", sourceRow: 2, targetRow: 3, kind: "append-row" as const }]
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [{
+            ref: { sheet: "属性", row: 2, col: 2 },
+            status: "modified", rowStatus: "conflict", left: value("旧值"), right: value("新值")
+          }],
+          Region: async () => ({
+            sheet: "属性", fromRow: 1, toRow: 2, fromCol: 1, toCol: 2, cells
+          }),
+          AppendRowsRightToLeft: appendRows
+        }
+      }
+    };
+
+    const wrapper = mount(App);
+    await flushPromises();
+    const rightPanel = wrapper.findAll(".grid-panel")[1];
+    const sourceCell = rightPanel.findAll(".cell").find((cell) => cell.text() === "活动id");
+    await sourceCell!.trigger("contextmenu", { clientX: 120, clientY: 120 });
+    const menu = wrapper.get(".context-menu");
+    expect(menu.text()).toContain("将整行新增到左侧");
+    expect(menu.text()).not.toContain("新增为 id:");
+    expect(menu.text()).not.toContain("指定 id");
+    const appendButton = menu.findAll("button")
+      .find((button) => button.text() === "将整行新增到左侧");
+    await appendButton!.trigger("click");
+    await flushPromises();
+    expect(appendRows).toHaveBeenCalledWith("属性", [2], []);
   });
 });

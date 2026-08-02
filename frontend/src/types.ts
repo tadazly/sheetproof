@@ -25,6 +25,7 @@ export interface RowDiff {
 export type ResolutionKind =
   | "overwrite-cells"
   | "overwrite-row"
+  | "append-row"
   | "append-auto"
   | "append-specified";
 
@@ -86,6 +87,9 @@ export interface Summary {
 
 export interface RegionCell {
   row: number;
+  sourceRow?: number;
+  leftRow?: number;
+  rightRow?: number;
   col: number;
   axis: string;
   left: CellValue;
@@ -101,6 +105,8 @@ export interface Region {
   toRow: number;
   fromCol: number;
   toCol: number;
+  filtered?: boolean;
+  totalRows?: number;
   cells: RegionCell[];
 }
 

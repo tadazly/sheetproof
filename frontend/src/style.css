@@ -574,6 +574,7 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 .diff-filter-tabs button.active.deleted { color: var(--diff-deleted); border-color: #efc4c6; background: var(--diff-deleted-soft); }
 .diff-filter-tabs button.active.modified { color: var(--diff-modified); border-color: #e9d694; background: var(--diff-modified-soft); }
 .diff-filter-tabs button.active.conflict { color: var(--diff-conflict); border-color: #ecc6a7; background: var(--diff-conflict-soft); }
+.diff-filter-tabs button.row-filter-active:not(.active) { box-shadow: inset 0 -2px currentColor; }
 .diff-list { display: flex; flex-direction: column; gap: 2px; }
 .diff-list button {
   min-height: 27px;
@@ -685,9 +686,33 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 .result-summary-title > span { display: flex; flex-direction: column; color: var(--color-text); }
 .result-summary-title small { color: var(--color-text-muted); font-size: 9px; }
 .result-summary-title strong { font-size: 11px; font-variant-numeric: tabular-nums; }
-.summary-metric { display: inline-flex; align-items: center; gap: 5px; color: var(--color-text-secondary); white-space: nowrap; }
+.summary-metric {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  color: var(--color-text-secondary);
+  border-color: transparent;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.summary-metric:hover:not(:disabled) { background: #eef1f4; }
+.summary-metric.active { border-color: currentColor; background: color-mix(in srgb, currentColor 9%, white); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%); }
 .summary-metric i { width: 4px; height: 14px; border-radius: 3px; background: currentColor; }
 .summary-metric strong { color: currentColor; font-variant-numeric: tabular-nums; }
+.summary-metric kbd, .summary-context kbd {
+  min-width: 15px;
+  padding: 0 3px;
+  color: var(--color-text-muted);
+  border: 1px solid #ccd2d9;
+  border-radius: 3px;
+  background: #fff;
+  font: 8px/13px ui-monospace, "SFMono-Regular", Consolas, monospace;
+  text-align: center;
+}
 .summary-metric.added { color: var(--diff-added); }
 .summary-metric.deleted { color: var(--diff-deleted); }
 .summary-metric.modified { color: var(--diff-modified); }
@@ -833,6 +858,20 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 }
 .grid-scroll::-webkit-scrollbar-thumb:hover, .repository-tree::-webkit-scrollbar-thumb:hover { background-color: #949da7; }
 .canvas { position: relative; min-width: 100%; }
+.filtered-grid-empty {
+  position: sticky;
+  z-index: 7;
+  top: 42px;
+  left: 50%;
+  width: max-content;
+  padding: 7px 12px;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 94%);
+  transform: translateX(-50%);
+  font-size: 10px;
+}
 .cell, .col-header, .row-header {
   position: absolute;
   overflow: hidden;

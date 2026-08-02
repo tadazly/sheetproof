@@ -36,6 +36,14 @@ export const backend = {
   summary: (): Promise<Summary> => controller().Summary(),
   region: (sheet: string, row: number, rows: number, col: number, cols: number): Promise<Region> =>
     controller().Region(sheet, row, rows, col, cols),
+  filteredRegion: (
+    sheet: string,
+    statuses: string[],
+    row: number,
+    rows: number,
+    col: number,
+    cols: number
+  ): Promise<Region> => controller().FilteredRegion(sheet, statuses, row, rows, col, cols),
   differences: (sheet: string, offset: number, limit: number): Promise<CellDiff[]> =>
     controller().Differences(sheet, offset, limit),
   copy: (sheet: string, row: number, col: number): Promise<Summary> =>

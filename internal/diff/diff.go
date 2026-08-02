@@ -211,7 +211,7 @@ func classifyRows(sd *SheetDiff, left, right *workbook.SheetSnapshot) {
 	sd.ModifiedRowCount = 0
 	sd.ConflictRowCount = 0
 	sd.IDColumn = findIDColumn(left, right)
-	sd.NextID = nextLeftID(left, sd.IDColumn)
+	sd.NextID = nextLeftID(left, right, sd.IDColumn)
 	sd.MaxRow = max(sheetMaxRow(left), sheetMaxRow(right))
 	sd.MaxCol = max(sheetMaxCol(left), sheetMaxCol(right))
 	startRow := 1
@@ -285,11 +285,36 @@ func findIDColumn(left, right *workbook.SheetSnapshot) int {
 	return 0
 }
 
-func nextLeftID(left *workbook.SheetSnapshot, idColumn int) int64 {
-	if left == nil || idColumn == 0 {
+func nextLeftID(left, right *workbook.SheetSnapshot, idColumn int) int64 {
+	if idColumn == 0 {
+		return 0
+	}
+	hasID := false
+	for _, sheet := range []*workbook.SheetSnapshot{left, right} {
+		if sheet == nil {
+			continue
+		}
+		for _, key := range sheet.CellList {
+			if key.Row < 2 || key.Col != idColumn {
+				continue
+			}
+			id := strings.TrimSpace(rowID(sheet, key.Row, idColumn))
+			if id == "" {
+				continue
+			}
+			hasID = true
+			if _, err := strconv.ParseInt(id, 10, 64); err != nil {
+				return 0
+			}
+		}
+	}
+	if !hasID {
 		return 0
 	}
 	var maximum int64
+	if left == nil {
+		return 1
+	}
 	for _, key := range left.CellList {
 		if key.Row < 2 || key.Col != idColumn {
 			continue
