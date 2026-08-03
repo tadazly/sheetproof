@@ -24,6 +24,8 @@ for (const path of ["frontend/package.json", "site/package.json"]) {
 
   const lockPath = fullPath.replace(/package\.json$/, "package-lock.json");
   const lock = JSON.parse(await readFile(lockPath, "utf8"));
+  lock.version = p.version;
+  lock.packages[""].version = p.version;
   lock.packages[""].license = p.license;
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, "utf8");
 }

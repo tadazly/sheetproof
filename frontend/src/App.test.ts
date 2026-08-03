@@ -69,6 +69,7 @@ describe("App", () => {
   beforeEach(() => {
     selectAndOpen.mockClear();
     window.localStorage.clear();
+    delete (window as Window & { runtime?: Record<string, unknown> }).runtime;
     window.go = {
       main: {
         Controller: {
@@ -349,7 +350,7 @@ describe("App", () => {
     expect(window.localStorage.getItem(legacyKey)).toBe(JSON.stringify(["旧搜索", "另一个旧搜索"]));
   });
 
-  it("opens the recent repository dialog from switch repository without changing the open action", async () => {
+  it("opens the recent repository dialog and offers drag or manual selection from the persistent open action", async () => {
     const otherRepository = {
       ...structuredClone(repositoryView),
       name: "第二个仓库",
@@ -406,7 +407,178 @@ describe("App", () => {
     const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开本地仓库"));
     await openButton!.trigger("click");
     await flushPromises();
+    expect(selectRepository).not.toHaveBeenCalled();
+    expect(wrapper.get(".repository-open-dialog").text()).toContain("将仓库文件夹拖到这里");
+    await wrapper.get(".repository-open-dialog button.primary").trigger("click");
+    await flushPromises();
     expect(selectRepository).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the repository dialog visible with progress while a selected repository opens", async () => {
+    let resolveRepository!: (result: RepositoryResult) => void;
+    const selectRepository = vi.fn(() => new Promise<RepositoryResult>((resolve) => {
+      resolveRepository = resolve;
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: false, error: "" }),
+          SelectRepository: selectRepository
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开本地仓库"));
+    await openButton!.trigger("click");
+    await wrapper.get(".repository-open-dialog button.primary").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get(".repository-open-dropzone.loading").text()).toContain("正在打开仓库");
+    expect(wrapper.get(".repository-open-dropzone.loading").text()).toContain("仓库较大时可能需要一些时间");
+    expect(wrapper.get(".repository-open-dialog button.primary").attributes("disabled")).toBeDefined();
+    await window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+    expect(wrapper.find(".repository-open-dialog").exists()).toBe(true);
+
+    resolveRepository({ repository: structuredClone(repositoryView), summary: null });
+    await flushPromises();
+    expect(wrapper.find(".repository-open-dialog").exists()).toBe(false);
+  });
+
+  it("shows repository selection errors inside the open dialog", async () => {
+    const selectRepository = vi.fn(async () => {
+      throw new Error("所选目录不是有效的 Git 仓库");
+    });
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: false, error: "" }),
+          SelectRepository: selectRepository
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开本地仓库"));
+    await openButton!.trigger("click");
+    await wrapper.get(".repository-open-dialog button.primary").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get(".repository-open-error").text()).toContain("所选目录不是有效的 Git 仓库");
+    expect(wrapper.find(".error-banner").exists()).toBe(false);
+    expect(wrapper.get(".repository-open-dropzone").classes()).not.toContain("loading");
+  });
+
+  it("shows progress and in-dialog errors for a dropped repository", async () => {
+    const listeners = new Map<string, (...args: unknown[]) => void>();
+    (window as Window & {
+      runtime?: {
+        EventsOnMultiple: (name: string, callback: (...args: unknown[]) => void, maxCallbacks: number) => () => void;
+      };
+    }).runtime = {
+      EventsOnMultiple: (name, callback) => {
+        listeners.set(name, callback);
+        return () => listeners.delete(name);
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    listeners.get("repository-drop-started")!();
+    await flushPromises();
+    expect(wrapper.get(".repository-open-dropzone.loading").text()).toContain("正在打开仓库");
+
+    listeners.get("repository-drop-result")!(null, "仓库中没有可用的 XLSX 表格");
+    await flushPromises();
+    expect(wrapper.get(".repository-open-error").text()).toContain("仓库中没有可用的 XLSX 表格");
+    expect(wrapper.get(".repository-open-dropzone").classes()).not.toContain("loading");
+  });
+
+  it("prompts before reloading an externally modified editable left workbook", async () => {
+    vi.useFakeTimers();
+    const loaded = structuredClone(emptySummary);
+    loaded.dirty = true;
+    const reloaded = structuredClone(emptySummary);
+    const checkExternalChanges = vi.fn(async () => ({
+      left: {
+        changed: true,
+        path: loaded.diff.leftFile,
+        signature: "left-v2",
+        writable: true
+      },
+      right: { changed: false, path: loaded.diff.rightFile, signature: "right-v1", writable: false }
+    }));
+    const reloadExternal = vi.fn(async () => ({
+      summary: reloaded,
+      notice: "左侧表格已重载为磁盘上的最新版本。"
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          CheckExternalChanges: checkExternalChanges,
+          ReloadExternal: reloadExternal
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(250);
+    await flushPromises();
+    expect(wrapper.get(".external-change-dialog").text()).toContain("左侧表格已在外部修改");
+    expect(wrapper.get(".external-change-dialog").text()).toContain("放弃 SheetProof 中尚未保存的修改");
+    expect(reloadExternal).not.toHaveBeenCalled();
+
+    const deferButton = wrapper.findAll(".external-change-dialog button").find((button) => button.text() === "暂不重载");
+    await deferButton!.trigger("click");
+    expect(wrapper.get(".external-change-banner").text()).toContain("保存前请重载最新文件");
+    await wrapper.get(".external-change-banner button.compact-button").trigger("click");
+    await flushPromises();
+    expect(reloadExternal).toHaveBeenCalledWith("left");
+    expect(wrapper.get(".external-change-banner").text()).toContain("已重载为磁盘上的最新版本");
+  });
+
+  it("automatically reloads an externally modified read-only right workbook", async () => {
+    vi.useFakeTimers();
+    const loaded = structuredClone(emptySummary);
+    const checkExternalChanges = vi.fn(async () => ({
+      left: { changed: false, path: loaded.diff.leftFile, signature: "left-v1", writable: true },
+      right: {
+        changed: true,
+        path: loaded.diff.rightFile,
+        signature: "right-v2",
+        writable: false
+      }
+    }));
+    const reloadExternal = vi.fn(async () => ({
+      summary: structuredClone(loaded),
+      notice: "右侧只读表格已在外部更新，已自动重载最新版本。"
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          CheckExternalChanges: checkExternalChanges,
+          ReloadExternal: reloadExternal
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(250);
+    await flushPromises();
+    expect(reloadExternal).toHaveBeenCalledWith("right");
+    expect(wrapper.find(".external-change-dialog").exists()).toBe(false);
+    expect(wrapper.get(".external-change-banner").text()).toContain("已自动重载最新版本");
   });
 
   it("keeps unverified workbooks hidden while the semantic difference index is building", async () => {
@@ -1214,6 +1386,82 @@ describe("App", () => {
     }));
     await flushPromises();
     expect(undo).toHaveBeenCalledOnce();
+  });
+
+  it("selects the current sheet with Ctrl+A and clears only the editable left selection", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.sheetCount = 1;
+    loaded.diff.sheets = [{
+      name: "键盘", status: "modified", orderDifferent: false,
+      differenceCount: 1, maxRow: 2, maxCol: 2, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 1, conflictRowCount: 0,
+      rows: [{ row: 1, id: "", status: "modified" }]
+    }];
+    loaded.selectedSheet = "键盘";
+    const value = (raw: string) => ({ present: true, raw, display: raw, type: "string" });
+    const cells = [
+      { row: 1, col: 1, axis: "A1", status: "modified", rowStatus: "modified", left: value("左A1"), right: value("右A1") },
+      { row: 1, col: 2, axis: "B1", status: "unchanged", rowStatus: "modified", left: value("B1"), right: value("B1") },
+      { row: 2, col: 1, axis: "A2", status: "unchanged", rowStatus: "unchanged", left: value("A2"), right: value("A2") },
+      { row: 2, col: 2, axis: "B2", status: "unchanged", rowStatus: "unchanged", left: value("B2"), right: value("B2") }
+    ] as Region["cells"];
+    const clearSelection = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [{
+            ref: { sheet: "键盘", row: 1, col: 1 },
+            status: "modified", rowStatus: "modified",
+            left: value("左A1"), right: value("右A1")
+          }],
+          Region: async () => ({
+            sheet: "键盘", fromRow: 1, toRow: 2, fromCol: 1, toCol: 2, cells
+          }),
+          ClearLeftSelection: clearSelection
+        }
+      }
+    };
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    const [leftGrid, rightGrid] = wrapper.findAll(".grid-scroll");
+
+    (leftGrid.element as HTMLElement).focus();
+    const selectAll = new KeyboardEvent("keydown", {
+      bubbles: true, cancelable: true, ctrlKey: true, key: "a"
+    });
+    leftGrid.element.dispatchEvent(selectAll);
+    await wrapper.vm.$nextTick();
+    expect(selectAll.defaultPrevented).toBe(true);
+    expect(wrapper.text()).toContain("已选择 4 格");
+
+    const clear = new KeyboardEvent("keydown", {
+      bubbles: true, cancelable: true, key: "Delete"
+    });
+    leftGrid.element.dispatchEvent(clear);
+    await flushPromises();
+    expect(clear.defaultPrevented).toBe(true);
+    expect(clearSelection).toHaveBeenCalledWith("键盘", 1, 2, 1, 2, []);
+    expect(wrapper.text()).toContain("已选择 4 格");
+
+    const backspace = new KeyboardEvent("keydown", {
+      bubbles: true, cancelable: true, key: "Backspace"
+    });
+    leftGrid.element.dispatchEvent(backspace);
+    await flushPromises();
+    expect(backspace.defaultPrevented).toBe(true);
+    expect(clearSelection).toHaveBeenCalledTimes(2);
+
+    (rightGrid.element as HTMLElement).focus();
+    const readonlyClear = new KeyboardEvent("keydown", {
+      bubbles: true, cancelable: true, key: "Backspace"
+    });
+    rightGrid.element.dispatchEvent(readonlyClear);
+    await flushPromises();
+    expect(readonlyClear.defaultPrevented).toBe(false);
+    expect(clearSelection).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
   });
 
   it("shows conflict colors, row counts, and multi-row ID append actions", async () => {

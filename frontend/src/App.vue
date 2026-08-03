@@ -8,6 +8,7 @@ import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
 import type {
   CellDiff,
+  ExternalFileChange,
   RecentRepository,
   Region,
   RegionCell,
@@ -49,6 +50,7 @@ const selection = ref<SelectionRange | null>(null);
 const busy = ref(false);
 const error = ref("");
 const integrationNotice = ref("");
+const externalNotice = ref("");
 const diffFilter = ref<DiffFilter>("modified");
 const selectedRowFilters = ref<DiffFilter[]>([]);
 const leftScroll = ref<HTMLElement | null>(null);
@@ -74,6 +76,15 @@ const repositorySwitchDialog = ref<{
   visible: boolean;
   repositories: RecentRepository[];
 }>({ visible: false, repositories: [] });
+const repositoryOpenDialog = ref(false);
+const repositoryOpening = ref(false);
+const repositoryOpenError = ref("");
+const externalChangeDialog = ref<{
+  visible: boolean;
+  side: "left" | "right";
+  change: ExternalFileChange | null;
+}>({ visible: false, side: "left", change: null });
+const deferredExternalChange = ref<{ side: "left" | "right"; change: ExternalFileChange } | null>(null);
 const startupLoading = ref(true);
 const expandedDirectories = ref(new Set<string>());
 const repositorySearch = ref("");
@@ -86,6 +97,8 @@ const previewOriginal = ref(false);
 const repoSidebar = ref<HTMLElement | null>(null);
 let loadingTimer = 0;
 let differenceIndexTimer = 0;
+let externalCheckTimer = 0;
+let externalFocusTimer = 0;
 let wheelFrame = 0;
 let wheelSource: HTMLElement | null = null;
 let wheelDeltaTop = 0;
@@ -103,6 +116,8 @@ let repositoryResize: { startX: number; startWidth: number } | null = null;
 let stopDropListener: (() => void) | undefined;
 let previewFromKeyboard = false;
 let previewFromPointer = false;
+let checkingExternalChanges = false;
+let externalCheckFailures = 0;
 
 interface RepositoryTreeRow {
   kind: "directory" | "file";
@@ -544,14 +559,63 @@ function clearWorkbook() {
   activePoint.value = null;
   selection.value = null;
   inlineEdit.value = null;
+  externalChangeDialog.value = { visible: false, side: "left", change: null };
+  deferredExternalChange.value = null;
+  externalNotice.value = "";
   stopOriginalPreview();
 }
 
 async function chooseRepository() {
   window.clearTimeout(differenceIndexTimer);
-  const result = await guard(() => backend.selectRepository());
-  if (result) await acceptRepositoryResult(result);
-  else scheduleDifferenceIndexPoll();
+  beginRepositoryOpen();
+  try {
+    const result = await backend.selectRepository();
+    await acceptRepositoryResult(result);
+    repositoryOpenDialog.value = false;
+  } catch (reason) {
+    repositoryOpenError.value = reason instanceof Error ? reason.message : String(reason);
+    scheduleDifferenceIndexPoll();
+  } finally {
+    finishRepositoryOpen();
+  }
+}
+
+function showRepositoryOpenDialog() {
+  repositoryOpenError.value = "";
+  repositoryOpenDialog.value = true;
+}
+
+function closeRepositoryOpenDialog() {
+  if (repositoryOpening.value) return;
+  repositoryOpenDialog.value = false;
+  repositoryOpenError.value = "";
+}
+
+function beginRepositoryOpen() {
+  repositoryOpenDialog.value = true;
+  repositoryOpenError.value = "";
+  if (repositoryOpening.value) return;
+  repositoryOpening.value = true;
+  pendingActions++;
+  busy.value = true;
+}
+
+function finishRepositoryOpen() {
+  if (!repositoryOpening.value) return;
+  repositoryOpening.value = false;
+  pendingActions = Math.max(0, pendingActions - 1);
+  busy.value = pendingActions > 0;
+}
+
+async function completeRepositoryDrop(result: RepositoryResult) {
+  try {
+    await acceptRepositoryResult(result);
+    repositoryOpenDialog.value = false;
+  } catch (reason) {
+    repositoryOpenError.value = reason instanceof Error ? reason.message : String(reason);
+  } finally {
+    finishRepositoryOpen();
+  }
 }
 
 async function showRepositorySwitcher() {
@@ -654,6 +718,15 @@ function repositoryStateMessage(side: "left" | "right") {
 }
 
 async function acceptSummary(data: Summary, preferredSheet = sheet.value, resetSelection = true) {
+  const sourceChanged = summary.value != null && (
+    summary.value.diff.leftFile !== data.diff.leftFile ||
+    summary.value.diff.rightFile !== data.diff.rightFile
+  );
+  if (sourceChanged) {
+    externalChangeDialog.value = { visible: false, side: "left", change: null };
+    deferredExternalChange.value = null;
+    externalNotice.value = "";
+  }
   summary.value = data;
   const fallback = data.diff.sheets[0]?.name ?? "";
   const preferred = data.diff.sheets.find((item) => item.name === preferredSheet);
@@ -662,6 +735,70 @@ async function acceptSummary(data: Summary, preferredSheet = sheet.value, resetS
     ? (firstDifferent?.name ?? preferred.name)
     : (preferred?.name ?? firstDifferent?.name ?? fallback);
   if (nextSheet) await loadSheet(nextSheet, resetSelection);
+}
+
+function sameExternalChange(
+  pending: { side: "left" | "right"; change: ExternalFileChange } | null,
+  side: "left" | "right",
+  change: ExternalFileChange
+) {
+  return pending?.side === side && pending.change.signature === change.signature;
+}
+
+async function reloadExternal(side: "left" | "right") {
+  const result = await guard(() => backend.reloadExternal(side));
+  if (!result) return;
+  if (result.repository) acceptRepositoryView(result.repository);
+  externalChangeDialog.value = { visible: false, side: "left", change: null };
+  deferredExternalChange.value = null;
+  externalNotice.value = result.notice;
+  await acceptSummary(result.summary, sheet.value, false);
+}
+
+function deferExternalReload() {
+  const dialog = externalChangeDialog.value;
+  if (!dialog.change) return;
+  deferredExternalChange.value = { side: dialog.side, change: dialog.change };
+  externalNotice.value = "左侧可编辑表格已在外部修改；当前仍显示 SheetProof 中的版本，保存前请重载最新文件。";
+  externalChangeDialog.value = { visible: false, side: "left", change: null };
+}
+
+async function checkExternalChanges() {
+  if (
+    checkingExternalChanges || startupLoading.value || busy.value || !summary.value ||
+    externalChangeDialog.value.visible || deferredExternalChange.value || inlineEdit.value
+  ) return;
+  checkingExternalChanges = true;
+  try {
+    const changes = await backend.checkExternalChanges();
+    externalCheckFailures = 0;
+    if (changes.right?.changed) {
+      await reloadExternal("right");
+    }
+    if (!changes.left?.changed) return;
+    if (sameExternalChange(deferredExternalChange.value, "left", changes.left)) return;
+    if (!changes.left.writable) {
+      await reloadExternal("left");
+      return;
+    }
+    externalChangeDialog.value = { visible: true, side: "left", change: changes.left };
+  } catch (reason) {
+    externalCheckFailures++;
+    if (externalCheckFailures >= 2) {
+      error.value = reason instanceof Error ? reason.message : String(reason);
+    }
+  } finally {
+    checkingExternalChanges = false;
+  }
+}
+
+function scheduleExternalCheck() {
+  window.clearTimeout(externalFocusTimer);
+  externalFocusTimer = window.setTimeout(() => void checkExternalChanges(), 250);
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState === "visible") scheduleExternalCheck();
 }
 
 async function loadSheet(name: string, resetSelection = true) {
@@ -1255,12 +1392,74 @@ function gridOwnsKeyboardFocus(target: EventTarget | null) {
     !target.matches("input, textarea, [contenteditable='true']");
 }
 
+function gridKeyboardSide(target: EventTarget | null): "left" | "right" | null {
+  if (!(target instanceof Element)) return null;
+  const grid = target.closest(".grid-scroll");
+  if (grid === leftScroll.value) return "left";
+  if (grid === rightScroll.value) return "right";
+  return null;
+}
+
+function selectAllCells() {
+  const current = activeSheet.value;
+  if (!current) return;
+  const endRow = rowFilterActive.value ? filteredRowMappings.value.length : current.maxRow;
+  const endCol = current.maxCol;
+  if (endRow < 1 || endCol < 1) return;
+  const first = { row: 1, col: 1 };
+  selectionAnchor.value = first;
+  activePoint.value = first;
+  selection.value = {
+    startRow: 1,
+    endRow,
+    startCol: 1,
+    endCol
+  };
+}
+
+async function clearSelectedCells() {
+  const current = selection.value;
+  if (!current || busy.value || leftReadonly.value) return;
+  const focus = activePoint.value ? { ...activePoint.value } : null;
+  const savedSelection = { ...current };
+  const rows = rowFilterActive.value
+    ? Array.from(
+        new Set(
+          Array.from(
+            { length: current.endRow - current.startRow + 1 },
+            (_, index) => leftRowForDisplay(current.startRow + index)
+          ).filter((row) => row > 0)
+        )
+      )
+    : [];
+  const data = await guard(() => backend.clearSelection(
+    sheet.value,
+    current.startRow,
+    current.endRow,
+    current.startCol,
+    current.endCol,
+    rows
+  ));
+  if (!data) return;
+  await acceptSummary(data, sheet.value, false);
+  selection.value = savedSelection;
+  activePoint.value = focus;
+}
+
 async function undo() {
   const data = await guard(() => backend.undo());
   if (data) await acceptSummary(data, sheet.value, false);
 }
 
 function onWindowKeyDown(event: KeyboardEvent) {
+  if (event.key === "Escape" && externalChangeDialog.value.visible) {
+    deferExternalReload();
+    return;
+  }
+  if (event.key === "Escape" && repositoryOpenDialog.value) {
+    closeRepositoryOpenDialog();
+    return;
+  }
   if (event.key === "Escape" && repositorySwitchDialog.value.visible) {
     repositorySwitchDialog.value.visible = false;
     return;
@@ -1273,6 +1472,26 @@ function onWindowKeyDown(event: KeyboardEvent) {
   }
   const target = event.target;
   const editing = target instanceof Element && target.matches("input, textarea, select, [contenteditable='true']");
+  const gridSide = gridKeyboardSide(target);
+  const key = event.key.toLowerCase();
+  if (
+    summary.value && gridSide && !editing && !event.altKey && !event.shiftKey &&
+    (event.ctrlKey || event.metaKey) && key === "a"
+  ) {
+    event.preventDefault();
+    selectAllCells();
+    return;
+  }
+  if (
+    summary.value && gridSide === "left" && !editing && !event.repeat &&
+    !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+    (event.key === "Backspace" || event.key === "Delete") &&
+    selection.value && !leftReadonly.value && !busy.value
+  ) {
+    event.preventDefault();
+    void clearSelectedCells();
+    return;
+  }
   if (
     summary.value && !busy.value && !editing && !event.repeat &&
     !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
@@ -1284,7 +1503,6 @@ function onWindowKeyDown(event: KeyboardEvent) {
     return;
   }
   if (!event.ctrlKey && !event.metaKey) return;
-  const key = event.key.toLowerCase();
   if (key === "s") {
     if (!summary.value || summary.value.options.readonlyLeft || busy.value) return;
     event.preventDefault();
@@ -1696,14 +1914,27 @@ onMounted(() => {
   window.addEventListener("keydown", onWindowKeyDown);
   window.addEventListener("keyup", onWindowKeyUp);
   window.addEventListener("blur", stopOriginalPreview);
+  window.addEventListener("focus", scheduleExternalCheck);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  externalCheckTimer = window.setInterval(() => void checkExternalChanges(), 2500);
   if ((window as Window & { runtime?: unknown }).runtime) {
+    const stopDropStartedListener = EventsOn("repository-drop-started", () => {
+      beginRepositoryOpen();
+    });
     stopDropListener = EventsOn("repository-drop-result", (result: RepositoryResult | null, message: string) => {
       if (message) {
-        error.value = message;
+        repositoryOpenDialog.value = true;
+        repositoryOpenError.value = message;
+        finishRepositoryOpen();
       } else if (result) {
-        void acceptRepositoryResult(result);
+        void completeRepositoryDrop(result);
       }
     });
+    const stopDropResultListener = stopDropListener;
+    stopDropListener = () => {
+      stopDropStartedListener();
+      stopDropResultListener();
+    };
   }
   void initialLoad();
 });
@@ -1711,6 +1942,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.clearTimeout(loadingTimer);
   window.clearTimeout(differenceIndexTimer);
+  window.clearTimeout(externalFocusTimer);
+  window.clearInterval(externalCheckTimer);
   window.cancelAnimationFrame(wheelFrame);
   window.removeEventListener("pointermove", resizeColumn);
   window.removeEventListener("pointermove", resizeRepositorySidebar);
@@ -1721,6 +1954,8 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", onWindowKeyDown);
   window.removeEventListener("keyup", onWindowKeyUp);
   window.removeEventListener("blur", stopOriginalPreview);
+  window.removeEventListener("focus", scheduleExternalCheck);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
   stopDropListener?.();
 });
 </script>
@@ -1737,7 +1972,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="toolbar-group file-actions" aria-label="打开来源">
-        <button class="secondary" :disabled="busy" @click="chooseRepository">
+        <button class="secondary" :disabled="busy" @click="showRepositoryOpenDialog">
           <AppIcon name="repository" />
           <span class="button-label">打开本地仓库</span>
         </button>
@@ -1842,6 +2077,28 @@ onBeforeUnmount(() => {
       >
         <AppIcon name="x" />
       </button>
+    </div>
+    <div
+      v-if="externalNotice"
+      class="external-change-banner"
+      :class="{ warning: !!deferredExternalChange }"
+      :role="deferredExternalChange ? 'alert' : 'status'"
+    >
+      <AppIcon :name="deferredExternalChange ? 'alert' : 'check'" />
+      <span>{{ externalNotice }}</span>
+      <button
+        v-if="deferredExternalChange"
+        class="compact-button"
+        :disabled="busy"
+        @click="reloadExternal(deferredExternalChange.side)"
+      >重载最新版本</button>
+      <button
+        v-else
+        class="icon-button"
+        title="关闭重载提示"
+        aria-label="关闭重载提示"
+        @click="externalNotice = ''"
+      ><AppIcon name="x" /></button>
     </div>
     <div v-if="repository" class="repository-bar">
       <div class="repository-identity">
@@ -2602,6 +2859,73 @@ onBeforeUnmount(() => {
           <button class="primary" :disabled="busy" @click="chooseOtherRepository">
             <AppIcon name="folder" />选择其他仓库
           </button>
+        </div>
+      </section>
+    </div>
+    <div
+      v-if="repositoryOpenDialog"
+      class="repository-open-overlay"
+      @pointerdown.self="closeRepositoryOpenDialog"
+    >
+      <section class="repository-open-dialog" role="dialog" aria-modal="true" aria-labelledby="repository-open-title">
+        <div class="repository-switch-header">
+          <div>
+            <strong id="repository-open-title">打开本地仓库</strong>
+            <span>选择一种方式导入包含 XLSX 表格的本地 Git 仓库。</span>
+          </div>
+          <button
+            class="icon-button"
+            title="关闭"
+            aria-label="关闭打开仓库弹窗"
+            :disabled="repositoryOpening"
+            @click="closeRepositoryOpenDialog"
+          ><AppIcon name="x" /></button>
+        </div>
+        <div v-if="repositoryOpenError" class="repository-open-error" role="alert">
+          <AppIcon name="alert" />
+          <span>{{ repositoryOpenError }}</span>
+        </div>
+        <div class="repository-open-dropzone" :class="{ loading: repositoryOpening }">
+          <template v-if="repositoryOpening">
+            <span class="loading-spinner small" aria-hidden="true"></span>
+            <strong>正在打开仓库…</strong>
+            <span>正在检查 Git 信息和 XLSX 表格。仓库较大时可能需要一些时间，请稍候。</span>
+          </template>
+          <template v-else>
+            <AppIcon name="folder" :size="30" />
+            <strong>将仓库文件夹拖到这里</strong>
+            <span>支持拖入仓库子目录，SheetProof 会自动定位 Git 根目录。</span>
+          </template>
+        </div>
+        <div class="repository-open-divider"><span>或者</span></div>
+        <div class="repository-switch-actions">
+          <button :disabled="repositoryOpening" @click="closeRepositoryOpenDialog">取消</button>
+          <button class="primary" :disabled="busy || repositoryOpening" @click="chooseRepository">
+            <span v-if="repositoryOpening" class="mini-spinner" aria-hidden="true"></span>
+            <AppIcon v-else name="folder" />
+            {{ repositoryOpening ? "正在打开…" : "手动选择文件夹" }}
+          </button>
+        </div>
+      </section>
+    </div>
+    <div v-if="externalChangeDialog.visible" class="external-change-overlay">
+      <section class="external-change-dialog" role="alertdialog" aria-modal="true" aria-labelledby="external-change-title">
+        <div class="external-change-heading">
+          <span class="external-change-icon"><AppIcon name="alert" :size="20" /></span>
+          <div>
+            <strong id="external-change-title">左侧表格已在外部修改</strong>
+            <span :title="externalChangeDialog.change?.path">{{ externalChangeDialog.change?.path }}</span>
+          </div>
+        </div>
+        <p v-if="summary?.dirty">
+          其他程序已经保存了这份表格。重载会显示磁盘上的最新版本，并放弃 SheetProof 中尚未保存的修改。
+        </p>
+        <p v-else>
+          其他程序已经保存了这份表格。是否立即重载磁盘上的最新版本？
+        </p>
+        <div class="external-change-actions">
+          <button :disabled="busy" @click="deferExternalReload">暂不重载</button>
+          <button class="primary" :disabled="busy" @click="reloadExternal('left')">重载最新版本</button>
         </div>
       </section>
     </div>

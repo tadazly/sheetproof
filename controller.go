@@ -182,6 +182,12 @@ type UGitConfigurationResult struct {
 	Message        string `json:"message"`
 }
 
+type ExternalReloadResult struct {
+	Summary    coreapp.Summary `json:"summary"`
+	Repository *RepositoryView `json:"repository,omitempty"`
+	Notice     string          `json:"notice"`
+}
+
 func (c *Controller) Bootstrap() BootstrapState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -912,6 +918,91 @@ func (c *Controller) Summary() (coreapp.Summary, error) {
 	return session.Summary(), nil
 }
 
+func (c *Controller) CheckExternalChanges() (coreapp.ExternalChanges, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.ExternalChanges{}, err
+	}
+	changes, err := session.ExternalChanges()
+	if err != nil {
+		return coreapp.ExternalChanges{}, err
+	}
+	c.mu.Lock()
+	stillCurrent := session == c.session
+	c.mu.Unlock()
+	if !stillCurrent {
+		return coreapp.ExternalChanges{}, nil
+	}
+	return changes, nil
+}
+
+func (c *Controller) ReloadExternal(side string) (ExternalReloadResult, error) {
+	c.loadMu.Lock()
+	session, err := c.getSession()
+	if err != nil {
+		c.loadMu.Unlock()
+		return ExternalReloadResult{}, err
+	}
+	switch side {
+	case "left":
+		err = session.ReloadLeft()
+	case "right":
+		err = session.ReloadRight()
+	default:
+		err = fmt.Errorf("未知的重载来源: %s", side)
+	}
+	if err != nil {
+		c.loadMu.Unlock()
+		return ExternalReloadResult{}, err
+	}
+	c.mu.Lock()
+	stillCurrent := session == c.session
+	inRepository := c.repo != nil
+	c.mu.Unlock()
+	c.loadMu.Unlock()
+	if !stillCurrent {
+		return ExternalReloadResult{}, errors.New("重载结果已被新的选择替代")
+	}
+
+	if side == "left" && inRepository {
+		result, refreshErr := c.RefreshRepository()
+		if refreshErr != nil {
+			return ExternalReloadResult{}, fmt.Errorf("表格已重载，但仓库状态刷新失败: %w", refreshErr)
+		}
+		if result.Summary == nil {
+			return ExternalReloadResult{}, errors.New("表格已重载，但当前会话已不可用")
+		}
+		view := result.Repository
+		return ExternalReloadResult{
+			Summary: *result.Summary, Repository: &view,
+			Notice: externalReloadNotice(side, result.Summary.Options.ReadonlyLeft),
+		}, nil
+	}
+
+	summary := session.Summary()
+	result := ExternalReloadResult{
+		Summary: summary,
+		Notice:  externalReloadNotice(side, summary.Options.ReadonlyLeft),
+	}
+	c.mu.Lock()
+	if c.repo != nil {
+		view := cloneRepositoryView(c.repositoryView)
+		result.Repository = &view
+	}
+	c.mu.Unlock()
+	return result, nil
+}
+
+func externalReloadNotice(side string, readonlyLeft bool) string {
+	if side == "right" {
+		return "右侧只读表格已在外部更新，已自动重载最新版本。"
+	}
+	if readonlyLeft {
+		return "左侧只读表格已在外部更新，已自动重载最新版本。"
+	}
+	return "左侧表格已重载为磁盘上的最新版本。"
+}
+
 func (c *Controller) Region(sheet string, fromRow, rowCount, fromCol, colCount int) (coreapp.Region, error) {
 	session, err := c.getSession()
 	if err != nil {
@@ -994,6 +1085,21 @@ func (c *Controller) EditLeft(sheet string, row, col int, value, valueType strin
 		return coreapp.Summary{}, err
 	}
 	if err := session.EditLeft(workbook.CellRef{Sheet: sheet, Row: row, Col: col}, value, valueType); err != nil {
+		return coreapp.Summary{}, err
+	}
+	return session.Summary(), nil
+}
+
+func (c *Controller) ClearLeftSelection(
+	sheet string,
+	startRow, endRow, startCol, endCol int,
+	rows []int,
+) (coreapp.Summary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	if err := session.ClearLeftSelection(sheet, startRow, endRow, startCol, endCol, rows); err != nil {
 		return coreapp.Summary{}, err
 	}
 	return session.Summary(), nil
@@ -1274,6 +1380,12 @@ func (c *Controller) handleFileDrop(_ int, _ int, paths []string) {
 	}
 	first := paths[0]
 	multiple := len(paths) > 1
+	c.mu.Lock()
+	ctx := c.ctx
+	c.mu.Unlock()
+	if ctx != nil && ctx.Value("events") != nil {
+		runtime.EventsEmit(ctx, "repository-drop-started")
+	}
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()

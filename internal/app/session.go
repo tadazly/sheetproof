@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -42,6 +43,18 @@ type Summary struct {
 	Warnings      []string           `json:"warnings"`
 	MergeNotice   string             `json:"mergeNotice"`
 	SelectedSheet string             `json:"selectedSheet"`
+}
+
+type ExternalFileChange struct {
+	Changed   bool   `json:"changed"`
+	Path      string `json:"path"`
+	Signature string `json:"signature"`
+	Writable  bool   `json:"writable"`
+}
+
+type ExternalChanges struct {
+	Left  ExternalFileChange `json:"left"`
+	Right ExternalFileChange `json:"right"`
 }
 
 type ResolutionKind string
@@ -269,6 +282,135 @@ func (s *Session) ReplaceRight(rightPath, rightLabel string) error {
 		return old.Close()
 	}
 	return nil
+}
+
+// ExternalChanges checks whether either source file has changed since it was
+// loaded. A quick size/mtime comparison avoids hashing unchanged workbooks.
+func (s *Session) ExternalChanges() (ExternalChanges, error) {
+	s.mu.RLock()
+	leftPath, leftExpected := s.left.Path, s.left.Identity
+	readonlyLeft := s.options.ReadonlyLeft
+	rightPath := ""
+	rightExpected := workbook.FileIdentity{}
+	if s.rightSource != nil {
+		rightPath, rightExpected = s.rightSource.Path, s.rightSource.Identity
+	}
+	s.mu.RUnlock()
+
+	leftChanged, leftCurrent, err := externalFileChanged(leftPath, leftExpected)
+	if err != nil {
+		return ExternalChanges{}, err
+	}
+	result := ExternalChanges{
+		Left: ExternalFileChange{
+			Changed: leftChanged, Path: leftPath,
+			Signature: externalIdentitySignature(leftCurrent), Writable: !readonlyLeft,
+		},
+	}
+	if rightPath != "" {
+		rightChanged, rightCurrent, rightErr := externalFileChanged(rightPath, rightExpected)
+		if rightErr != nil {
+			return ExternalChanges{}, rightErr
+		}
+		result.Right = ExternalFileChange{
+			Changed: rightChanged, Path: rightPath,
+			Signature: externalIdentitySignature(rightCurrent), Writable: false,
+		}
+	}
+	return result, nil
+}
+
+func externalFileChanged(path string, expected workbook.FileIdentity) (bool, workbook.FileIdentity, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, workbook.FileIdentity{}, err
+	}
+	if info.Size() == expected.Size && info.ModTime().UnixNano() == expected.ModTime {
+		return false, expected, nil
+	}
+	current, err := workbook.Identity(path)
+	if err != nil {
+		return false, workbook.FileIdentity{}, err
+	}
+	return current.SHA256 != expected.SHA256, current, nil
+}
+
+func externalIdentitySignature(identity workbook.FileIdentity) string {
+	if identity.SHA256 == "" {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d:%s", identity.Size, identity.ModTime, identity.SHA256)
+}
+
+// ReloadLeft replaces the in-memory editable source with the latest file on
+// disk. It intentionally resets edit history because the previous operations
+// were based on a different workbook identity.
+func (s *Session) ReloadLeft() error {
+	s.mu.Lock()
+	reader := workbook.Reader{}
+	leftFile, left, err := reader.Open(s.left.Path)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	right := s.rightSource
+	rightRows := identityRightRows(s.rightSource)
+	warnings := []string(nil)
+	if s.options.GitMerge && s.rightSource != nil {
+		var moved int
+		right, rightRows, moved = alignRightRowsByID(left, s.rightSource)
+		if moved > 0 {
+			warnings = append(warnings, fmt.Sprintf(
+				"检测到 %d 条同 ID 记录位于不同物理行，已按左侧 ID 对齐显示，避免把插入/删除放大为连续修改。", moved,
+			))
+		}
+	}
+	var currentDiff *diff.WorkbookDiff
+	if right != nil {
+		currentDiff = diff.Compare(left, right)
+	}
+	mergeNotice := s.mergeNotice
+	if s.options.GitMerge && strings.TrimSpace(s.options.MergeBase) != "" && s.rightSource != nil {
+		baseFile, base, baseErr := reader.Open(s.options.MergeBase)
+		if baseErr != nil {
+			_ = leftFile.Close()
+			s.mu.Unlock()
+			return baseErr
+		}
+		_ = baseFile.Close()
+		mergeNotice = mergeSemanticNotice(base, left, s.rightSource)
+	}
+	old := s.leftFile
+	s.leftFile = leftFile
+	s.left = left
+	s.originalLeft = cloneWorkbookSnapshot(left)
+	s.right = right
+	s.rightRows = rightRows
+	s.currentDiff = currentDiff
+	s.history.Clear()
+	s.dirty = false
+	s.warnings = warnings
+	s.mergeNotice = mergeNotice
+	s.stateID = 1
+	s.savedState = 1
+	s.nextState = 2
+	s.resolutions = nil
+	s.mu.Unlock()
+	if old != nil {
+		return old.Close()
+	}
+	return nil
+}
+
+func (s *Session) ReloadRight() error {
+	s.mu.RLock()
+	if s.rightSource == nil {
+		s.mu.RUnlock()
+		return errors.New("当前没有可重载的右侧工作簿")
+	}
+	path, label := s.rightSource.Path, s.options.RightLabel
+	s.mu.RUnlock()
+	return s.ReplaceRight(path, label)
 }
 
 // DetachRight keeps the editable workbook open while explicitly representing
@@ -931,6 +1073,73 @@ func (s *Session) EditLeft(ref workbook.CellRef, value, valueType string) error 
 	}
 	s.recordHistoryLocked([]merge.Operation{{Ref: ref, Before: before, After: after, Kind: "edit"}})
 	return nil
+}
+
+// ClearLeftSelection removes the contents of every present left-side cell in
+// the selected rectangle or explicit row set. Styles and other cell metadata
+// are preserved, and the whole selection is recorded as one undo step.
+func (s *Session) ClearLeftSelection(
+	sheetName string,
+	startRow, endRow, startCol, endCol int,
+	rows []int,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.options.ReadonlyLeft {
+		return errors.New("left workbook is read-only")
+	}
+	sheet := s.left.ByName[sheetName]
+	if sheet == nil {
+		return fmt.Errorf("left worksheet %q not found", sheetName)
+	}
+	if startCol < 1 || endCol < startCol {
+		return fmt.Errorf("invalid column range %d:%d", startCol, endCol)
+	}
+
+	var selectedRows map[int]struct{}
+	if len(rows) > 0 {
+		unique, err := normalizeRows(rows)
+		if err != nil {
+			return err
+		}
+		selectedRows = make(map[int]struct{}, len(unique))
+		for _, row := range unique {
+			selectedRows[row] = struct{}{}
+		}
+	} else if startRow < 1 || endRow < startRow {
+		return fmt.Errorf("invalid row range %d:%d", startRow, endRow)
+	}
+
+	operations := make([]merge.Operation, 0)
+	for _, key := range sheet.CellList {
+		if key.Col < startCol || key.Col > endCol {
+			continue
+		}
+		if selectedRows != nil {
+			if _, selected := selectedRows[key.Row]; !selected {
+				continue
+			}
+		} else if key.Row < startRow || key.Row > endRow {
+			continue
+		}
+		ref := workbook.CellRef{Sheet: sheetName, Row: key.Row, Col: key.Col}
+		before, err := merge.Capture(s.leftFile, ref)
+		if err != nil {
+			return err
+		}
+		if !before.Value.Present {
+			continue
+		}
+		after := before
+		after.Value = workbook.CellValue{}
+		operations = append(operations, merge.Operation{
+			Ref: ref, Before: before, After: after, Kind: "clear",
+		})
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	return s.applyOperationsLocked(sheetName, operations)
 }
 
 func (s *Session) Undo() error {

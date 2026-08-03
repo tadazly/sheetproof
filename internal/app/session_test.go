@@ -173,6 +173,50 @@ func TestSessionBatchCopyIsOneUndoCommand(t *testing.T) {
 	}
 }
 
+func TestSessionClearLeftSelectionIsOneUndoCommand(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := Open(pair.Left, pair.Right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	before, err := session.Region("数据 表", 1, 1, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.ClearLeftSelection("数据 表", 1, 1, 1, 2, nil); err != nil {
+		t.Fatal(err)
+	}
+	if session.Summary().UndoCount != 1 {
+		t.Fatalf("clear selection undo count = %d, want 1", session.Summary().UndoCount)
+	}
+	cleared, err := session.Region("数据 表", 1, 1, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, cell := range cleared.Cells {
+		if cell.Left.Present {
+			t.Fatalf("cell %d was not cleared: %+v", index, cell.Left)
+		}
+	}
+	if err := session.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := session.Region("数据 表", 1, 1, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range before.Cells {
+		if restored.Cells[index].Left != before.Cells[index].Left {
+			t.Fatalf("cell %d after undo = %+v, want %+v", index, restored.Cells[index].Left, before.Cells[index].Left)
+		}
+	}
+}
+
 func TestSessionRegionKeepsOpeningLeftValueAfterEditAndSave(t *testing.T) {
 	pair, err := testutil.CreatePair(t.TempDir())
 	if err != nil {
@@ -788,6 +832,107 @@ func TestSessionDetectsExternalModificationAndPreservesIt(t *testing.T) {
 	assertCell(t, reopened, "数据 表", "Z9", "external")
 	if got, _ := reopened.GetCellValue("数据 表", "A4"); got == "session" {
 		t.Fatal("session changes overwrote external file")
+	}
+}
+
+func TestSessionDetectsAndReloadsExternalChangesPerSide(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := Open(pair.Left, pair.Right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if err := session.EditLeft(workbook.CellRef{Sheet: "数据 表", Row: 4, Col: 1}, "session edit", "text"); err != nil {
+		t.Fatal(err)
+	}
+
+	setWorkbookCell(t, pair.Left, "数据 表", "A1", "externally changed left workbook")
+	setWorkbookCell(t, pair.Right, "数据 表", "A1", "externally changed right workbook")
+	changes, err := session.ExternalChanges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changes.Left.Changed || !changes.Left.Writable || changes.Left.Signature == "" {
+		t.Fatalf("left external change = %+v", changes.Left)
+	}
+	if !changes.Right.Changed || changes.Right.Writable || changes.Right.Signature == "" {
+		t.Fatalf("right external change = %+v", changes.Right)
+	}
+
+	if err := session.ReloadRight(); err != nil {
+		t.Fatal(err)
+	}
+	afterRight, err := session.Region("数据 表", 1, 4, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRight.Cells[0].Right.Raw != "externally changed right workbook" {
+		t.Fatalf("right value after reload = %q", afterRight.Cells[0].Right.Raw)
+	}
+	if afterRight.Cells[3].Left.Raw != "session edit" || !session.Dirty() {
+		t.Fatal("reloading the read-only side discarded editable left-side work")
+	}
+
+	if err := session.ReloadLeft(); err != nil {
+		t.Fatal(err)
+	}
+	afterLeft, err := session.Region("数据 表", 1, 4, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterLeft.Cells[0].Left.Raw != "externally changed left workbook" {
+		t.Fatalf("left value after reload = %q", afterLeft.Cells[0].Left.Raw)
+	}
+	if session.Dirty() || session.Summary().UndoCount != 0 {
+		t.Fatalf("reloaded left session state = dirty %v, undo %d", session.Dirty(), session.Summary().UndoCount)
+	}
+	if afterLeft.Cells[0].OriginalLeft.Raw != afterLeft.Cells[0].Left.Raw {
+		t.Fatal("left reload did not establish the latest disk version as the new preview baseline")
+	}
+	changes, err = session.ExternalChanges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changes.Left.Changed || changes.Right.Changed {
+		t.Fatalf("changes remained after reload = %+v", changes)
+	}
+}
+
+func TestSessionReportsReadonlyLeftExternalChange(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := Open(pair.Left, pair.Right, Options{ReadonlyLeft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	setWorkbookCell(t, pair.Left, "数据 表", "A1", "readonly source changed")
+	changes, err := session.ExternalChanges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changes.Left.Changed || changes.Left.Writable {
+		t.Fatalf("readonly left change = %+v", changes.Left)
+	}
+}
+
+func setWorkbookCell(t *testing.T, path, sheet, axis, value string) {
+	t.Helper()
+	file, err := excelize.OpenFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if err := file.SetCellStr(sheet, axis, value); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Save(); err != nil {
+		t.Fatal(err)
 	}
 }
 

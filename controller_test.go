@@ -49,6 +49,62 @@ func TestControllerAsyncBootstrapAndViewportAPI(t *testing.T) {
 	controller.shutdown(context.Background())
 }
 
+func TestDragAndDropOptionsKeepNativeDirectoryDropInsideApplication(t *testing.T) {
+	options := dragAndDropOptions()
+	if !options.EnableFileDrop {
+		t.Fatal("native Wails file drop is disabled")
+	}
+	if options.DisableWebViewDrop {
+		t.Fatal("Windows WebView2 external drag must remain enabled for Wails file-drop events")
+	}
+}
+
+func TestControllerChecksAndReloadsExternalWorkbookChanges(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller := NewController("", "", coreapp.Options{})
+	if _, err := controller.OpenFiles(pair.Left, pair.Right); err != nil {
+		t.Fatal(err)
+	}
+	defer controller.shutdown(context.Background())
+
+	external, err := excelize.OpenFile(pair.Right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := external.SetCellStr("数据 表", "A1", "external right update"); err != nil {
+		t.Fatal(err)
+	}
+	if err := external.Save(); err != nil {
+		t.Fatal(err)
+	}
+	_ = external.Close()
+
+	changes, err := controller.CheckExternalChanges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changes.Left.Changed || !changes.Right.Changed || changes.Right.Writable {
+		t.Fatalf("external changes = %+v", changes)
+	}
+	result, err := controller.ReloadExternal("right")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Notice, "自动重载") {
+		t.Fatalf("reload notice = %q", result.Notice)
+	}
+	region, err := controller.Region("数据 表", 1, 1, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Right.Raw != "external right update" {
+		t.Fatalf("reloaded right value = %q", region.Cells[0].Right.Raw)
+	}
+}
+
 func TestControllerShutdownCancelsDifferenceIndexBeforeWaiting(t *testing.T) {
 	controller := NewController("", "", coreapp.Options{})
 	indexContext, cancel := context.WithCancel(context.Background())

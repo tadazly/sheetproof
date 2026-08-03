@@ -1,6 +1,8 @@
 import type {
   BootstrapState,
   CellDiff,
+  ExternalChanges,
+  ExternalReloadResult,
   Region,
   RecentRepository,
   RepositoryResult,
@@ -34,6 +36,9 @@ export const backend = {
   setRepositorySidebarWidth: (width: number): Promise<void> =>
     controller().SetRepositorySidebarWidth(width),
   summary: (): Promise<Summary> => controller().Summary(),
+  checkExternalChanges: (): Promise<ExternalChanges> => controller().CheckExternalChanges(),
+  reloadExternal: (side: "left" | "right"): Promise<ExternalReloadResult> =>
+    controller().ReloadExternal(side),
   region: (sheet: string, row: number, rows: number, col: number, cols: number): Promise<Region> =>
     controller().Region(sheet, row, rows, col, cols),
   filteredRegion: (
@@ -56,6 +61,15 @@ export const backend = {
     controller().AppendRowsRightToLeft(sheet, rows, ids),
   edit: (sheet: string, row: number, col: number, value: string, type: string): Promise<Summary> =>
     controller().EditLeft(sheet, row, col, value, type),
+  clearSelection: (
+    sheet: string,
+    startRow: number,
+    endRow: number,
+    startCol: number,
+    endCol: number,
+    rows: number[]
+  ): Promise<Summary> =>
+    controller().ClearLeftSelection(sheet, startRow, endRow, startCol, endCol, rows),
   undo: (): Promise<Summary> => controller().Undo(),
   save: (): Promise<Summary> => controller().Save(),
   saveAs: (): Promise<Summary> => controller().SaveAs()

@@ -31,7 +31,7 @@ func launchGUI(left, right string, appOptions coreapp.Options) error {
 		Title: title, Width: 1440, Height: 900, MinWidth: 960, MinHeight: 640,
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 247, G: 248, B: 250, A: 1},
-		DragAndDrop:      &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: false},
+		DragAndDrop:      dragAndDropOptions(),
 		OnStartup:        controller.startup,
 		OnDomReady: func(context.Context) {
 			applyPlatformWindowIcon()
@@ -43,4 +43,11 @@ func launchGUI(left, right string, appOptions coreapp.Options) error {
 		return fmt.Errorf("start GUI: %w", err)
 	}
 	return nil
+}
+
+func dragAndDropOptions() *options.DragAndDrop {
+	return &options.DragAndDrop{
+		EnableFileDrop:     true,
+		DisableWebViewDrop: false,
+	}
 }

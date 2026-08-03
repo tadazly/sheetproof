@@ -20,11 +20,11 @@ export default function GuidePage() {
           <ScreenshotViewer src={shot.src} alt={shot.alt} caption={shot.caption} width={shot.width} height={shot.height} />
         </article>;
       })}</div>
-      <aside className="shortcut-card"><p className="eyebrow">快捷键</p><h2>常用操作</h2><dl><div><dt>差异行筛选</dt><dd>1–4 切换分类，5 全选</dd></div><div><dt>回看修改前</dt><dd>表格聚焦后按住 Tab</dd></div><div><dt>保存</dt><dd>Ctrl / Command + S</dd></div><div><dt>另存为</dt><dd>Ctrl / Command + Shift + S</dd></div><div><dt>撤销</dt><dd>Ctrl / Command + Z</dd></div><div><dt>缩放</dt><dd>Ctrl / Command + 滚轮</dd></div><div><dt>编辑左侧</dt><dd>双击单元格</dd></div></dl></aside>
+      <aside className="shortcut-card"><p className="eyebrow">快捷键</p><h2>常用操作</h2><dl><div><dt>差异行筛选</dt><dd>1–4 切换分类，5 全选</dd></div><div><dt>全选单元格</dt><dd>Ctrl / Command + A</dd></div><div><dt>清空左侧选区</dt><dd>Backspace / Delete</dd></div><div><dt>回看修改前</dt><dd>表格聚焦后按住 Tab</dd></div><div><dt>保存</dt><dd>Ctrl / Command + S</dd></div><div><dt>另存为</dt><dd>Ctrl / Command + Shift + S</dd></div><div><dt>撤销</dt><dd>Ctrl / Command + Z</dd></div><div><dt>缩放</dt><dd>Ctrl / Command + 滚轮</dd></div><div><dt>编辑左侧</dt><dd>双击单元格</dd></div></dl></aside>
     </section>
     <section className="section page-width mode-grid">
       <article><p className="eyebrow">直接打开文件</p><h2>双文件模式</h2><p>适合临时核对两个工作簿。左侧可编辑并可切换保存目标，右侧始终只读。</p><pre><code>sheetproof compare --left current.xlsx --right target.xlsx</code></pre></article>
-      <article><p className="eyebrow">打开本地仓库</p><h2>Git 仓库模式</h2><p>适合纳入版本管理的配置表。左侧读取真实工作区，右侧读取选中的 Git 版本。</p><pre><code>sheetproof repo --path /repo --file config.xlsx --ref origin/main</code></pre></article>
+      <article><p className="eyebrow">打开本地仓库</p><h2>Git 仓库模式</h2><p>适合纳入版本管理的配置表。可以手动选择仓库文件夹，也可以把文件夹直接拖进窗口；较大仓库会在导入弹窗中持续显示加载状态，失败原因也会留在弹窗内。左侧读取真实工作区，右侧读取选中的 Git 版本。</p><pre><code>sheetproof repo --path /repo --file config.xlsx --ref origin/main</code></pre></article>
     </section>
     <section className="section page-width ugit-guide" id="ugit">
       <div className="section-heading compact"><p className="eyebrow">UGit 集成</p><h2>在应用内完成配置</h2><p>不需要手工编辑 UGit 配置文件。把 SheetProof 放在固定位置后，在应用里完成一次注册即可。</p></div>
@@ -36,6 +36,6 @@ export default function GuidePage() {
       </ol>
       <div className="ugit-config-note"><strong>看到两条 XLSX 差异工具是正常的</strong><p>UGit 的差异工具列表会同时保留 <code>SpreadsheetCompare</code> 和 <code>Custom</code> 两个兼容入口；合并工具列表显示一条 <code>Custom</code>。这表示接入已经完成，不需要删除其中任何一条。</p></div>
     </section>
-    <section className="section page-width faq-section"><div className="section-heading compact"><p className="eyebrow">常见问题</p><h2>使用前可能想知道</h2></div><details open><summary>工作簿会上传吗？</summary><p>不会。当前版本只在本机读取和处理文件，官网也没有工作簿上传入口。</p></details><details><summary>保存会自动提交到 Git 吗？</summary><p>不会。保存只修改当前工作区文件；暂存、提交和推送仍由你使用原有 Git 工具完成。</p></details><details><summary>能处理宏工作簿吗？</summary><p>不能。当前只支持 .xlsx，.xlsm 会在打开前被拒绝。</p></details></section>
+    <section className="section page-width faq-section"><div className="section-heading compact"><p className="eyebrow">常见问题</p><h2>使用前可能想知道</h2></div><details open><summary>工作簿会上传吗？</summary><p>不会。当前版本只在本机读取和处理文件，官网也没有工作簿上传入口。</p></details><details><summary>其他程序修改了正在查看的工作簿怎么办？</summary><p>SheetProof 会主动检测变化。只读侧会提示并自动重载；可编辑左侧会先询问是否放弃当前会话中的未保存修改，再载入磁盘最新版。</p></details><details><summary>保存会自动提交到 Git 吗？</summary><p>不会。保存只修改当前工作区文件；暂存、提交和推送仍由你使用原有 Git 工具完成。</p></details><details><summary>能处理宏工作簿吗？</summary><p>不能。当前只支持 .xlsx，.xlsm 会在打开前被拒绝。</p></details></section>
   </main></SiteShell>;
 }

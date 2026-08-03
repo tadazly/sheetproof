@@ -1,6 +1,15 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import "./style.css";
+import { OnFileDrop } from "../wailsjs/runtime/runtime";
+
+const wailsWindow = window as Window & { runtime?: { OnFileDrop?: unknown } };
+if (typeof wailsWindow.runtime?.OnFileDrop === "function") {
+  // Install Wails' DOM drag/drop handlers before Vue mounts. Besides resolving
+  // native paths, the handlers prevent WebView2 from navigating to a dropped
+  // folder while the Go-side listener performs the actual repository opening.
+  OnFileDrop(() => undefined, false);
+}
 
 function showFatal(reason: unknown) {
   const root = document.querySelector("#app");

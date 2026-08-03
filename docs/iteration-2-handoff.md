@@ -1043,3 +1043,63 @@ cd frontend && npm run test && npm run typecheck
 ```
 
 可直接复制的接手提示词见 `docs/new-session-prompt.md`。
+
+## 2026-08-03：仓库拖入与外部文件修改处理
+
+- 修复 Wails 开启原生目录拖放但未安装前端 DOM 拖放处理器的问题；处理器在 Vue 挂载前
+  阻止 WebView 默认导航并把路径交给 Go，首次把仓库目录拖入窗口不再跳转到空白页面。
+  Windows 保持 `DisableWebViewDrop=false`，否则 WebView2 会连外部文件拖入也一并拒绝。
+- 主界面顶部“打开本地仓库”改为应用内弹窗，同时提供目录拖入区和原生目录选择器；
+  欢迎页入口继续保留直接手动选择，窗口全局仍可接收仓库目录拖入。
+- 目录拖入在后台打开前发出开始事件，手动选择也进入相同的弹窗加载状态；较大仓库处理期间
+  弹窗显示明确进度并禁用重复提交/关闭，成功接收结果后才关闭。导入失败时弹窗保持打开，
+  错误在标题下方换行并可滚动查看，不再被高层级遮罩挡住。
+- `Session.ExternalChanges` 以加载身份检查左右源文件，`ReloadLeft` 和 `ReloadRight`
+  负责重新打开工作簿并重建差异状态；仓库左侧重载后同步刷新 Git 状态和语义索引。
+- 前端在窗口可见时轮询，并在窗口重新获得焦点时检查。右侧和只读左侧提示后自动重载；
+  可编辑左侧先询问是否载入磁盘最新版，并明确说明会放弃 SheetProof 中尚未保存的修改。
+  用户暂不重载时保留警告和显式重载入口，且不再重复散列同一份已知外部修改。
+- Go 覆盖拖放配置、拖入开始通知、左右变化检测、只读判定和重载；前端覆盖仓库打开弹窗、导入
+  加载/错误、可编辑
+  外部修改确认/暂缓/重载，以及只读右侧自动重载。
+
+## 2026-08-03：表格全选与键盘清空
+
+- 左右网格聚焦后支持 `Ctrl/Command+A` 选择当前工作表的全部实际单元格；开启差异行筛选时，
+  全选范围限定为当前压缩行集。搜索框和原位编辑框仍使用浏览器原生文本全选。
+- 只有可编辑左侧网格响应 Backspace/Delete。单格或范围清空复用 Session、merge 和 history，
+  只删除值/公式并保留样式等元数据，整批清空作为一个撤销步骤；右侧和只读左侧不写入。
+- 前端只提交选区边界或筛选后的左侧物理行；Go 后端在既有稀疏快照中筛选实际存在的单元格，
+  没有为了全选或清空加载整张工作表。
+- 自动化验证已通过 `go test ./...`、`go vet ./...`、前端 lint/typecheck/test/build，
+  以及官网 lint/build/渲染测试。`go test -race ./...` 因当前 Windows 环境没有 GCC 无法运行，
+  不是测试用例失败。
+- 使用当次 `scripts/invoke-wails.ps1 build -s` 生成的 `build/bin/SheetProof.exe` 完成 Windows
+  实机验收：`Ctrl+A` 选中整张测试表的 20 个单元格；Delete 清空整批后一次 `Ctrl+Z`
+  全部恢复；Backspace 清空单格后可撤销；右侧聚焦后连续按 Delete 和 Backspace 内容不变。
+  截图保存在 `build/acceptance/keyboard-shortcuts/`，验收结束后已关闭应用与临时本地服务器。
+
+## 2026-08-03：v0.2.0 正式发布候选
+
+- 上一个公开版本为预览版 `v0.1.0`。本轮保持文件直开与仓库模式兼容，同时新增仓库目录拖入、
+  应用内打开进度与错误反馈、外部文件变化检测/安全重载，以及全选和可撤销批量清空，因此按
+  向后兼容的新功能升级推导为次版本 `v0.2.0`，而不是补丁版本。
+- `product/product.json`、CLI 版本常量、前端与官网 package 清单及锁文件均已同步为 `0.2.0`；
+  README、`CHANGELOG.md`、产品 JSON 和官网更新日志已经新增并同步本轮四类用户可见变化。
+  Windows、macOS 与源码下载链接均指向待发布的 `v0.2.0` Release。
+- 自动化验证通过 Go 全量测试与 `go vet`、前端 lint/typecheck/40 项测试/build、官网 lint/build
+  与 9 项渲染测试；官网 lint 仍只有 4 条既有 `<img>` 优化警告。`go test -race ./...` 在
+  `CGO_ENABLED=1` 下因当前 Windows 环境没有 GCC 无法执行，未记为通过。
+- 已通过标准离线优先入口 `scripts/invoke-wails.ps1 build` 完成 Wails v2.10.2 Windows 全量构建。
+  当前 `build/bin/SheetProof.exe version` 返回 `SheetProof 0.2.0`；本地候选 EXE 未签名，macOS
+  发布流程也仍未配置签名/公证。
+- 已用当次全量构建产物完成真实 Windows GUI 验收：Explorer 目录拖入后正确打开仓库且未出现
+  空白 WebView；应用内仓库弹窗布局正常；可编辑左侧外部变化出现重载确认；只读右侧外部变化
+  自动重载；Ctrl+A、Delete、Backspace、一次撤销和右侧只读保护均符合预期。证据保存在
+  `build/acceptance/release-v0.2.0/`，所有应用、Explorer 和辅助进程均已关闭。
+- 隐私扫描覆盖候选差异、更新日志、官网静态产物和 Windows EXE，未发现凭据、私钥、带认证的
+  URL、真实用户目录、工作区路径、远程账号或服务器身份。前端压缩包唯一的 IPv4 形态命中来自
+  既有 SVG 图标的数字序列，不是网络地址。`v0.1.0..HEAD` 没有新增提交；旧公开历史中已记录的
+  低敏感度本机目录截图问题已在上一版本准备阶段替换，无凭据需要轮换，本次不重写历史。
+- 候选尚未 commit、push、打 `v0.2.0` 标签、运行 GitHub Release workflow、发布 GitHub Release
+  或部署 Lightsail 正式官网；这些远端动作必须在维护者明确确认本候选范围后执行。

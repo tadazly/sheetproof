@@ -235,6 +235,7 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 
 .error-banner,
 .success-banner,
+.external-change-banner,
 .notice-banner {
   flex: 0 0 auto;
   min-height: 34px;
@@ -247,9 +248,13 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 }
 .error-banner { color: #8c2f32; border-color: #efc4c5; background: var(--color-danger-soft); }
 .success-banner { color: var(--color-success); border-color: #bfe2ca; background: var(--color-success-soft); }
+.external-change-banner { color: var(--color-success); border-color: #bfe2ca; background: var(--color-success-soft); }
+.external-change-banner.warning { color: #74500f; border-color: #edd9a8; background: var(--color-warning-soft); }
 .success-banner > span,
+.external-change-banner > span,
 .error-banner > span { min-width: 0; flex: 1; }
 .success-banner .icon-button,
+.external-change-banner .icon-button,
 .error-banner .icon-button { min-height: 26px; border-color: transparent; background: transparent; box-shadow: none; }
 .error-banner > span { min-width: 0; flex: 1; }
 .error-banner .icon-button { min-height: 24px; color: inherit; background: transparent; border: 0; }
@@ -1195,7 +1200,11 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   font-size: 12px;
   line-height: 1.45;
 }
-.id-dialog-overlay, .repository-switch-overlay, .loading-overlay {
+.id-dialog-overlay,
+.repository-switch-overlay,
+.repository-open-overlay,
+.external-change-overlay,
+.loading-overlay {
   position: fixed;
   z-index: 200;
   inset: 0;
@@ -1205,7 +1214,9 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   background: rgb(28 36 46 / 36%);
   backdrop-filter: blur(3px);
 }
-.repository-switch-dialog {
+.repository-switch-dialog,
+.repository-open-dialog,
+.external-change-dialog {
   width: min(620px, calc(100vw - 40px));
   max-height: min(720px, calc(100vh - 40px));
   display: flex;
@@ -1217,6 +1228,58 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
   background: var(--color-surface);
   box-shadow: var(--shadow-dialog);
 }
+.repository-open-dialog { width: min(560px, calc(100vw - 40px)); overflow-y: auto; }
+.repository-open-error {
+  max-height: 124px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  overflow: auto;
+  color: #8c2f32;
+  border: 1px solid #efc4c5;
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.repository-open-error svg { flex: 0 0 auto; margin-top: 1px; }
+.repository-open-error span { min-width: 0; overflow-wrap: anywhere; }
+.repository-open-dropzone {
+  --wails-drop-target: drop;
+  min-height: 164px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 22px;
+  color: #356b94;
+  border: 2px dashed #9dbbd1;
+  border-radius: var(--radius-lg);
+  background: #f5faff;
+  text-align: center;
+}
+.repository-open-dropzone.loading {
+  --wails-drop-target: none;
+  border-style: solid;
+}
+.repository-open-dropzone strong { color: #294b67; font-size: 14px; }
+.repository-open-dropzone span { max-width: 390px; color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
+.repository-open-divider { display: flex; align-items: center; gap: 10px; padding: 12px 0 0; color: var(--color-text-muted); font-size: 10px; }
+.repository-open-divider::before,
+.repository-open-divider::after { content: ""; height: 1px; flex: 1 1 auto; background: var(--color-border); }
+.external-change-dialog { width: min(520px, calc(100vw - 40px)); gap: 16px; }
+.external-change-heading { display: flex; align-items: flex-start; gap: 12px; }
+.external-change-heading > div { min-width: 0; display: grid; gap: 4px; }
+.external-change-heading strong { color: #29394a; font-size: 16px; }
+.external-change-heading span { overflow: hidden; color: var(--color-text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.external-change-icon { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; color: #8a5a10; border-radius: 50%; background: var(--color-warning-soft); }
+.external-change-dialog p { margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.65; }
+.external-change-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .repository-switch-header {
   display: flex;
   align-items: flex-start;

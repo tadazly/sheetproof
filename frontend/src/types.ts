@@ -168,3 +168,21 @@ export interface UGitConfigurationResult {
   executablePath: string;
   message: string;
 }
+
+export interface ExternalFileChange {
+  changed: boolean;
+  path: string;
+  signature: string;
+  writable: boolean;
+}
+
+export interface ExternalChanges {
+  left: ExternalFileChange;
+  right: ExternalFileChange;
+}
+
+export interface ExternalReloadResult {
+  summary: Summary;
+  repository?: RepositoryView;
+  notice: string;
+}

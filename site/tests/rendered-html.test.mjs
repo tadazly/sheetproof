@@ -56,6 +56,10 @@ test("guide keeps the difference-row shortcut concise", async () => {
   const html = await render("/guide");
   assert.match(html, /差异行筛选/);
   assert.match(html, /1–4 切换分类，5 全选/);
+  assert.match(html, /全选单元格/);
+  assert.match(html, /Ctrl \/ Command \+ A/);
+  assert.match(html, /清空左侧选区/);
+  assert.match(html, /Backspace \/ Delete/);
   assert.doesNotMatch(html, /5 切换全部 \/ 不筛选/);
 });
 
@@ -76,11 +80,14 @@ test("guide documents UGit setup and links directly to it", async () => {
   assert.match(css, /white-space: pre-wrap;/);
 });
 
-test("release download page contains stable v0.1.0 assets and signing limitations", async () => {
+test("release download page contains the current stable assets and signing limitations", async () => {
   const html = await render("/download");
-  assert.match(html, /github\.com\/tadazly\/sheetproof\/releases\/download\/v0\.1\.0/);
-  assert.match(html, /releases\/download\/v0\.1\.0\/SheetProof-windows-amd64\.exe/);
-  assert.match(html, /releases\/download\/v0\.1\.0\/SheetProof-macos-universal\.zip/);
+  const source = JSON.parse(
+    await readFile(fileURLToPath(new URL("../../product/product.json", import.meta.url)), "utf8"),
+  );
+  assert.ok(html.includes(source.downloads.windows));
+  assert.ok(html.includes(source.downloads.macos));
+  assert.ok(html.includes(source.downloads.source));
   assert.match(html, /SHA-256/);
   assert.match(html, /未进行代码签名/);
   assert.match(html, /未公证/);
