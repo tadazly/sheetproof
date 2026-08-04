@@ -31,6 +31,8 @@ param(
 
     [switch]$ClientAreaOnly,
 
+    [switch]$UsePrintWindow,
+
     [ValidateRange(0, 4096)]
     [int]$CaptureX = 0,
 
@@ -109,6 +111,9 @@ public static class UgglsxAcceptanceWindow {
     [DllImport("user32.dll")]
     public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint flags);
+
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
 
@@ -175,6 +180,13 @@ if ($windowHandle -eq [IntPtr]::Zero) {
 if ($WarmupSeconds -gt 0) {
     Start-Sleep -Seconds $WarmupSeconds
 }
+
+$settledWindowHandle = [UgglsxAcceptanceWindow]::FindTopLevelWindow($process.Id)
+if ($settledWindowHandle -eq [IntPtr]::Zero) {
+    throw "The SheetProof window disappeared after startup (PID $($process.Id))."
+}
+$windowHandle = $settledWindowHandle
+[void][UgglsxAcceptanceWindow]::SetForegroundWindow($windowHandle)
 
 foreach ($key in $Keys) {
     [void][UgglsxAcceptanceWindow]::SetForegroundWindow($windowHandle)
@@ -265,13 +277,48 @@ if ($captureWidth -le 0 -or $captureHeight -le 0) {
 $bitmap = New-Object System.Drawing.Bitmap($captureWidth, $captureHeight)
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 try {
-    $graphics.CopyFromScreen(
-        $captureLeft,
-        $captureTop,
-        0,
-        0,
-        (New-Object System.Drawing.Size($captureWidth, $captureHeight))
-    )
+    try {
+        if ($UsePrintWindow) {
+            throw "PrintWindow capture requested."
+        }
+        $graphics.CopyFromScreen(
+            $captureLeft,
+            $captureTop,
+            0,
+            0,
+            (New-Object System.Drawing.Size($captureWidth, $captureHeight))
+        )
+    } catch {
+        $windowBitmap = New-Object System.Drawing.Bitmap($availableWidth, $availableHeight)
+        $windowGraphics = [System.Drawing.Graphics]::FromImage($windowBitmap)
+        $windowHdc = [IntPtr]::Zero
+        try {
+            $windowHdc = $windowGraphics.GetHdc()
+            $printFlags = if ($ClientAreaOnly) { [uint32]3 } else { [uint32]2 }
+            if (-not [UgglsxAcceptanceWindow]::PrintWindow($windowHandle, $windowHdc, $printFlags)) {
+                throw "CopyFromScreen failed and PrintWindow could not capture the SheetProof window."
+            }
+        } finally {
+            if ($windowHdc -ne [IntPtr]::Zero) {
+                $windowGraphics.ReleaseHdc($windowHdc)
+            }
+            $windowGraphics.Dispose()
+        }
+        try {
+            $destination = New-Object System.Drawing.Rectangle(0, 0, $captureWidth, $captureHeight)
+            $graphics.DrawImage(
+                $windowBitmap,
+                $destination,
+                $CaptureX,
+                $CaptureY,
+                $captureWidth,
+                $captureHeight,
+                [System.Drawing.GraphicsUnit]::Pixel
+            )
+        } finally {
+            $windowBitmap.Dispose()
+        }
+    }
     $bitmap.Save($resolvedOutput, [System.Drawing.Imaging.ImageFormat]::Png)
 } finally {
     $graphics.Dispose()

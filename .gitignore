@@ -1,3 +1,12 @@
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+
+# Frontend-generated files
+/frontend/wailsjs/
+/frontend/package.json.md5
+
+# Desktop build output; keep source icons under version control
 /build/
 !/build/
 /build/*
@@ -6,9 +15,21 @@
 !/build/windows/
 /build/windows/*
 !/build/windows/icon.ico
-/frontend/node_modules/
-/frontend/wailsjs/
-/frontend/package.json.md5
+
+# Local caches, logs, and temporary files
+.cache/
+*.log
 *.out
+*.tmp
+*.bak
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Operating-system and editor metadata
 .DS_Store
-.cache
+Thumbs.db
+.idea/
+.vscode/

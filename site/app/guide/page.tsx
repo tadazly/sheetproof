@@ -20,7 +20,7 @@ export default function GuidePage() {
           <ScreenshotViewer src={shot.src} alt={shot.alt} caption={shot.caption} width={shot.width} height={shot.height} />
         </article>;
       })}</div>
-      <aside className="shortcut-card"><p className="eyebrow">快捷键</p><h2>常用操作</h2><dl><div><dt>差异行筛选</dt><dd>1–4 切换分类，5 全选</dd></div><div><dt>全选单元格</dt><dd>Ctrl / Command + A</dd></div><div><dt>清空左侧选区</dt><dd>Backspace / Delete</dd></div><div><dt>回看修改前</dt><dd>表格聚焦后按住 Tab</dd></div><div><dt>保存</dt><dd>Ctrl / Command + S</dd></div><div><dt>另存为</dt><dd>Ctrl / Command + Shift + S</dd></div><div><dt>撤销</dt><dd>Ctrl / Command + Z</dd></div><div><dt>缩放</dt><dd>Ctrl / Command + 滚轮</dd></div><div><dt>编辑左侧</dt><dd>双击单元格</dd></div></dl></aside>
+      <aside className="shortcut-card"><p className="eyebrow">快捷键</p><h2>常用操作</h2><dl><div><dt>差异行筛选</dt><dd>1–4 切换分类，5 全选</dd></div><div><dt>全选单元格</dt><dd>Ctrl / ⌘ + A</dd></div><div><dt>清空左侧选区</dt><dd>Backspace / Delete</dd></div><div><dt>回看修改前</dt><dd>表格聚焦后按住 Tab</dd></div><div><dt>保存</dt><dd>Ctrl / ⌘ + S</dd></div><div><dt>另存为</dt><dd>Ctrl / ⌘ + Shift + S</dd></div><div><dt>撤销</dt><dd>Ctrl / ⌘ + Z</dd></div><div><dt>缩放</dt><dd>Ctrl / ⌘ + 滚轮</dd></div><div><dt>编辑左侧</dt><dd>双击单元格</dd></div></dl></aside>
     </section>
     <section className="section page-width mode-grid">
       <article><p className="eyebrow">直接打开文件</p><h2>双文件模式</h2><p>适合临时核对两个工作簿。左侧可编辑并可切换保存目标，右侧始终只读。</p><pre><code>sheetproof compare --left current.xlsx --right target.xlsx</code></pre></article>

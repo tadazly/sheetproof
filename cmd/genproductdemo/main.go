@@ -24,14 +24,32 @@ func main() {
 
 	leftPath := filepath.Join(*dir, "balance_worktree.xlsx")
 	rightPath := filepath.Join(*dir, "balance_origin-main.xlsx")
+	positionLeftPath := filepath.Join(*dir, "balance_position-left.xlsx")
+	positionRightPath := filepath.Join(*dir, "balance_position-right.xlsx")
+	mergedPath := filepath.Join(*dir, "balance_merged-left.xlsx")
 	if err := writeWorkbook(leftPath, leftSheets()); err != nil {
 		fatal(err)
 	}
 	if err := writeWorkbook(rightPath, rightSheets()); err != nil {
 		fatal(err)
 	}
+	positionLeft := leftSheets()
+	positionRight := rightSheets()
+	positionLeft[0].rows[0][0] = "序号"
+	positionRight[0].rows[0][0] = "序号"
+	if err := writeWorkbook(positionLeftPath, positionLeft); err != nil {
+		fatal(err)
+	}
+	if err := writeWorkbook(positionRightPath, positionRight); err != nil {
+		fatal(err)
+	}
+	merged := leftSheets()
+	merged[0].rows[1][4] = 1360
+	if err := writeWorkbook(mergedPath, merged); err != nil {
+		fatal(err)
+	}
 
-	fmt.Printf("generated product demo:\n  %s\n  %s\n", leftPath, rightPath)
+	fmt.Printf("generated product demo:\n  %s\n  %s\n  %s\n  %s\n  %s\n", leftPath, rightPath, positionLeftPath, positionRightPath, mergedPath)
 }
 
 func leftSheets() []sheetData {
@@ -82,9 +100,12 @@ func rightSheets() []sheetData {
 	sheets[0].rows[2][5] = 150
 	sheets[0].rows[3][9] = 3
 	sheets[0].rows[4][8] = 5.0
-	sheets[0].rows = append(sheets[0].rows,
-		[]any{1011, "tide_ilan", "潮汐·伊澜", "辅助", 940, 108, 68, 0.09, 4.8, 24, "Role/Healer/Ilan"},
-	)
+	// 新角色插入现有记录中间，用于展示主键对齐与按行号比较的区别。
+	newRole := []any{1011, "tide_ilan", "潮汐·伊澜", "辅助", 940, 108, 68, 0.09, 4.8, 24, "Role/Healer/Ilan"}
+	insertAt := 4
+	sheets[0].rows = append(sheets[0].rows, nil)
+	copy(sheets[0].rows[insertAt+1:], sheets[0].rows[insertAt:])
+	sheets[0].rows[insertAt] = newRole
 
 	// 主分支尚未包含雪原 Boss，并调整了遗迹关卡的产出。
 	sheets[1].rows[4][4] = 600

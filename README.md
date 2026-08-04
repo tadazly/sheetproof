@@ -1,12 +1,12 @@
 # SheetProof · 表鉴
 
-> 让配置表变更也能逐格审阅。
+> Git 工作流中的 XLSX 差异审阅工具。
 
-SheetProof 在本机比较两个 .xlsx 的值、公式与类型，帮助游戏开发和数据团队核对变更、选择性合并，再安全写回工作区。 SheetProof 在本机读取工作簿，不依赖 Excel；桌面界面和 CLI 复用同一套 Go 差异、合并、撤销与安全保存核心。
+SheetProof 比较 Git 工作区中的 .xlsx 与经过校验的本地引用，按主键对齐记录，并将确认的单元格或整行写入左侧文件。 SheetProof 在本机读取工作簿，不依赖 Excel；桌面界面和 CLI 复用同一套 Go 差异、合并、撤销与安全保存核心。
 
 [下载与发布](#下载与发布) · [快速开始](#快速开始) · [使用方式](#使用方式) · [架构说明](docs/architecture.md) · [更新日志](CHANGELOG.md)
 
-[![SheetProof 游戏角色配置对比界面](site/public/screenshots/sheetproof-game-balance-overview.png)](site/public/screenshots/sheetproof-game-balance-overview.png)
+[![SheetProof 游戏角色配置对比界面](site/public/screenshots/sheetproof-key-alignment-v030.png)](site/public/screenshots/sheetproof-key-alignment-v030.png)
 
 > 示例展示角色成长、关卡掉落和技能参数配置。截图可点击或单独打开查看原始尺寸。
 
@@ -21,11 +21,11 @@ SheetProof 在本机比较两个 .xlsx 的值、公式与类型，帮助游戏�
 1. 打开左右两个 `.xlsx`，或从本地 Git 仓库选择工作区文件和对比引用。
 2. 在当前工作表的对比摘要中多选修改、增加、删除或冲突行筛选，核对左右值与类型；每次启动默认显示完整数据。
 
-[![聚焦查看角色配置差异](site/public/screenshots/sheetproof-review-difference.png)](site/public/screenshots/sheetproof-review-difference.png)
+[![聚焦查看角色配置差异](site/public/screenshots/sheetproof-review-difference-v030.png)](site/public/screenshots/sheetproof-review-difference-v030.png)
 
 3. 把确认过的单元格或整行复制到左侧，必要时撤销，然后保存左侧结果。
 
-[![合并并保存角色名称后的界面](site/public/screenshots/sheetproof-merge-result.png)](site/public/screenshots/sheetproof-merge-result.png)
+[![合并角色生命值后的界面](site/public/screenshots/sheetproof-merge-result-v030.png)](site/public/screenshots/sheetproof-merge-result-v030.png)
 
 ## 核心特性
 
