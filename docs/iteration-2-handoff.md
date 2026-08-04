@@ -1079,7 +1079,7 @@ cd frontend && npm run test && npm run typecheck
   全部恢复；Backspace 清空单格后可撤销；右侧聚焦后连续按 Delete 和 Backspace 内容不变。
   截图保存在 `build/acceptance/keyboard-shortcuts/`，验收结束后已关闭应用与临时本地服务器。
 
-## 2026-08-03：v0.2.0 正式发布候选
+## 2026-08-03 至 2026-08-04：v0.2.0 正式发布
 
 - 上一个公开版本为预览版 `v0.1.0`。本轮保持文件直开与仓库模式兼容，同时新增仓库目录拖入、
   应用内打开进度与错误反馈、外部文件变化检测/安全重载，以及全选和可撤销批量清空，因此按
@@ -1101,5 +1101,18 @@ cd frontend && npm run test && npm run typecheck
   URL、真实用户目录、工作区路径、远程账号或服务器身份。前端压缩包唯一的 IPv4 形态命中来自
   既有 SVG 图标的数字序列，不是网络地址。`v0.1.0..HEAD` 没有新增提交；旧公开历史中已记录的
   低敏感度本机目录截图问题已在上一版本准备阶段替换，无凭据需要轮换，本次不重写历史。
-- 候选尚未 commit、push、打 `v0.2.0` 标签、运行 GitHub Release workflow、发布 GitHub Release
-  或部署 Lightsail 正式官网；这些远端动作必须在维护者明确确认本候选范围后执行。
+- 维护者明确确认后，发布提交 `3315e65` 已无强推地推送到 `origin/main`。提交级 Release workflow
+  的源码验证、Windows amd64 和 macOS universal 构建全部成功后，才创建并推送 annotated tag
+  `v0.2.0`；标签级 workflow 再次完成相同验证、双平台构建、校验和与 Draft Release 创建。
+- GitHub Release 已作为预览版公开在 `https://github.com/tadazly/sheetproof/releases/tag/v0.2.0`。
+  `SheetProof-windows-amd64.exe`、`SheetProof-macos-universal.zip` 和 `SHA256SUMS.txt` 三项资产均可
+  公网下载，校验文件中的两条 SHA-256 与实际资产一致。Windows 产物仍未签名，macOS 产物仍未
+  签名或公证，发布说明明确保留这些限制。
+- 发布阶段发现首次本地提交由 Git 自动带入一项新的本机账户身份；在任何 push 之前已把 author
+  和 committer 修正为仓库既有公开身份，未形成远端暴露，也没有凭据需要轮换。最终候选差异、
+  更新日志、官网静态产物以及正式 Windows/macOS 二进制均未发现凭据、私钥、真实用户路径、
+  工作区路径、远程账号或服务器身份。
+- 2026-08-04 通过 `scripts/deploy-site-lightsail.ps1` 将静态官网部署到正式 Lightsail/Caddy 目标。
+  远端 Caddy 配置验证通过，源站下载页确认显示 `v0.2.0`；同一 Caddy 实例识别到的 5 个站点
+  全部健康。Cloudflare 公网首页、功能、使用说明、下载和更新日志均返回 200 并显示当前版本，
+  favicon、SVG/PNG 图标和 Open Graph 图片也完成实际下载验证。部署脚本保留了上一站点目录用于回退。
