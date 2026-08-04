@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -674,6 +675,497 @@ func TestGitMergeAlignsShiftedUniqueIDsAndExplainsFileConflict(t *testing.T) {
 	}
 }
 
+func TestOrdinaryComparisonAlignsInsertedUniqueIDAndPreservesConflictRule(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{
+		{"id", "name", "type"},
+		{1, "one", "common"},
+		{2, "two", "common"},
+		{3, "left-three", "left-type"},
+	})
+	writeRowsWorkbook(t, right, [][]any{
+		{"id", "name", "type"},
+		{1, "one", "common"},
+		{99, "inserted", "new"},
+		{2, "two", "common"},
+		{3, "right-three", "right-type"},
+	})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	summary := session.Summary()
+	sheet := summary.Diff.Sheets[0]
+	if sheet.AddedRowCount != 1 || sheet.DeletedRowCount != 0 ||
+		sheet.ModifiedRowCount != 0 || sheet.ConflictRowCount != 1 {
+		t.Fatalf("aligned row counts = %+v", sheet)
+	}
+	if !summary.RowAlignment.Available || !summary.RowAlignment.Applied ||
+		summary.RowAlignment.Mode != RowAlignmentAuto || summary.RowAlignment.Moved != 2 {
+		t.Fatalf("alignment summary = %+v", summary.RowAlignment)
+	}
+	if len(summary.Warnings) == 0 || !strings.Contains(summary.Warnings[0], "唯一 ID 对齐") {
+		t.Fatalf("alignment warnings = %#v", summary.Warnings)
+	}
+
+	region, err := session.Region("Sheet1", 2, 4, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[6].Right.Raw != "2" || region.Cells[9].Right.Raw != "3" {
+		t.Fatalf("common IDs were not aligned: %+v", region.Cells)
+	}
+	if region.Cells[9].RowStatus != diff.RowConflict {
+		t.Fatalf("same-ID all-data change lost conflict status: %+v", region.Cells[9])
+	}
+	if region.Cells[3].Right.Raw != "99" || region.Cells[3].Left.Present ||
+		region.Cells[3].RowStatus != diff.RowAdded {
+		t.Fatalf("inserted ID row was not classified as added in place: %+v", region.Cells[3])
+	}
+
+	if err := session.CopyRowsRightToLeft("Sheet1", []int{3}); err != nil {
+		t.Fatal(err)
+	}
+	afterCopy := session.Summary().Diff.Sheets[0]
+	if afterCopy.AddedRowCount != 0 || afterCopy.ConflictRowCount != 1 {
+		t.Fatalf("copying aligned addition changed unrelated classifications: %+v", afterCopy)
+	}
+	copied, err := session.Region("Sheet1", 3, 1, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copied.Cells[0].Left.Raw != "99" || copied.Cells[1].Left.Raw != "inserted" {
+		t.Fatalf("aligned copy used wrong physical source row: %+v", copied.Cells)
+	}
+	if err := session.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	afterUndo := session.Summary().Diff.Sheets[0]
+	if afterUndo.AddedRowCount != 1 || afterUndo.ConflictRowCount != 1 {
+		t.Fatalf("undo did not restore aligned classifications: %+v", afterUndo)
+	}
+	if err := session.CopyRowsRightToLeft("Sheet1", []int{5}); err != nil {
+		t.Fatal(err)
+	}
+	afterConflictCopy := session.Summary()
+	if afterConflictCopy.Diff.Sheets[0].ConflictRowCount != 0 || len(afterConflictCopy.Resolutions) != 1 {
+		t.Fatalf("aligned conflict copy result = %+v", afterConflictCopy)
+	}
+	resolution := afterConflictCopy.Resolutions[0]
+	if resolution.SourceRow != 5 || resolution.TargetRow != 4 || resolution.TargetSourceRow != 5 {
+		t.Fatalf("aligned conflict resolution coordinates = %+v", resolution)
+	}
+	if err := session.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if got := session.Summary().Diff.Sheets[0].ConflictRowCount; got != 1 {
+		t.Fatalf("undo did not restore aligned conflict: %d", got)
+	}
+}
+
+func TestOrdinaryComparisonAlignsLocalizedQualifiedIDHeader(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{
+		{"地图ID", "地图名称", "资源"},
+		{20044, "共同地图", "room44"},
+		{20045, "仅工作区", "room45"},
+		{50001, "克洛斯星", "klos"},
+		{50002, "克洛斯星林间", "klosWoodland"},
+	})
+	writeRowsWorkbook(t, right, [][]any{
+		{"地图ID", "地图名称", "资源"},
+		{20044, "共同地图", "room44"},
+		{50001, "克洛斯星", "klos"},
+		{50002, "克洛斯星林间", "klosWoodland"},
+	})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	summary := session.Summary()
+	sheet := summary.Diff.Sheets[0]
+	if sheet.DeletedRowCount != 1 || sheet.AddedRowCount != 0 ||
+		sheet.ModifiedRowCount != 0 || sheet.ConflictRowCount != 0 {
+		t.Fatalf("localized ID row counts = %+v", sheet)
+	}
+	if sheet.IDColumn != 1 || !summary.RowAlignment.Available ||
+		!summary.RowAlignment.Applied || summary.RowAlignment.Moved != 2 {
+		t.Fatalf("localized ID alignment metadata = sheet %+v alignment %+v", sheet, summary.RowAlignment)
+	}
+	region, err := session.Region("Sheet1", 3, 3, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Left.Raw != "20045" || region.Cells[0].Right.Present ||
+		region.Cells[0].RowStatus != diff.RowDeleted {
+		t.Fatalf("left-only localized ID was not deleted: %+v", region.Cells[0])
+	}
+	if region.Cells[3].Left.Raw != "50001" || region.Cells[3].Right.Raw != "50001" ||
+		region.Cells[3].Status != diff.Unchanged ||
+		region.Cells[6].Left.Raw != "50002" || region.Cells[6].Right.Raw != "50002" ||
+		region.Cells[6].Status != diff.Unchanged {
+		t.Fatalf("localized common IDs were not aligned: %+v", region.Cells)
+	}
+}
+
+func TestRightOnlyMiddleRowsKeepTheirOriginalNeighborhood(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	leftRows := [][]any{{"id", "value"}}
+	rightRows := [][]any{{"id", "value"}}
+	for id := 1; id <= 103; id++ {
+		rightRows = append(rightRows, []any{id, fmt.Sprintf("value-%d", id)})
+		if id != 43 && id != 48 {
+			leftRows = append(leftRows, []any{id, fmt.Sprintf("value-%d", id)})
+		}
+	}
+	writeRowsWorkbook(t, left, leftRows)
+	writeRowsWorkbook(t, right, rightRows)
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	sheet := session.Summary().Diff.Sheets[0]
+	if sheet.AddedRowCount != 2 || sheet.DeletedRowCount != 0 ||
+		sheet.ModifiedRowCount != 0 || sheet.ConflictRowCount != 0 {
+		t.Fatalf("middle deletion counts = %+v", sheet)
+	}
+	wantRows := map[int]string{44: "43", 49: "48"}
+	for _, row := range sheet.Rows {
+		if wantID := wantRows[row.Row]; wantID != "" {
+			if row.Status != diff.RowAdded || row.ID != wantID || row.LeftRow != 0 || row.RightRow != row.Row {
+				t.Fatalf("middle deletion row = %+v, want logical row %d ID %s", row, row.Row, wantID)
+			}
+			delete(wantRows, row.Row)
+		}
+	}
+	if len(wantRows) != 0 {
+		t.Fatalf("middle deletion rows were not retained in place: %#v", wantRows)
+	}
+	region, err := session.Region("Sheet1", 43, 7, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[2].Right.Raw != "43" || region.Cells[2].Left.Present ||
+		region.Cells[4].Left.Raw != "44" || region.Cells[4].Right.Raw != "44" ||
+		region.Cells[12].Right.Raw != "48" || region.Cells[12].Left.Present {
+		t.Fatalf("middle deletion neighborhood = %+v", region.Cells)
+	}
+	tail, err := session.Region("Sheet1", 104, 1, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tail.Cells[0].Left.Raw != "103" || tail.Cells[0].Right.Raw != "103" ||
+		tail.Cells[0].RowStatus != diff.RowUnchanged {
+		t.Fatalf("tail contains displaced deletion instead of final common ID: %+v", tail.Cells)
+	}
+}
+
+func TestSessionCanSetAndClearManualKeyColumnBeforeEditing(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{{"code", "value"}, {1, "one"}, {3, "three"}})
+	writeRowsWorkbook(t, right, [][]any{{"code", "value"}, {1, "one"}, {2, "two"}, {3, "three"}})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if got := session.Summary().Diff.Sheets[0].IDColumn; got != 0 {
+		t.Fatalf("non-ID header selected automatic key column %d", got)
+	}
+	if err := session.SetKeyColumn("Sheet1", 1); err != nil {
+		t.Fatal(err)
+	}
+	keyed := session.Summary()
+	if keyed.Diff.Sheets[0].IDColumn != 1 || keyed.Diff.Sheets[0].AddedRowCount != 1 ||
+		keyed.Diff.Sheets[0].ModifiedRowCount != 0 || !keyed.RowAlignment.Sheets["Sheet1"].Applied {
+		t.Fatalf("manual key result = %+v / %+v", keyed.Diff.Sheets[0], keyed.RowAlignment.Sheets["Sheet1"])
+	}
+	region, err := session.Region("Sheet1", 3, 2, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Right.Raw != "2" || region.Cells[0].Left.Present ||
+		region.Cells[2].Left.Raw != "3" || region.Cells[2].Right.Raw != "3" {
+		t.Fatalf("manual-key in-place insertion = %+v", region.Cells)
+	}
+	if err := session.SetKeyColumn("Sheet1", 0); err != nil {
+		t.Fatal(err)
+	}
+	if cleared := session.Summary(); cleared.Diff.Sheets[0].IDColumn != 0 ||
+		cleared.RowAlignment.Sheets["Sheet1"].Applied {
+		t.Fatalf("cleared manual key = %+v / %+v", cleared.Diff.Sheets[0], cleared.RowAlignment.Sheets["Sheet1"])
+	}
+	if err := session.SetKeyColumn("Sheet1", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.EditLeft(workbook.CellRef{Sheet: "Sheet1", Row: 2, Col: 2}, "edited", "text"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SetKeyColumn("Sheet1", 0); err == nil {
+		t.Fatal("manual key changed despite existing undo history")
+	}
+}
+
+func TestAlignedSelectionClearUsesEditablePhysicalRowsAndCanUndo(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{{"code", "value"}, {1, "one"}, {3, "three"}})
+	writeRowsWorkbook(t, right, [][]any{{"code", "value"}, {1, "one"}, {2, "two"}, {3, "three"}})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if err := session.SetKeyColumn("Sheet1", 1); err != nil {
+		t.Fatal(err)
+	}
+	// Logical row 4 is editable physical row 3 because logical row 3 is the
+	// right-only code 2 record.
+	if err := session.ClearLeftSelection("Sheet1", 4, 4, 2, 2, nil); err != nil {
+		t.Fatal(err)
+	}
+	region, err := session.Region("Sheet1", 2, 3, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[1].Left.Raw != "one" || region.Cells[5].Left.Present || region.Cells[5].Right.Raw != "three" {
+		t.Fatalf("logical clear targeted the wrong editable row: %+v", region.Cells)
+	}
+	if err := session.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := session.Region("Sheet1", 4, 1, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Cells[1].Left.Raw != "three" || restored.Cells[1].Status != diff.Unchanged {
+		t.Fatalf("undo did not restore aligned physical row: %+v", restored.Cells)
+	}
+}
+
+func TestOrdinaryComparisonDoesNotGuessBetweenMultipleQualifiedIDHeaders(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{{"地图ID", "父级ID", "名称"}, {1, 10, "one"}, {2, 10, "two"}})
+	writeRowsWorkbook(t, right, [][]any{{"地图ID", "父级ID", "名称"}, {2, 10, "two"}, {1, 10, "one"}})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	summary := session.Summary()
+	if summary.RowAlignment.Available || summary.RowAlignment.Applied || summary.Diff.Sheets[0].IDColumn != 0 {
+		t.Fatalf("ambiguous qualified IDs enabled alignment: %+v / %+v", summary.RowAlignment, summary.Diff.Sheets[0])
+	}
+}
+
+func TestUniqueIDAlignmentAppliesAcrossComparisonEntryPoints(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{{"id", "value"}, {"", "helper"}, {1, "one"}, {2, "two"}})
+	writeRowsWorkbook(t, right, [][]any{{"id", "value"}, {"", "helper"}, {99, "new"}, {1, "one"}, {2, "two"}})
+
+	for _, test := range []struct {
+		name    string
+		options Options
+	}{
+		{name: "direct files"},
+		{name: "git difftool", options: Options{GitDiff: true, ReadonlyLeft: true}},
+		{name: "UGit worktree", options: Options{UGitWorktree: true}},
+		{name: "repository", options: Options{RepositoryPath: dir, RepositoryFile: "table.xlsx"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			session, err := Open(left, right, test.options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			sheet := session.Summary().Diff.Sheets[0]
+			if sheet.AddedRowCount != 1 || sheet.ModifiedRowCount != 0 || sheet.DeletedRowCount != 0 {
+				t.Fatalf("entry point row counts = %+v", sheet)
+			}
+		})
+	}
+}
+
+func TestOrdinaryComparisonPartiallyAlignsReliableIDsAroundAmbiguousRows(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		tail [][]any
+	}{
+		{
+			name: "duplicate IDs elsewhere in the sheet",
+			tail: [][]any{{42, "helper-a"}, {42, "helper-b"}},
+		},
+		{
+			name: "blank ID helper row elsewhere in the sheet",
+			tail: [][]any{{"", "helper"}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			left := filepath.Join(dir, "left.xlsx")
+			right := filepath.Join(dir, "right.xlsx")
+			leftRows := [][]any{
+				{"id", "value"},
+				{4, "common-four"},
+				{7, "deleted-seven"},
+				{8, "deleted-eight"},
+				{9, "deleted-nine"},
+				{1001, "common-1001"},
+				{1002, "common-1002"},
+			}
+			rightRows := [][]any{
+				{"id", "value"},
+				{4, "common-four"},
+				{1001, "common-1001"},
+				{1002, "common-1002"},
+			}
+			leftRows = append(leftRows, test.tail...)
+			rightRows = append(rightRows, test.tail...)
+			writeRowsWorkbook(t, left, leftRows)
+			writeRowsWorkbook(t, right, rightRows)
+			session, err := Open(left, right, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			summary := session.Summary()
+			if !summary.RowAlignment.Available || !summary.RowAlignment.Applied || summary.RowAlignment.Moved != 2 {
+				t.Fatalf("reliable IDs were not partially aligned: %+v", summary.RowAlignment)
+			}
+			sheet := summary.Diff.Sheets[0]
+			if sheet.DeletedRowCount != 3 || sheet.AddedRowCount != 0 ||
+				sheet.ModifiedRowCount != 0 || sheet.ConflictRowCount != 0 {
+				t.Fatalf("ambiguous helper rows created false differences: %+v", sheet)
+			}
+			region, err := session.Region("Sheet1", 3, 5, 1, 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if region.Cells[0].Right.Present || region.Cells[0].RowStatus != diff.RowDeleted ||
+				region.Cells[2].Right.Present || region.Cells[2].RowStatus != diff.RowDeleted ||
+				region.Cells[4].Right.Present || region.Cells[4].RowStatus != diff.RowDeleted {
+				t.Fatalf("left-only IDs were not retained as deleted rows: %+v", region.Cells)
+			}
+			if region.Cells[6].Left.Raw != "1001" || region.Cells[6].Right.Raw != "1001" ||
+				region.Cells[6].Status != diff.Unchanged ||
+				region.Cells[8].Left.Raw != "1002" || region.Cells[8].Right.Raw != "1002" ||
+				region.Cells[8].Status != diff.Unchanged {
+				t.Fatalf("common IDs after deleted rows were not aligned: %+v", region.Cells)
+			}
+		})
+	}
+}
+
+func TestOrdinaryComparisonFallsBackWithoutAnyReliableID(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{{"id", "value"}, {1, "left-a"}, {1, "left-b"}})
+	writeRowsWorkbook(t, right, [][]any{{"id", "value"}, {1, "right-a"}, {1, "right-b"}})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	summary := session.Summary()
+	if summary.RowAlignment.Available || summary.RowAlignment.Applied {
+		t.Fatalf("ambiguous-only IDs enabled semantic alignment: %+v", summary.RowAlignment)
+	}
+	region, err := session.Region("Sheet1", 2, 1, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Right.Raw != "1" || region.Cells[1].Right.Raw != "right-a" {
+		t.Fatalf("ambiguous-only IDs did not retain physical rows: %+v", region.Cells)
+	}
+}
+
+func TestOrdinaryComparisonRequiresSameIDHeaderColumn(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{{"id", "value"}, {1, "same"}})
+	writeRowsWorkbook(t, right, [][]any{{"value", "id"}, {"same", 1}})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if alignment := session.Summary().RowAlignment; alignment.Available || alignment.Applied {
+		t.Fatalf("different ID columns enabled alignment: %+v", alignment)
+	}
+	region, err := session.Region("Sheet1", 2, 1, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Right.Raw != "same" || region.Cells[1].Right.Raw != "1" {
+		t.Fatalf("different ID columns did not retain physical rows: %+v", region.Cells)
+	}
+}
+
+func TestOrdinaryComparisonCanSwitchBackToPhysicalRowsBeforeEditing(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{{"id", "value"}, {1, "one"}, {2, "two"}})
+	writeRowsWorkbook(t, right, [][]any{{"id", "value"}, {2, "two"}, {1, "one"}})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if sheet := session.Summary().Diff.Sheets[0]; sheet.DifferenceCount != 0 {
+		t.Fatalf("ID-aligned reorder differences = %+v", sheet)
+	}
+	if err := session.SetRowAlignment(RowAlignmentPosition); err != nil {
+		t.Fatal(err)
+	}
+	positionSummary := session.Summary()
+	if positionSummary.RowAlignment.Mode != RowAlignmentPosition || positionSummary.RowAlignment.Applied {
+		t.Fatalf("position alignment summary = %+v", positionSummary.RowAlignment)
+	}
+	if sheet := positionSummary.Diff.Sheets[0]; sheet.ModifiedRowCount != 2 {
+		t.Fatalf("physical-row reorder counts = %+v", sheet)
+	}
+	if err := session.SetRowAlignment(RowAlignmentAuto); err != nil {
+		t.Fatal(err)
+	}
+	if sheet := session.Summary().Diff.Sheets[0]; sheet.DifferenceCount != 0 {
+		t.Fatalf("restored ID alignment = %+v", sheet)
+	}
+	if err := session.EditLeft(workbook.CellRef{Sheet: "Sheet1", Row: 2, Col: 2}, "edited", "text"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SetRowAlignment(RowAlignmentPosition); err == nil {
+		t.Fatal("alignment switched despite existing undo history")
+	}
+}
+
 func TestSessionConflictCellOverwriteClearsOnlyTheCopiedCell(t *testing.T) {
 	left, right := createIDWorkbookPair(t)
 	session, err := Open(left, right, Options{})
@@ -751,6 +1243,28 @@ func createIDWorkbookPair(t *testing.T) (string, string) {
 		}
 	}
 	return left, right
+}
+
+func writeRowsWorkbook(t *testing.T, path string, rows [][]any) {
+	t.Helper()
+	file := excelize.NewFile()
+	for rowIndex, row := range rows {
+		for colIndex, value := range row {
+			axis, err := excelize.CoordinatesToCellName(colIndex+1, rowIndex+1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := file.SetCellValue("Sheet1", axis, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := file.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSessionUndoStepsThroughSeparateCopies(t *testing.T) {
@@ -1027,6 +1541,47 @@ func TestSessionCanAttachAndDetachRightWithoutLosingLeftEdits(t *testing.T) {
 	}
 	if err := session.CopyRightToLeft(workbook.CellRef{Sheet: "数据 表", Row: 1, Col: 1}); err == nil {
 		t.Fatal("copy unexpectedly succeeded without a right workbook")
+	}
+}
+
+func TestCollectRegionStatusesOnlyBuildsRequestedViewport(t *testing.T) {
+	sheetDiff := &diff.SheetDiff{Name: "large"}
+	for row := 1; row <= 10_000; row++ {
+		status := diff.RowModified
+		if row == 9_999 {
+			status = diff.RowConflict
+		}
+		sheetDiff.Rows = append(sheetDiff.Rows, diff.RowDiff{Row: row, Status: status})
+		for _, col := range []int{1, 3, 5} {
+			sheetDiff.Differences = append(sheetDiff.Differences, diff.CellDiff{
+				Ref: workbook.CellRef{Sheet: "large", Row: row, Col: col}, Status: diff.Modified,
+			})
+		}
+	}
+	statuses := make(map[workbook.CellKey]diff.CellStatus)
+	rowStatuses := make(map[int]diff.RowStatus)
+	collectRegionStatuses(
+		sheetDiff,
+		[]regionRow{{source: 5}, {source: 9_999}},
+		2,
+		4,
+		statuses,
+		rowStatuses,
+	)
+
+	if len(statuses) != 2 {
+		t.Fatalf("viewport statuses = %d, want 2", len(statuses))
+	}
+	for _, row := range []int{5, 9_999} {
+		if statuses[workbook.CellKey{Row: row, Col: 3}] != diff.Modified {
+			t.Fatalf("missing requested status for row %d", row)
+		}
+		if _, exists := statuses[workbook.CellKey{Row: row, Col: 1}]; exists {
+			t.Fatalf("included off-screen column for row %d", row)
+		}
+	}
+	if rowStatuses[5] != diff.RowModified || rowStatuses[9_999] != diff.RowConflict {
+		t.Fatalf("row statuses = %#v", rowStatuses)
 	}
 }
 

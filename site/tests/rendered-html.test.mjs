@@ -63,6 +63,15 @@ test("guide keeps the difference-row shortcut concise", async () => {
   assert.doesNotMatch(html, /5 切换全部 \/ 不筛选/);
 });
 
+test("changelog publishes alignment and scrollbar work as the v0.3.0 preview", async () => {
+  const html = await render("/changelog");
+  assert.match(html, />v0\.3\.0</);
+  assert.match(html, />预览版</);
+  assert.match(html, /横向和纵向滚动条/);
+  assert.match(html, /地图ID/);
+  assert.doesNotMatch(html, />未发布</);
+});
+
 test("guide documents UGit setup and links directly to it", async () => {
   const [home, guide, css] = await Promise.all([
     render(),

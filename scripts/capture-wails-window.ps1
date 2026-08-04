@@ -27,6 +27,8 @@ param(
 
     [string[]]$Clicks = @(),
 
+    [string[]]$RightClicks = @(),
+
     [switch]$ClientAreaOnly,
 
     [ValidateRange(0, 4096)]
@@ -180,6 +182,30 @@ foreach ($key in $Keys) {
     Start-Sleep -Milliseconds $KeyDelayMilliseconds
 }
 
+foreach ($click in $RightClicks) {
+    $parts = $click.Split(',')
+    if ($parts.Count -ne 2) {
+        throw "Right-click coordinates must use x,y window-relative format: $click"
+    }
+    $clickX = 0
+    $clickY = 0
+    if (-not [int]::TryParse($parts[0], [ref]$clickX) -or -not [int]::TryParse($parts[1], [ref]$clickY)) {
+        throw "Right-click coordinates must be integers: $click"
+    }
+    $clickRect = New-Object UgglsxAcceptanceWindow+Rect
+    if (-not [UgglsxAcceptanceWindow]::GetWindowRect($windowHandle, [ref]$clickRect)) {
+        throw "Could not read the SheetProof window bounds before right-click: $click"
+    }
+    [void][UgglsxAcceptanceWindow]::SetForegroundWindow($windowHandle)
+    [void][UgglsxAcceptanceWindow]::SetCursorPos($clickRect.Left + $clickX, $clickRect.Top + $clickY)
+    try {
+        [UgglsxAcceptanceWindow]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
+    } finally {
+        [UgglsxAcceptanceWindow]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
+    }
+    Start-Sleep -Milliseconds $KeyDelayMilliseconds
+}
+
 foreach ($click in $Clicks) {
     $parts = $click.Split(',')
     if ($parts.Count -ne 2) {
@@ -196,8 +222,11 @@ foreach ($click in $Clicks) {
     }
     [void][UgglsxAcceptanceWindow]::SetForegroundWindow($windowHandle)
     [void][UgglsxAcceptanceWindow]::SetCursorPos($clickRect.Left + $clickX, $clickRect.Top + $clickY)
-    [UgglsxAcceptanceWindow]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-    [UgglsxAcceptanceWindow]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    try {
+        [UgglsxAcceptanceWindow]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    } finally {
+        [UgglsxAcceptanceWindow]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    }
     Start-Sleep -Milliseconds $KeyDelayMilliseconds
 }
 

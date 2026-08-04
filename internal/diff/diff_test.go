@@ -207,6 +207,30 @@ func TestCompareDoesNotOfferNextIDForTextIDData(t *testing.T) {
 	}
 }
 
+func TestCompareUsesLocalizedQualifiedIDForConflictClassification(t *testing.T) {
+	left := book("left.xlsx", sheet("配置", 0, map[workbook.CellKey]workbook.CellValue{
+		{Row: 1, Col: 1}: value("地图ID", "string"),
+		{Row: 1, Col: 2}: value("name", "string"),
+		{Row: 1, Col: 3}: value("resource", "string"),
+		{Row: 2, Col: 1}: value("50001", "number"),
+		{Row: 2, Col: 2}: value("left", "string"),
+		{Row: 2, Col: 3}: value("left-room", "string"),
+	}))
+	right := book("right.xlsx", sheet("配置", 0, map[workbook.CellKey]workbook.CellValue{
+		{Row: 1, Col: 1}: value("地图ID", "string"),
+		{Row: 1, Col: 2}: value("name", "string"),
+		{Row: 1, Col: 3}: value("resource", "string"),
+		{Row: 2, Col: 1}: value("50001", "number"),
+		{Row: 2, Col: 2}: value("right", "string"),
+		{Row: 2, Col: 3}: value("right-room", "string"),
+	}))
+
+	data := Compare(left, right).Sheets[0]
+	if data.IDColumn != 1 || data.NextID != 50002 || data.ConflictRowCount != 1 || data.ModifiedRowCount != 0 {
+		t.Fatalf("localized ID metadata/classification = %+v", data)
+	}
+}
+
 func value(raw, kind string) workbook.CellValue {
 	return workbook.CellValue{Present: true, Raw: raw, Display: raw, Type: kind}
 }

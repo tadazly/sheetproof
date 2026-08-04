@@ -918,6 +918,28 @@ func (c *Controller) Summary() (coreapp.Summary, error) {
 	return session.Summary(), nil
 }
 
+func (c *Controller) SetRowAlignment(mode string) (coreapp.Summary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	if err := session.SetRowAlignment(coreapp.RowAlignmentMode(mode)); err != nil {
+		return session.Summary(), err
+	}
+	return session.Summary(), nil
+}
+
+func (c *Controller) SetKeyColumn(sheet string, column int) (coreapp.Summary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	if err := session.SetKeyColumn(sheet, column); err != nil {
+		return session.Summary(), err
+	}
+	return session.Summary(), nil
+}
+
 func (c *Controller) CheckExternalChanges() (coreapp.ExternalChanges, error) {
 	session, err := c.getSession()
 	if err != nil {

@@ -7,7 +7,7 @@
     "taglineZh": "让配置表变更也能逐格审阅。",
     "description": "A local-first desktop reviewer for Git-managed, data-heavy .xlsx workbooks, with controlled merging and safe worktree saves.",
     "descriptionZh": "SheetProof 在本机比较两个 .xlsx 的值、公式与类型，帮助游戏开发和数据团队核对变更、选择性合并，再安全写回工作区。",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "channel": "预览版",
     "formats": [".xlsx"],
     "platforms": ["Windows", "macOS"],
@@ -17,23 +17,23 @@
   },
   "downloads": {
     "releases": "https://github.com/tadazly/sheetproof/releases",
-    "windows": "https://github.com/tadazly/sheetproof/releases/download/v0.2.0/SheetProof-windows-amd64.exe",
-    "macos": "https://github.com/tadazly/sheetproof/releases/download/v0.2.0/SheetProof-macos-universal.zip",
-    "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.2.0.zip",
+    "windows": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-windows-amd64.exe",
+    "macos": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-macos-universal.zip",
+    "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.3.0.zip",
     "status": "Windows and macOS preview downloads are available from GitHub Releases. The desktop artifacts are unsigned, and the macOS build is not notarized."
   },
   "features": [
     {
       "title": "Workbook-aware comparison",
       "titleZh": "理解工作簿语义的对比",
-      "summary": "Compares sheets, values, formulas, explicit blanks, types, and worksheet order instead of diffing OOXML text.",
-      "summaryZh": "比较工作表、值、公式、显式空值、类型和工作表顺序，避开重新保存 XLSX 时产生的结构噪声。"
+      "summary": "Compares sheets, values, formulas, explicit blanks, and types; detected or user-selected key columns align records in place and can fall back to physical rows.",
+      "summaryZh": "比较工作表、值、公式、显式空值和类型；自动识别或右键指定主键列后，单侧记录会保留在原邻近位置，也可切换回物理行号。"
     },
     {
       "title": "Side-by-side review",
       "titleZh": "双栏差异审阅",
-      "summary": "Uses synchronized, virtualized grids with focused navigation and Git-style added, removed, modified, and conflict states.",
-      "summaryZh": "左右表格同步滚动，差异按新增、删除、修改和冲突分类，可以直接跳到需要核对的位置。"
+      "summary": "Uses synchronized, virtualized grids with focused navigation, scrollbar position markers, and Git-style added, removed, modified, and conflict states.",
+      "summaryZh": "左右表格同步滚动，横向和纵向滚动条按既有颜色标出差异位置，可以直接跳到需要核对的位置。"
     },
     {
       "title": "Current-sheet row filters",

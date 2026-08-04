@@ -41,8 +41,31 @@ type Summary struct {
 	Dirty         bool               `json:"dirty"`
 	UndoCount     int                `json:"undoCount"`
 	Warnings      []string           `json:"warnings"`
+	RowAlignment  RowAlignment       `json:"rowAlignment"`
 	MergeNotice   string             `json:"mergeNotice"`
 	SelectedSheet string             `json:"selectedSheet"`
+}
+
+type RowAlignmentMode string
+
+const (
+	RowAlignmentAuto     RowAlignmentMode = "auto"
+	RowAlignmentPosition RowAlignmentMode = "position"
+)
+
+type RowAlignment struct {
+	Mode      RowAlignmentMode             `json:"mode"`
+	Available bool                         `json:"available"`
+	Applied   bool                         `json:"applied"`
+	Moved     int                          `json:"moved"`
+	Sheets    map[string]SheetRowAlignment `json:"sheets"`
+}
+
+type SheetRowAlignment struct {
+	Available bool `json:"available"`
+	Applied   bool `json:"applied"`
+	Moved     int  `json:"moved"`
+	KeyColumn int  `json:"keyColumn"`
 }
 
 type ExternalFileChange struct {
@@ -72,13 +95,14 @@ func isAppendResolution(kind ResolutionKind) bool {
 }
 
 type RowResolution struct {
-	Sheet     string         `json:"sheet"`
-	SourceRow int            `json:"sourceRow"`
-	TargetRow int            `json:"targetRow,omitempty"`
-	TargetID  string         `json:"targetId,omitempty"`
-	Kind      ResolutionKind `json:"kind"`
-	CellCount int            `json:"cellCount,omitempty"`
-	stateID   uint64
+	Sheet           string         `json:"sheet"`
+	SourceRow       int            `json:"sourceRow"`
+	TargetRow       int            `json:"targetRow,omitempty"`
+	TargetSourceRow int            `json:"targetSourceRow,omitempty"`
+	TargetID        string         `json:"targetId,omitempty"`
+	Kind            ResolutionKind `json:"kind"`
+	CellCount       int            `json:"cellCount,omitempty"`
+	stateID         uint64
 }
 
 type RegionCell struct {
@@ -119,24 +143,34 @@ type CellCoordinate struct {
 }
 
 type Session struct {
-	mu           sync.RWMutex
-	leftFile     *excelize.File
-	rightFile    *excelize.File
-	left         *workbook.WorkbookSnapshot
-	originalLeft *workbook.WorkbookSnapshot
-	right        *workbook.WorkbookSnapshot
-	rightSource  *workbook.WorkbookSnapshot
-	rightRows    map[string]map[int]int
-	currentDiff  *diff.WorkbookDiff
-	history      history.Stack
-	options      Options
-	dirty        bool
-	warnings     []string
-	mergeNotice  string
-	stateID      uint64
-	savedState   uint64
-	nextState    uint64
-	resolutions  []RowResolution
+	mu                     sync.RWMutex
+	leftFile               *excelize.File
+	rightFile              *excelize.File
+	left                   *workbook.WorkbookSnapshot
+	comparisonLeft         *workbook.WorkbookSnapshot
+	originalLeft           *workbook.WorkbookSnapshot
+	right                  *workbook.WorkbookSnapshot
+	rightSource            *workbook.WorkbookSnapshot
+	leftRows               map[string]map[int]int
+	rightRows              map[string]map[int]int
+	keyColumns             map[string]int
+	alignedSheets          map[string]bool
+	currentDiff            *diff.WorkbookDiff
+	history                history.Stack
+	options                Options
+	dirty                  bool
+	warnings               []string
+	alignmentNotice        string
+	alignmentMode          RowAlignmentMode
+	alignmentMoved         int
+	alignmentAvailable     bool
+	alignmentSheetMoved    map[string]int
+	alignmentSheetEligible map[string]bool
+	mergeNotice            string
+	stateID                uint64
+	savedState             uint64
+	nextState              uint64
+	resolutions            []RowResolution
 }
 
 func Open(leftPath, rightPath string, options Options) (*Session, error) {
@@ -169,24 +203,15 @@ func OpenContext(ctx context.Context, leftPath, rightPath string, options Option
 		_ = leftFile.Close()
 		return nil, err
 	}
-	right := rightSource
-	rightRows := identityRightRows(rightSource)
-	alignmentWarnings := []string(nil)
-	if options.GitMerge {
-		var moved int
-		right, rightRows, moved = alignRightRowsByID(left, rightSource)
-		if moved > 0 {
-			alignmentWarnings = append(alignmentWarnings, fmt.Sprintf(
-				"检测到 %d 条同 ID 记录位于不同物理行，已按左侧 ID 对齐显示，避免把插入/删除放大为连续修改。", moved,
-			))
-		}
-	}
-	currentDiff, err := compareContext(ctx, left, right)
+	alignment := prepareRightForComparison(left, rightSource, options.GitMerge, RowAlignmentAuto, nil)
+	right, rightRows := alignment.right, alignment.rowSources
+	currentDiff, err := compareContextWithKeyColumns(ctx, alignment.left, right, alignment.keyColumns)
 	if err != nil {
 		_ = rightFile.Close()
 		_ = leftFile.Close()
 		return nil, err
 	}
+	annotateDiffRowSources(currentDiff, alignment.leftSources, alignment.rowSources)
 	mergeNotice := ""
 	if options.GitMerge && strings.TrimSpace(options.MergeBase) != "" {
 		baseFile, base, baseErr := reader.OpenContext(ctx, options.MergeBase)
@@ -201,10 +226,16 @@ func OpenContext(ctx context.Context, leftPath, rightPath string, options Option
 	options = defaultOptions(options)
 	return &Session{
 		leftFile: leftFile, rightFile: rightFile,
-		left: left, originalLeft: cloneWorkbookSnapshot(left),
-		right: right, rightSource: rightSource, rightRows: rightRows,
-		currentDiff: currentDiff, warnings: alignmentWarnings, mergeNotice: mergeNotice,
-		options: options, stateID: 1, savedState: 1, nextState: 2,
+		left: left, comparisonLeft: alignment.left, originalLeft: cloneWorkbookSnapshot(left),
+		right: right, rightSource: rightSource,
+		leftRows: alignment.leftSources, rightRows: rightRows, keyColumns: make(map[string]int),
+		alignedSheets: alignment.alignedSheets,
+		currentDiff:   currentDiff, alignmentNotice: alignmentWarning(alignment.moved),
+		alignmentMode: RowAlignmentAuto, alignmentMoved: alignment.moved,
+		alignmentAvailable:  alignment.available,
+		alignmentSheetMoved: alignment.sheetMoved, alignmentSheetEligible: alignment.sheetEligible,
+		mergeNotice: mergeNotice,
+		options:     options, stateID: 1, savedState: 1, nextState: 2,
 	}, nil
 }
 
@@ -227,6 +258,26 @@ func compareContext(
 	}
 }
 
+func compareContextWithKeyColumns(
+	ctx context.Context,
+	left, right *workbook.WorkbookSnapshot,
+	keyColumns map[string]int,
+) (*diff.WorkbookDiff, error) {
+	if ctx.Done() == nil {
+		return diff.CompareWithKeyColumns(left, right, keyColumns), nil
+	}
+	result := make(chan *diff.WorkbookDiff, 1)
+	go func() {
+		result <- diff.CompareWithKeyColumns(left, right, keyColumns)
+	}()
+	select {
+	case currentDiff := <-result:
+		return currentDiff, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 // OpenLeft opens the editable workbook without manufacturing an empty right
 // workbook. Repository mode uses it while no comparison ref is selected or the
 // selected ref does not contain the same path.
@@ -238,8 +289,11 @@ func OpenLeft(leftPath string, options Options) (*Session, error) {
 	}
 	options = defaultOptions(options)
 	return &Session{
-		leftFile: leftFile, left: left, originalLeft: cloneWorkbookSnapshot(left), options: options,
-		stateID: 1, savedState: 1, nextState: 2,
+		leftFile: leftFile, left: left, comparisonLeft: left,
+		originalLeft: cloneWorkbookSnapshot(left), options: options,
+		leftRows: identityWorkbookRows(left), keyColumns: make(map[string]int),
+		alignmentMode: RowAlignmentAuto,
+		stateID:       1, savedState: 1, nextState: 2,
 	}, nil
 }
 
@@ -253,6 +307,16 @@ func defaultOptions(options Options) Options {
 	return options
 }
 
+func alignmentWarning(moved int) string {
+	if moved == 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"检测到 %d 条同 ID 记录位于不同物理行，已按唯一 ID 对齐显示，避免把插入/删除放大为连续修改。",
+		moved,
+	)
+}
+
 // ReplaceRight changes only the read-only comparison source. In-memory edits,
 // undo history and the left save target remain intact.
 func (s *Session) ReplaceRight(rightPath, rightLabel string) error {
@@ -263,16 +327,23 @@ func (s *Session) ReplaceRight(rightPath, rightLabel string) error {
 	}
 	s.mu.Lock()
 	old := s.rightFile
-	right := rightSource
-	rightRows := identityRightRows(rightSource)
-	if s.options.GitMerge {
-		right, rightRows, _ = alignRightRowsByID(s.left, rightSource)
-	}
+	alignment := prepareRightForComparison(
+		s.left, rightSource, s.options.GitMerge, s.alignmentMode, s.keyColumns,
+	)
 	s.rightFile = rightFile
-	s.right = right
+	s.comparisonLeft = alignment.left
+	s.right = alignment.right
 	s.rightSource = rightSource
-	s.rightRows = rightRows
-	s.currentDiff = diff.Compare(s.left, right)
+	s.leftRows = alignment.leftSources
+	s.rightRows = alignment.rowSources
+	s.alignedSheets = alignment.alignedSheets
+	s.alignmentNotice = alignmentWarning(alignment.moved)
+	s.alignmentMoved = alignment.moved
+	s.alignmentAvailable = alignment.available
+	s.alignmentSheetMoved = alignment.sheetMoved
+	s.alignmentSheetEligible = alignment.sheetEligible
+	s.currentDiff = diff.CompareWithKeyColumns(alignment.left, alignment.right, alignment.keyColumns)
+	annotateDiffRowSources(s.currentDiff, alignment.leftSources, alignment.rowSources)
 	s.resolutions = nil
 	if rightLabel != "" {
 		s.options.RightLabel = rightLabel
@@ -353,21 +424,14 @@ func (s *Session) ReloadLeft() error {
 		s.mu.Unlock()
 		return err
 	}
-	right := s.rightSource
-	rightRows := identityRightRows(s.rightSource)
-	warnings := []string(nil)
-	if s.options.GitMerge && s.rightSource != nil {
-		var moved int
-		right, rightRows, moved = alignRightRowsByID(left, s.rightSource)
-		if moved > 0 {
-			warnings = append(warnings, fmt.Sprintf(
-				"检测到 %d 条同 ID 记录位于不同物理行，已按左侧 ID 对齐显示，避免把插入/删除放大为连续修改。", moved,
-			))
-		}
-	}
+	alignment := prepareRightForComparison(
+		left, s.rightSource, s.options.GitMerge, s.alignmentMode, s.keyColumns,
+	)
+	right := alignment.right
 	var currentDiff *diff.WorkbookDiff
 	if right != nil {
-		currentDiff = diff.Compare(left, right)
+		currentDiff = diff.CompareWithKeyColumns(alignment.left, right, alignment.keyColumns)
+		annotateDiffRowSources(currentDiff, alignment.leftSources, alignment.rowSources)
 	}
 	mergeNotice := s.mergeNotice
 	if s.options.GitMerge && strings.TrimSpace(s.options.MergeBase) != "" && s.rightSource != nil {
@@ -383,13 +447,21 @@ func (s *Session) ReloadLeft() error {
 	old := s.leftFile
 	s.leftFile = leftFile
 	s.left = left
+	s.comparisonLeft = alignment.left
 	s.originalLeft = cloneWorkbookSnapshot(left)
 	s.right = right
-	s.rightRows = rightRows
+	s.leftRows = alignment.leftSources
+	s.rightRows = alignment.rowSources
+	s.alignedSheets = alignment.alignedSheets
 	s.currentDiff = currentDiff
 	s.history.Clear()
 	s.dirty = false
-	s.warnings = warnings
+	s.warnings = nil
+	s.alignmentNotice = alignmentWarning(alignment.moved)
+	s.alignmentMoved = alignment.moved
+	s.alignmentAvailable = alignment.available
+	s.alignmentSheetMoved = alignment.sheetMoved
+	s.alignmentSheetEligible = alignment.sheetEligible
 	s.mergeNotice = mergeNotice
 	s.stateID = 1
 	s.savedState = 1
@@ -419,10 +491,18 @@ func (s *Session) DetachRight(rightLabel string) error {
 	s.mu.Lock()
 	old := s.rightFile
 	s.rightFile = nil
+	s.comparisonLeft = s.left
 	s.right = nil
 	s.rightSource = nil
+	s.leftRows = identityWorkbookRows(s.left)
 	s.rightRows = nil
+	s.alignedSheets = nil
 	s.currentDiff = nil
+	s.alignmentNotice = ""
+	s.alignmentMoved = 0
+	s.alignmentAvailable = false
+	s.alignmentSheetMoved = nil
+	s.alignmentSheetEligible = nil
 	s.resolutions = nil
 	if rightLabel != "" {
 		s.options.RightLabel = rightLabel
@@ -455,12 +535,100 @@ func (s *Session) Summary() Summary {
 	if len(presentation.Sheets) > 0 {
 		selected = presentation.Sheets[0].Name
 	}
+	warnings := make([]string, 0, len(s.warnings)+1)
+	if s.alignmentNotice != "" {
+		warnings = append(warnings, s.alignmentNotice)
+	}
+	warnings = append(warnings, s.warnings...)
+	sheetAlignments := make(map[string]SheetRowAlignment, len(presentation.Sheets))
+	for _, sheet := range presentation.Sheets {
+		sheetAlignments[sheet.Name] = SheetRowAlignment{
+			Available: s.alignmentSheetEligible[sheet.Name],
+			Applied:   s.alignedSheets[sheet.Name],
+			Moved:     s.alignmentSheetMoved[sheet.Name],
+			KeyColumn: sheet.IDColumn,
+		}
+	}
 	return Summary{
 		Options: s.options, Diff: compactDiff(presentation),
 		Resolutions: append([]RowResolution{}, s.resolutions...),
 		Dirty:       s.dirty, UndoCount: s.history.Len(),
-		Warnings: append([]string{}, s.warnings...), MergeNotice: s.mergeNotice, SelectedSheet: selected,
+		Warnings: warnings,
+		RowAlignment: RowAlignment{
+			Mode: s.alignmentMode, Available: s.alignmentAvailable,
+			Applied: rowAlignmentApplied(s.alignedSheets), Moved: s.alignmentMoved,
+			Sheets: sheetAlignments,
+		},
+		MergeNotice: s.mergeNotice, SelectedSheet: selected,
 	}
+}
+
+func rowAlignmentApplied(sheets map[string]bool) bool {
+	for _, applied := range sheets {
+		if applied {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Session) SetRowAlignment(mode RowAlignmentMode) error {
+	if mode != RowAlignmentAuto && mode != RowAlignmentPosition {
+		return fmt.Errorf("未知的行对齐方式: %s", mode)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.options.GitMerge {
+		return errors.New("Git 合并会话固定使用 ID 对齐")
+	}
+	if s.history.Len() > 0 {
+		return errors.New("已有编辑或合并操作，撤销历史存在时不能切换行对齐方式")
+	}
+	if s.alignmentMode == mode {
+		return nil
+	}
+	s.alignmentMode = mode
+	s.rebuildComparisonLocked()
+	return nil
+}
+
+// SetKeyColumn overrides automatic record-key detection for one worksheet.
+// Column zero explicitly disables key alignment. Changing the key can remap
+// logical rows, so it is allowed only before edit/merge history exists.
+func (s *Session) SetKeyColumn(sheet string, column int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	leftSheet := s.left.ByName[sheet]
+	var rightSheet *workbook.SheetSnapshot
+	if s.rightSource != nil {
+		rightSheet = s.rightSource.ByName[sheet]
+	}
+	if leftSheet == nil && rightSheet == nil {
+		return fmt.Errorf("worksheet %q not found", sheet)
+	}
+	maxCol := max(sheetColumnCount(leftSheet), sheetColumnCount(rightSheet))
+	if column < 0 || column > maxCol {
+		return fmt.Errorf("invalid key column %d for worksheet %q", column, sheet)
+	}
+	if s.history.Len() > 0 {
+		return errors.New("已有编辑或合并操作，撤销历史存在时不能更改主键列")
+	}
+	if s.keyColumns == nil {
+		s.keyColumns = make(map[string]int)
+	}
+	s.keyColumns[sheet] = column
+	if column > 0 && !s.options.GitMerge {
+		s.alignmentMode = RowAlignmentAuto
+	}
+	s.rebuildComparisonLocked()
+	return nil
+}
+
+func sheetColumnCount(sheet *workbook.SheetSnapshot) int {
+	if sheet == nil {
+		return 0
+	}
+	return sheet.MaxCol
 }
 
 func (s *Session) presentationDiffLocked() *diff.WorkbookDiff {
@@ -526,8 +694,21 @@ func (s *Session) Region(sheet string, fromRow, rowCount, fromCol, colCount int)
 		return Region{}, fmt.Errorf("invalid region (maximum 300 rows by 100 columns)")
 	}
 	rows := make([]regionRow, 0, rowCount)
+	leftMax, rightMax := 0, 0
+	if leftSheet := s.left.ByName[sheet]; leftSheet != nil {
+		leftMax = leftSheet.MaxRow
+	}
+	if s.rightSource != nil {
+		if rightSheet := s.rightSource.ByName[sheet]; rightSheet != nil {
+			rightMax = rightSheet.MaxRow
+		}
+	}
 	for row := fromRow; row < fromRow+rowCount; row++ {
-		rows = append(rows, regionRow{display: row, source: row, left: row, right: row})
+		rows = append(rows, regionRow{
+			display: row, source: row,
+			left:  physicalRowForLogical(s.leftRows[sheet], row, leftMax),
+			right: physicalRowForLogical(s.rightRows[sheet], row, rightMax),
+		})
 	}
 	region, err := s.regionForRowsLocked(sheet, rows, fromCol, colCount)
 	if err != nil {
@@ -587,43 +768,57 @@ func (s *Session) FilteredRegion(
 		}, nil
 	}
 
-	allRows := make([]regionRow, 0, len(sheetDiff.Rows))
+	windowRows := make([]regionRow, 0, rowCount)
 	appendTargets := make(map[int]bool)
+	appendSources := make(map[int]int)
 	for _, resolution := range s.resolutions {
 		if resolution.Sheet == sheet && resolution.TargetRow > 0 && isAppendResolution(resolution.Kind) {
-			appendTargets[resolution.TargetRow] = true
+			appendTargets[resolution.TargetSourceRow] = true
+			appendSources[resolution.SourceRow] = resolution.TargetRow
 		}
 	}
+	selectedCount := 0
+	windowStart := fromRow - 1
 	for _, rowDiff := range sheetDiff.Rows {
 		if appendTargets[rowDiff.Row] || !selected[rowDiff.Status] {
 			continue
 		}
-		mapping := regionRow{source: rowDiff.Row, left: rowDiff.Row, right: rowDiff.Row}
-		for index := len(s.resolutions) - 1; index >= 0; index-- {
-			resolution := s.resolutions[index]
-			if resolution.Sheet != sheet || resolution.SourceRow != rowDiff.Row || resolution.TargetRow <= 0 {
-				continue
-			}
-			if isAppendResolution(resolution.Kind) {
-				mapping.left = resolution.TargetRow
-				break
-			}
+		mapping := regionRow{
+			source: rowDiff.Row, left: rowDiff.LeftRow, right: rowDiff.RightRow,
 		}
-		mapping.display = len(allRows) + 1
-		allRows = append(allRows, mapping)
+		if targetRow := appendSources[rowDiff.Row]; targetRow > 0 {
+			mapping.left = targetRow
+		}
+		mapping.display = selectedCount + 1
+		if selectedCount >= windowStart && len(windowRows) < rowCount {
+			windowRows = append(windowRows, mapping)
+		}
+		selectedCount++
 	}
 
-	start := min(fromRow-1, len(allRows))
-	end := min(start+rowCount, len(allRows))
-	region, err := s.regionForRowsLocked(sheet, allRows[start:end], fromCol, colCount)
+	region, err := s.regionForRowsLocked(sheet, windowRows, fromCol, colCount)
 	if err != nil {
 		return Region{}, err
 	}
 	region.FromRow = fromRow
-	region.ToRow = fromRow + max(0, end-start) - 1
+	region.ToRow = fromRow + len(windowRows) - 1
 	region.Filtered = true
-	region.TotalRows = len(allRows)
+	region.TotalRows = selectedCount
 	return region, nil
+}
+
+func physicalRowForLogical(rows map[int]int, logical, physicalMax int) int {
+	if physical := rows[logical]; physical > 0 {
+		return physical
+	}
+	maxLogical := 0
+	for candidate := range rows {
+		maxLogical = max(maxLogical, candidate)
+	}
+	if logical > maxLogical {
+		return physicalMax + logical - maxLogical
+	}
+	return 0
 }
 
 func (s *Session) regionForRowsLocked(
@@ -634,23 +829,18 @@ func (s *Session) regionForRowsLocked(
 	leftSheet := s.left.ByName[sheet]
 	originalLeftSheet := s.originalLeft.ByName[sheet]
 	var rightSheet *workbook.SheetSnapshot
-	if s.right != nil {
-		rightSheet = s.right.ByName[sheet]
+	if s.rightSource != nil {
+		rightSheet = s.rightSource.ByName[sheet]
 	}
 	if leftSheet == nil && rightSheet == nil {
 		return Region{}, fmt.Errorf("worksheet %q not found", sheet)
 	}
-	statuses := make(map[workbook.CellKey]diff.CellStatus)
-	rowStatuses := make(map[int]diff.RowStatus)
+	statuses := make(map[workbook.CellKey]diff.CellStatus, len(rows)*colCount)
+	rowStatuses := make(map[int]diff.RowStatus, len(rows))
 	if s.currentDiff != nil {
 		for _, sheetDiff := range s.currentDiff.Sheets {
 			if sheetDiff.Name == sheet {
-				for _, cellDiff := range sheetDiff.Differences {
-					statuses[workbook.CellKey{Row: cellDiff.Ref.Row, Col: cellDiff.Ref.Col}] = cellDiff.Status
-				}
-				for _, rowDiff := range sheetDiff.Rows {
-					rowStatuses[rowDiff.Row] = rowDiff.Status
-				}
+				collectRegionStatuses(sheetDiff, rows, fromCol, fromCol+colCount-1, statuses, rowStatuses)
 				break
 			}
 		}
@@ -686,6 +876,41 @@ func (s *Session) regionForRowsLocked(
 		region.ToRow = rows[len(rows)-1].display
 	}
 	return region, nil
+}
+
+// collectRegionStatuses reads only the sparse diff entries that intersect the
+// requested viewport. Region requests run continuously while scrolling, so
+// rebuilding maps from every difference in a large sheet on each request would
+// make viewport cost proportional to the entire diff instead of its 48×20
+// window.
+func collectRegionStatuses(
+	sheetDiff *diff.SheetDiff,
+	rows []regionRow,
+	fromCol, toCol int,
+	statuses map[workbook.CellKey]diff.CellStatus,
+	rowStatuses map[int]diff.RowStatus,
+) {
+	for _, row := range rows {
+		cellIndex := sort.Search(len(sheetDiff.Differences), func(index int) bool {
+			ref := sheetDiff.Differences[index].Ref
+			return ref.Row > row.source || (ref.Row == row.source && ref.Col >= fromCol)
+		})
+		for cellIndex < len(sheetDiff.Differences) {
+			cellDiff := sheetDiff.Differences[cellIndex]
+			if cellDiff.Ref.Row != row.source || cellDiff.Ref.Col > toCol {
+				break
+			}
+			statuses[workbook.CellKey{Row: cellDiff.Ref.Row, Col: cellDiff.Ref.Col}] = cellDiff.Status
+			cellIndex++
+		}
+
+		rowIndex := sort.Search(len(sheetDiff.Rows), func(index int) bool {
+			return sheetDiff.Rows[index].Row >= row.source
+		})
+		if rowIndex < len(sheetDiff.Rows) && sheetDiff.Rows[rowIndex].Row == row.source {
+			rowStatuses[row.source] = sheetDiff.Rows[rowIndex].Status
+		}
+	}
 }
 
 func cloneWorkbookSnapshot(source *workbook.WorkbookSnapshot) *workbook.WorkbookSnapshot {
@@ -758,16 +983,18 @@ func (s *Session) copyRightToLeftManyLocked(
 		if s.rowStatusLocked(sheet, cell.Row) == diff.RowConflict {
 			conflictCells[cell.Row]++
 		}
-		ref := workbook.CellRef{Sheet: sheet, Row: cell.Row, Col: cell.Col}
-		before, err := merge.Capture(s.leftFile, ref)
+		sourceRef := workbook.CellRef{Sheet: sheet, Row: cell.Row, Col: cell.Col}
+		targetRef := sourceRef
+		targetRef.Row = s.ensureLeftPhysicalRowLocked(sheet, cell.Row)
+		before, err := merge.Capture(s.leftFile, targetRef)
 		if err != nil {
 			return err
 		}
-		after, err := s.captureRightLocked(ref)
+		after, err := s.captureRightLocked(sourceRef)
 		if err != nil {
 			return err
 		}
-		operations = append(operations, merge.Operation{Ref: ref, Before: before, After: after, Kind: kind})
+		operations = append(operations, merge.Operation{Ref: targetRef, Before: before, After: after, Kind: kind})
 	}
 	if err := s.applyOperationsLocked(sheet, operations); err != nil {
 		return err
@@ -780,18 +1007,35 @@ func (s *Session) copyRightToLeftManyLocked(
 	if kind == "copy-row" {
 		for _, row := range conflictRows {
 			s.recordResolutionLocked(RowResolution{
-				Sheet: sheet, SourceRow: row, TargetRow: row, Kind: ResolutionOverwriteRow,
+				Sheet: sheet, SourceRow: row,
+				TargetRow: s.leftRows[sheet][row], Kind: ResolutionOverwriteRow,
 			})
 		}
 	} else {
 		for _, row := range conflictRows {
 			s.recordResolutionLocked(RowResolution{
-				Sheet: sheet, SourceRow: row, TargetRow: row,
+				Sheet: sheet, SourceRow: row, TargetRow: s.leftRows[sheet][row],
 				Kind: ResolutionOverwriteCells, CellCount: conflictCells[row],
 			})
 		}
 	}
 	return nil
+}
+
+func (s *Session) ensureLeftPhysicalRowLocked(sheet string, logical int) int {
+	if physical := s.leftRows[sheet][logical]; physical > 0 {
+		return physical
+	}
+	leftSheet := s.left.ByName[sheet]
+	target := leftSheet.MaxRow + 1
+	for _, physical := range s.leftRows[sheet] {
+		target = max(target, physical+1)
+	}
+	if s.leftRows[sheet] == nil {
+		s.leftRows[sheet] = make(map[int]int)
+	}
+	s.leftRows[sheet][logical] = target
+	return target
 }
 
 func (s *Session) applyOperationsLocked(sheet string, operations []merge.Operation) error {
@@ -1106,8 +1350,19 @@ func (s *Session) ClearLeftSelection(
 		for _, row := range unique {
 			selectedRows[row] = struct{}{}
 		}
-	} else if startRow < 1 || endRow < startRow {
-		return fmt.Errorf("invalid row range %d:%d", startRow, endRow)
+	} else {
+		if startRow < 1 || endRow < startRow {
+			return fmt.Errorf("invalid row range %d:%d", startRow, endRow)
+		}
+		// Grid coordinates are logical comparison rows. Translate the range
+		// back to the editable workbook's physical rows before mutating it.
+		// Explicit rows (used by the packed filtered view) are already physical.
+		selectedRows = make(map[int]struct{}, endRow-startRow+1)
+		for logical := startRow; logical <= endRow; logical++ {
+			if physical := s.leftRows[sheetName][logical]; physical > 0 {
+				selectedRows[physical] = struct{}{}
+			}
+		}
 	}
 
 	operations := make([]merge.Operation, 0)
@@ -1115,11 +1370,7 @@ func (s *Session) ClearLeftSelection(
 		if key.Col < startCol || key.Col > endCol {
 			continue
 		}
-		if selectedRows != nil {
-			if _, selected := selectedRows[key.Row]; !selected {
-				continue
-			}
-		} else if key.Row < startRow || key.Row > endRow {
+		if _, selected := selectedRows[key.Row]; !selected {
 			continue
 		}
 		ref := workbook.CellRef{Sheet: sheetName, Row: key.Row, Col: key.Col}
@@ -1293,7 +1544,7 @@ func (s *Session) captureRightLocked(ref workbook.CellRef) (merge.CellState, err
 			ref.Row = physicalRow
 			return merge.Capture(s.rightFile, ref)
 		}
-		if s.options.GitMerge {
+		if s.alignedSheets[ref.Sheet] {
 			return merge.CellState{}, nil
 		}
 	}
@@ -1313,7 +1564,35 @@ func (s *Session) rowStatusLocked(sheet string, row int) diff.RowStatus {
 	return diff.RowUnchanged
 }
 
+func logicalRowForPhysical(rows map[int]int, physical int) int {
+	for logical, candidate := range rows {
+		if candidate == physical {
+			return logical
+		}
+	}
+	return 0
+}
+
+func annotateDiffRowSources(
+	result *diff.WorkbookDiff,
+	leftRows, rightRows map[string]map[int]int,
+) {
+	if result == nil {
+		return
+	}
+	for _, sheet := range result.Sheets {
+		for index := range sheet.Rows {
+			logical := sheet.Rows[index].Row
+			sheet.Rows[index].LeftRow = leftRows[sheet.Name][logical]
+			sheet.Rows[index].RightRow = rightRows[sheet.Name][logical]
+		}
+	}
+}
+
 func (s *Session) recordResolutionLocked(resolution RowResolution) {
+	if resolution.TargetRow > 0 && resolution.TargetSourceRow == 0 {
+		resolution.TargetSourceRow = logicalRowForPhysical(s.leftRows[resolution.Sheet], resolution.TargetRow)
+	}
 	resolution.stateID = s.stateID
 	s.resolutions = append(s.resolutions, resolution)
 }
@@ -1332,7 +1611,43 @@ func (s *Session) reclassifyRowsLocked(name string) error {
 	if s.currentDiff == nil || s.right == nil {
 		return nil
 	}
-	return s.currentDiff.ReclassifyRows(name, s.left.ByName[name], s.right.ByName[name])
+	err := s.currentDiff.ReclassifyRows(name, s.comparisonLeft.ByName[name], s.right.ByName[name])
+	if err == nil {
+		annotateDiffRowSources(s.currentDiff, s.leftRows, s.rightRows)
+	}
+	return err
+}
+
+func (s *Session) rebuildComparisonLocked() {
+	if s.rightSource == nil {
+		s.comparisonLeft = s.left
+		s.right = nil
+		s.leftRows = identityWorkbookRows(s.left)
+		s.rightRows = nil
+		s.alignedSheets = nil
+		s.currentDiff = nil
+		s.alignmentNotice = ""
+		s.alignmentMoved = 0
+		s.alignmentAvailable = false
+		s.alignmentSheetMoved = nil
+		s.alignmentSheetEligible = nil
+		return
+	}
+	alignment := prepareRightForComparison(
+		s.left, s.rightSource, s.options.GitMerge, s.alignmentMode, s.keyColumns,
+	)
+	s.comparisonLeft = alignment.left
+	s.right = alignment.right
+	s.leftRows = alignment.leftSources
+	s.rightRows = alignment.rowSources
+	s.alignedSheets = alignment.alignedSheets
+	s.currentDiff = diff.CompareWithKeyColumns(alignment.left, alignment.right, alignment.keyColumns)
+	annotateDiffRowSources(s.currentDiff, alignment.leftSources, alignment.rowSources)
+	s.alignmentNotice = alignmentWarning(alignment.moved)
+	s.alignmentMoved = alignment.moved
+	s.alignmentAvailable = alignment.available
+	s.alignmentSheetMoved = alignment.sheetMoved
+	s.alignmentSheetEligible = alignment.sheetEligible
 }
 
 func (s *Session) updateCellLocked(ref workbook.CellRef, state merge.CellState) error {
@@ -1373,7 +1688,64 @@ func (s *Session) updateCellLocked(ref workbook.CellRef, state merge.CellState) 
 	if s.currentDiff == nil || s.right == nil {
 		return nil
 	}
-	return s.currentDiff.UpdateCell(ref, state.Value, s.right.ByName[ref.Sheet].Cell(ref.Row, ref.Col))
+	logicalRow := logicalRowForPhysical(s.leftRows[ref.Sheet], ref.Row)
+	if logicalRow == 0 {
+		logicalRow = nextLogicalRow(s.leftRows[ref.Sheet])
+		if s.leftRows[ref.Sheet] == nil {
+			s.leftRows[ref.Sheet] = make(map[int]int)
+		}
+		s.leftRows[ref.Sheet][logicalRow] = ref.Row
+	}
+	logicalRef := ref
+	logicalRef.Row = logicalRow
+	comparisonSheet := s.comparisonLeft.ByName[ref.Sheet]
+	updateSnapshotCell(comparisonSheet, workbook.CellKey{Row: logicalRow, Col: ref.Col}, state.Value)
+	return s.currentDiff.UpdateCell(
+		logicalRef, state.Value, s.right.ByName[ref.Sheet].Cell(logicalRow, ref.Col),
+	)
+}
+
+func nextLogicalRow(rows map[int]int) int {
+	next := 1
+	for logical := range rows {
+		next = max(next, logical+1)
+	}
+	return next
+}
+
+func updateSnapshotCell(sheet *workbook.SheetSnapshot, key workbook.CellKey, value workbook.CellValue) {
+	if sheet == nil {
+		return
+	}
+	_, existed := sheet.Cells[key]
+	if value.Present {
+		sheet.Cells[key] = value
+		if !existed {
+			index := sort.Search(len(sheet.CellList), func(i int) bool {
+				item := sheet.CellList[i]
+				return item.Row > key.Row || (item.Row == key.Row && item.Col >= key.Col)
+			})
+			sheet.CellList = append(sheet.CellList, workbook.CellKey{})
+			copy(sheet.CellList[index+1:], sheet.CellList[index:])
+			sheet.CellList[index] = key
+		}
+		sheet.MaxRow = max(sheet.MaxRow, key.Row)
+		sheet.MaxCol = max(sheet.MaxCol, key.Col)
+		return
+	}
+	delete(sheet.Cells, key)
+	if existed {
+		index := sort.Search(len(sheet.CellList), func(i int) bool {
+			item := sheet.CellList[i]
+			return item.Row > key.Row || (item.Row == key.Row && item.Col >= key.Col)
+		})
+		if index < len(sheet.CellList) && sheet.CellList[index] == key {
+			sheet.CellList = append(sheet.CellList[:index], sheet.CellList[index+1:]...)
+		}
+	}
+	if key.Row == sheet.MaxRow || key.Col == sheet.MaxCol {
+		recalculateSheetBounds(sheet)
+	}
 }
 
 func recalculateSheetBounds(sheet *workbook.SheetSnapshot) {

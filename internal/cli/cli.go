@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/tadazly/sheetproof/internal/app"
-	"github.com/tadazly/sheetproof/internal/diff"
 	"github.com/tadazly/sheetproof/internal/repository"
 	"github.com/tadazly/sheetproof/internal/workbook"
 	"github.com/xuri/excelize/v2"
@@ -155,7 +154,7 @@ func runDiff(args []string, stdout, stderr io.Writer) int {
 		return exitCode(err)
 	}
 	defer rightFile.Close()
-	result := diff.Compare(leftSnapshot, rightSnapshot)
+	result := app.CompareSnapshots(leftSnapshot, rightSnapshot)
 	for _, sheet := range result.Sheets {
 		sheet.Differences = nil
 	}

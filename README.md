@@ -29,8 +29,8 @@ SheetProof 在本机比较两个 .xlsx 的值、公式与类型，帮助游戏�
 
 ## 核心特性
 
-- **理解工作簿语义的对比**：比较工作表、值、公式、显式空值、类型和工作表顺序，避开重新保存 XLSX 时产生的结构噪声。
-- **双栏差异审阅**：左右表格同步滚动，差异按新增、删除、修改和冲突分类，可以直接跳到需要核对的位置。
+- **理解工作簿语义的对比**：比较工作表、值、公式、显式空值和类型；自动识别或右键指定主键列后，单侧记录会保留在原邻近位置，也可切换回物理行号。
+- **双栏差异审阅**：左右表格同步滚动，横向和纵向滚动条按既有颜色标出差异位置，可以直接跳到需要核对的位置。
 - **只看当前工作表需要核对的行**：当前工作表可以组合筛选新增、删除、修改和冲突行。快捷键 1–4 切换分类，5 在全部差异行和完整表格之间切换。
 - **可控合并与撤销**：只把确认过的单元格或整行写入左侧；支持全选单元格和键盘清空。编辑和合并都会进入撤销记录，保存前可以随时回退。
 - **按住就能回看修改前**：按住左侧的“前后对比”，或在表格内按住 Tab，可以临时查看刚打开文件时的内容；松开后回到当前结果。
@@ -47,11 +47,11 @@ SheetProof 在本机比较两个 .xlsx 的值、公式与类型，帮助游戏�
 
 ## 下载与发布
 
-当前版本是 **0.2.0 预览版**。Windows 与 macOS 预览版通过 GitHub Releases 提供；当前产物未进行代码签名，macOS 版本也未公证。
+当前版本是 **0.3.0 预览版**。Windows 与 macOS 预览版通过 GitHub Releases 提供；当前产物未进行代码签名，macOS 版本也未公证。
 
-- [下载 Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.2.0/SheetProof-windows-amd64.exe)
-- [下载 macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.2.0/SheetProof-macos-universal.zip)
-- [下载源码](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.2.0.zip)
+- [下载 Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-windows-amd64.exe)
+- [下载 macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-macos-universal.zip)
+- [下载源码](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.3.0.zip)
 - [查看 GitHub Releases](https://github.com/tadazly/sheetproof/releases)：包含版本说明和 `SHA256SUMS.txt` 校验文件。
 
 首次运行未签名产物时，操作系统可能显示安全提示。请先从 GitHub Releases 下载并核对 SHA-256；维护者发布步骤见 [发布指南](docs/releasing.md)。

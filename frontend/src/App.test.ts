@@ -27,6 +27,7 @@ const emptySummary: Summary = {
   dirty: false,
   undoCount: 0,
   warnings: [],
+  rowAlignment: { mode: "auto", available: false, applied: false, moved: 0, sheets: {} },
   mergeNotice: "",
   selectedSheet: ""
 };
@@ -147,6 +148,108 @@ describe("App", () => {
       expect(button.attributes("disabled")).toBeDefined();
     }
     expect(wrapper.get(".merge-action").attributes("disabled")).toBeDefined();
+  });
+
+  it("shows safe ID alignment and can switch to physical-row comparison", async () => {
+    const aligned = structuredClone(emptySummary);
+    aligned.diff.sheets = [{
+      name: "Sheet1", status: "modified", orderDifferent: false,
+      differenceCount: 0, maxRow: 1, maxCol: 1,
+      idColumn: 1, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 0,
+      rows: []
+    }];
+    aligned.selectedSheet = "Sheet1";
+    aligned.rowAlignment = {
+      mode: "auto", available: true, applied: true, moved: 2,
+      sheets: { Sheet1: { available: true, applied: true, moved: 2, keyColumn: 1 } }
+    };
+    const positioned = structuredClone(aligned);
+    positioned.rowAlignment = {
+      mode: "position", available: true, applied: false, moved: 0,
+      sheets: { Sheet1: { available: true, applied: false, moved: 0, keyColumn: 1 } }
+    };
+    const setRowAlignment = vi.fn(async () => positioned);
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => aligned,
+          SetRowAlignment: setRowAlignment
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const toggle = wrapper.get(".alignment-toggle");
+    expect(toggle.text()).toContain("主键对齐 2");
+    expect(toggle.attributes("aria-pressed")).toBe("true");
+    await toggle.trigger("click");
+    await flushPromises();
+
+    expect(setRowAlignment).toHaveBeenCalledWith("position");
+    expect(wrapper.get(".alignment-toggle").text()).toBe("按行号");
+    expect(wrapper.get(".alignment-toggle").attributes("aria-pressed")).toBe("false");
+  });
+
+  it("sets and clears a primary-key column from either grid header", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.sheetCount = 1;
+    loaded.diff.sheets = [{
+      name: "配置", status: "equal", orderDifferent: false,
+      differenceCount: 0, maxRow: 2, maxCol: 2, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 0,
+      rows: []
+    }];
+    loaded.selectedSheet = "配置";
+    const withKey = structuredClone(loaded);
+    withKey.diff.sheets[0].idColumn = 2;
+    withKey.rowAlignment = {
+      mode: "auto", available: true, applied: true, moved: 1,
+      sheets: { 配置: { available: true, applied: true, moved: 1, keyColumn: 2 } }
+    };
+    const setKeyColumn = vi.fn(async (_sheet: string, column: number) => column === 0 ? loaded : withKey);
+    const empty = { present: false, raw: "", display: "", type: "unset" };
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: async () => ({
+            sheet: "配置", fromRow: 1, toRow: 2, fromCol: 1, toCol: 2,
+            cells: [1, 2].flatMap((row) => [1, 2].map((col) => ({
+              row, col, axis: `${col === 1 ? "A" : "B"}${row}`, status: "unchanged", rowStatus: "unchanged" as const,
+              left: { ...empty }, right: { ...empty }
+            })))
+          }),
+          SetKeyColumn: setKeyColumn
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const rightHeaders = wrapper.findAll(".grid-panel")[1].findAll(".col-header");
+    await rightHeaders[1].trigger("contextmenu", { clientX: 300, clientY: 100 });
+    expect(wrapper.get(".context-menu").text()).toContain("将 B 列设为主键");
+    expect(wrapper.get(".context-menu").text()).not.toContain("第 0 行");
+    await wrapper.get(".context-menu button").trigger("click");
+    await flushPromises();
+
+    expect(setKeyColumn).toHaveBeenLastCalledWith("配置", 2);
+    expect(wrapper.findAll(".col-header.key-column")).toHaveLength(2);
+    expect(wrapper.findAll(".key-column-badge").every((badge) => badge.text() === "主键")).toBe(true);
+
+    const leftKeyHeader = wrapper.findAll(".grid-panel")[0].findAll(".col-header")[1];
+    await leftKeyHeader.trigger("contextmenu", { clientX: 300, clientY: 100 });
+    expect(wrapper.get(".context-menu").text()).toContain("取消主键列");
+    await wrapper.get(".context-menu button").trigger("click");
+    await flushPromises();
+
+    expect(setKeyColumn).toHaveBeenLastCalledWith("配置", 0);
+    expect(wrapper.findAll(".col-header.key-column")).toHaveLength(0);
   });
 
   it("renders a verified UGit worktree on the editable left and hides the snapshot directory", async () => {
@@ -939,6 +1042,11 @@ describe("App", () => {
       .find((button) => button.attributes("aria-selected") === "true");
     expect(activeFilter?.text()).toContain("修改");
     const scrolls = wrapper.findAll(".grid-scroll");
+    for (const scroll of scrolls) {
+      expect(scroll.attributes("style")).toContain("--scrollbar-diff-vertical");
+      expect(scroll.attributes("style")).toContain("--scrollbar-diff-horizontal");
+      expect(scroll.attributes("style")).toContain("var(--diff-modified)");
+    }
     expect(wrapper.findAll(".row-header-layer")).toHaveLength(2);
     expect(wrapper.findAll(".col-header-layer")).toHaveLength(2);
     (scrolls[0].element as HTMLElement).scrollLeft = 160;

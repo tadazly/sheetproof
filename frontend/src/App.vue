@@ -6,6 +6,7 @@ import EmptyState from "./components/EmptyState.vue";
 import { backend } from "./backend";
 import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
+import { scrollMarkerGradient, type ScrollMarker } from "./scrollMarkers";
 import type {
   CellDiff,
   ExternalFileChange,
@@ -59,14 +60,16 @@ const viewportTop = ref(0);
 const viewportLeft = ref(0);
 const zoom = ref(1);
 const columnWidths = ref<Record<number, number>>({});
+const markerColumnWidths = ref<Record<number, number>>({});
 const contextMenu = ref<{
   visible: boolean;
   x: number;
   y: number;
   row: number;
+  col: number;
   side: "left" | "right";
-  kind: "cell" | "row";
-}>({ visible: false, x: 0, y: 0, row: 0, side: "right", kind: "cell" });
+  kind: "cell" | "row" | "column";
+}>({ visible: false, x: 0, y: 0, row: 0, col: 0, side: "right", kind: "cell" });
 const idDialog = ref<{
   visible: boolean;
   rows: number[];
@@ -139,34 +142,33 @@ interface RowViewportAnchor {
 }
 
 const activeSheet = computed(() => summary.value?.diff.sheets.find((item) => item.name === sheet.value));
+const activeRowAlignment = computed(() => summary.value?.rowAlignment.sheets?.[sheet.value]);
 const leftReadonly = computed(() => Boolean(summary.value?.options.readonlyLeft));
 const rowFilterActive = computed(() => selectedRowFilters.value.length > 0);
 const selectedRowFilterSet = computed(() => new Set(selectedRowFilters.value));
 const filteredRowMappings = computed<FilteredRowMapping[]>(() => {
   if (!rowFilterActive.value) return [];
   const mappings: FilteredRowMapping[] = [];
+  const resolutions = summary.value?.resolutions ?? [];
   const appendTargets = new Set(
-    (summary.value?.resolutions ?? [])
+    resolutions
       .filter((item) => item.sheet === sheet.value && item.targetRow && isAppendResolution(item))
-      .map((item) => item.targetRow)
+      .map((item) => item.targetSourceRow ?? item.targetRow)
   );
+  const appendSources = new Map<number, number>();
+  for (const resolution of resolutions) {
+    if (
+      resolution.sheet === sheet.value &&
+      resolution.targetRow &&
+      isAppendResolution(resolution)
+    ) {
+      appendSources.set(resolution.sourceRow, resolution.targetRow);
+    }
+  }
   for (const item of activeSheet.value?.rows ?? []) {
     if (appendTargets.has(item.row) || !selectedRowFilterSet.value.has(item.status as DiffFilter)) continue;
-    let left = item.row;
-    const resolutions = summary.value?.resolutions ?? [];
-    for (let index = resolutions.length - 1; index >= 0; index--) {
-      const resolution = resolutions[index];
-      if (
-        resolution.sheet === sheet.value &&
-        resolution.sourceRow === item.row &&
-        resolution.targetRow &&
-        isAppendResolution(resolution)
-      ) {
-        left = resolution.targetRow;
-        break;
-      }
-    }
-    mappings.push({ display: mappings.length + 1, source: item.row, left, right: item.row });
+    const left = appendSources.get(item.row) ?? item.leftRow ?? 0;
+    mappings.push({ display: mappings.length + 1, source: item.row, left, right: item.rightRow ?? 0 });
   }
   return mappings;
 });
@@ -209,6 +211,48 @@ const columnOffsets = computed(() => {
   return offsets;
 });
 const canvasWidth = computed(() => rowHeaderWidth.value + columnOffsets.value[totalCols.value + 1]);
+const markerColumnOffsets = computed(() => {
+  const offsets = new Array<number>(totalCols.value + 2).fill(0);
+  let left = 0;
+  for (let col = 1; col <= totalCols.value; col++) {
+    offsets[col] = left;
+    left += markerColumnWidth(col);
+  }
+  offsets[totalCols.value + 1] = left;
+  return offsets;
+});
+const markerCanvasWidth = computed(() => rowHeaderWidth.value + markerColumnOffsets.value[totalCols.value + 1]);
+const scrollbarMarkerStyle = computed<Record<string, string>>(() => {
+  if (!diffs.value.length || totalRows.value <= 0 || markerCanvasWidth.value <= 0) {
+    return {
+      "--scrollbar-diff-vertical": "none",
+      "--scrollbar-diff-horizontal": "none"
+    };
+  }
+  const displayRows = rowFilterActive.value
+    ? new Map(filteredRowMappings.value.map((item) => [item.source, item.display]))
+    : null;
+  const vertical: ScrollMarker[] = [];
+  const horizontal: ScrollMarker[] = [];
+  for (const item of diffs.value) {
+    const status = (item.rowStatus || "modified") as RowStatus;
+    const displayRow = displayRows ? displayRows.get(item.ref.row) : item.ref.row;
+    if (!displayRow) continue;
+    vertical.push({
+      position: (displayRow + 0.5) / (totalRows.value + 1),
+      status
+    });
+    const col = Math.min(Math.max(item.ref.col, 1), totalCols.value);
+    horizontal.push({
+      position: (rowHeaderWidth.value + markerColumnOffsets.value[col] + markerColumnWidth(col) / 2) / markerCanvasWidth.value,
+      status
+    });
+  }
+  return {
+    "--scrollbar-diff-vertical": scrollMarkerGradient("bottom", vertical),
+    "--scrollbar-diff-horizontal": scrollMarkerGradient("right", horizontal)
+  };
+});
 const selectionSize = computed(() => rangeSize(selection.value));
 const filteredDiffEntries = computed(() =>
   diffs.value
@@ -765,7 +809,7 @@ function deferExternalReload() {
 
 async function checkExternalChanges() {
   if (
-    checkingExternalChanges || startupLoading.value || busy.value || !summary.value ||
+    document.visibilityState !== "visible" || checkingExternalChanges || startupLoading.value || busy.value || !summary.value ||
     externalChangeDialog.value.visible || deferredExternalChange.value || inlineEdit.value
   ) return;
   checkingExternalChanges = true;
@@ -1042,6 +1086,7 @@ function finishPointerAction() {
   dragAnchor = null;
   if (resizeState) {
     resizeState = null;
+    markerColumnWidths.value = { ...columnWidths.value };
     persistLayout();
   }
   if (repositoryResize) {
@@ -1156,6 +1201,23 @@ async function selectDiffIndexFilter(status: DiffFilter) {
     return;
   }
   setDiffNavigationFilter(status);
+}
+
+async function toggleRowAlignment() {
+  const current = summary.value;
+  if (!current || !activeRowAlignment.value?.available || current.options.gitMerge || current.undoCount > 0) return;
+  const mode = current.rowAlignment.mode === "auto" ? "position" : "auto";
+  const data = await guard(() => backend.setRowAlignment(mode));
+  if (data) await acceptSummary(data, sheet.value, false);
+}
+
+async function setContextKeyColumn() {
+  const current = summary.value;
+  if (!current || contextMenu.value.kind !== "column" || current.undoCount > 0) return;
+  const column = activeSheet.value?.idColumn === contextMenu.value.col ? 0 : contextMenu.value.col;
+  const data = await guard(() => backend.setKeyColumn(sheet.value, column));
+  contextMenu.value.visible = false;
+  if (data) await acceptSummary(data, sheet.value, false);
 }
 
 function selectDiffEntry(index: number, item: CellDiff) {
@@ -1682,6 +1744,10 @@ function columnWidth(col: number) {
   return Math.round((columnWidths.value[col] ?? BASE_COL_WIDTH) * zoom.value);
 }
 
+function markerColumnWidth(col: number) {
+  return Math.round((markerColumnWidths.value[col] ?? BASE_COL_WIDTH) * zoom.value);
+}
+
 function columnLeft(col: number) {
   return rowHeaderWidth.value + (columnOffsets.value[col] ?? 0);
 }
@@ -1712,6 +1778,7 @@ function legacyLayoutKey(name = sheet.value) {
 function loadLayout(name: string) {
   zoom.value = 1;
   columnWidths.value = {};
+  markerColumnWidths.value = {};
   try {
     const key = layoutKey(name);
     let saved = window.localStorage.getItem(key);
@@ -1720,6 +1787,7 @@ function loadLayout(name: string) {
     const value = JSON.parse(saved) as { zoom?: number; widths?: Record<number, number> };
     zoom.value = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value.zoom ?? 1));
     columnWidths.value = value.widths ?? {};
+    markerColumnWidths.value = { ...columnWidths.value };
     if (window.localStorage.getItem(key) === null) {
       window.localStorage.setItem(key, JSON.stringify(value));
     }
@@ -1856,6 +1924,7 @@ function openCellMenu(event: MouseEvent, cell: RegionCell, side: "left" | "right
     x: Math.max(8, Math.min(event.clientX, window.innerWidth - 368)),
     y: Math.max(8, Math.min(event.clientY, window.innerHeight - 300)),
     row: cell.row,
+    col: cell.col,
     side,
     kind: "cell"
   };
@@ -1877,8 +1946,22 @@ function openRowMenu(event: MouseEvent, row: number, side: "left" | "right") {
     x: Math.max(8, Math.min(event.clientX, window.innerWidth - 368)),
     y: Math.max(8, Math.min(event.clientY, window.innerHeight - 300)),
     row,
+    col: 0,
     side,
     kind: "row"
+  };
+}
+
+function openColumnMenu(event: MouseEvent, col: number, side: "left" | "right") {
+  event.preventDefault();
+  contextMenu.value = {
+    visible: true,
+    x: Math.max(8, Math.min(event.clientX, window.innerWidth - 260)),
+    y: Math.max(8, Math.min(event.clientY, window.innerHeight - 160)),
+    row: 0,
+    col,
+    side,
+    kind: "column"
   };
 }
 
@@ -2468,6 +2551,20 @@ onBeforeUnmount(() => {
               行筛选：{{ rowFilterSummary }} <kbd>5</kbd>
               <template v-if="selectionSize > 0"> · 已选择 {{ selectionSize }} 格</template>
             </span>
+            <button
+              v-if="activeRowAlignment?.available && !summary.options.gitMerge"
+              type="button"
+              class="alignment-toggle"
+              :class="{ active: summary.rowAlignment.mode === 'auto' }"
+              :aria-pressed="summary.rowAlignment.mode === 'auto'"
+              :disabled="summary.undoCount > 0"
+              :title="summary.undoCount > 0
+                ? '已有编辑或合并操作，撤销历史存在时不能切换行对齐方式'
+                : summary.rowAlignment.mode === 'auto'
+                  ? '当前按主键列对齐；点击改为严格按物理行号比较'
+                  : '当前按物理行号比较；点击恢复主键列对齐'"
+              @click="toggleRowAlignment"
+            >{{ summary.rowAlignment.mode === "auto" ? `主键对齐${activeRowAlignment.moved > 0 ? ` ${activeRowAlignment.moved}` : ""}` : "按行号" }}</button>
           </div>
 
           <div
@@ -2520,7 +2617,7 @@ onBeforeUnmount(() => {
                 description="从左侧目录树选择一个 XLSX 表格开始对比。"
               />
             </div>
-            <div v-else ref="leftScroll" class="grid-scroll" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('left')" @wheel="onGridWheel">
+            <div v-else ref="leftScroll" class="grid-scroll" :style="scrollbarMarkerStyle" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('left')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
                 <template v-if="region">
                   <div class="col-header-layer">
@@ -2528,6 +2625,7 @@ onBeforeUnmount(() => {
                       v-for="col in visibleColumns"
                       :key="`lh${col}`"
                       class="col-header"
+                      :class="{ 'key-column': activeSheet?.idColumn === col }"
                       :style="{
                         top: 0,
                         left: `${columnLeft(col)}px`,
@@ -2535,8 +2633,9 @@ onBeforeUnmount(() => {
                         height: `${rowHeight}px`,
                         fontSize: `${scaledFontSize}px`
                       }"
+                      @contextmenu="openColumnMenu($event, col, 'left')"
                     >
-                      {{ columnName(col) }}
+                      {{ columnName(col) }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">主键</span>
                       <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
                     </div>
                   </div>
@@ -2615,7 +2714,7 @@ onBeforeUnmount(() => {
                 description="选择可用分支后，将通过 Git 对象只读加载同路径表格。"
               />
             </div>
-            <div v-else ref="rightScroll" class="grid-scroll" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('right')" @wheel="onGridWheel">
+            <div v-else ref="rightScroll" class="grid-scroll" :style="scrollbarMarkerStyle" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('right')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
                 <template v-if="region">
                   <div class="col-header-layer">
@@ -2623,6 +2722,7 @@ onBeforeUnmount(() => {
                       v-for="col in visibleColumns"
                       :key="`rh${col}`"
                       class="col-header"
+                      :class="{ 'key-column': activeSheet?.idColumn === col }"
                       :style="{
                         top: 0,
                         left: `${columnLeft(col)}px`,
@@ -2630,8 +2730,9 @@ onBeforeUnmount(() => {
                         height: `${rowHeight}px`,
                         fontSize: `${scaledFontSize}px`
                       }"
+                      @contextmenu="openColumnMenu($event, col, 'right')"
                     >
-                      {{ columnName(col) }}
+                      {{ columnName(col) }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">主键</span>
                       <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
                     </div>
                   </div>
@@ -2752,7 +2853,15 @@ onBeforeUnmount(() => {
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
       @pointerdown.stop
     >
-      <template v-if="contextHasMixedConflict">
+      <template v-if="contextMenu.kind === 'column'">
+        <button
+          :disabled="busy || Boolean(summary?.options.gitMerge) || Boolean(summary?.undoCount)"
+          @click="setContextKeyColumn"
+        >{{ activeSheet?.idColumn === contextMenu.col ? "取消主键列" : `将 ${columnName(contextMenu.col)} 列设为主键` }}</button>
+        <span v-if="summary?.undoCount" class="context-menu-warning">存在撤销历史时不能切换主键列</span>
+        <span v-else>按主键值匹配记录；空值或重复值仍保守按物理行处理</span>
+      </template>
+      <template v-else-if="contextHasMixedConflict">
         <span class="context-menu-warning">选中的内容中包含冲突，请单独处理冲突部分</span>
       </template>
       <template v-else-if="contextIsConflict">
@@ -2786,7 +2895,7 @@ onBeforeUnmount(() => {
         >复制单元格到左侧</button>
         <button :disabled="contextActionDisabled" @click="copyContextRows">复制整行到左侧</button>
       </template>
-      <span>
+      <span v-if="contextMenu.kind !== 'column'">
         {{ contextRows.length > 1 ? `已选 ${contextRows.length} 行` : `第 ${contextMenu.row} 行` }}
         · {{ contextStatusLabel }}
       </span>

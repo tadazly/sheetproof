@@ -12,6 +12,7 @@ import (
 	"github.com/tadazly/sheetproof/internal/app"
 	"github.com/tadazly/sheetproof/internal/testutil"
 	"github.com/tadazly/sheetproof/internal/workbook"
+	"github.com/xuri/excelize/v2"
 )
 
 func TestHelpUsesCurrentSheetProofCommand(t *testing.T) {
@@ -50,6 +51,34 @@ func TestDiffJSONWithUnicodeAndSpaces(t *testing.T) {
 	}
 	if result.Equal || result.DifferenceCount < 1 || len(result.Sheets) < 2 {
 		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestDiffJSONUsesSameUniqueIDAlignmentAsDesktop(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeCLIWorkbook(t, left, [][]any{{"id", "value"}, {"", "helper"}, {1, "one"}, {2, "two"}})
+	writeCLIWorkbook(t, right, [][]any{{"id", "value"}, {"", "helper"}, {99, "new"}, {1, "one"}, {2, "two"}})
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"diff", "--left", left, "--right", right, "--format", "json"}, &stdout, &stderr, noGUI)
+	if code != ExitOK {
+		t.Fatalf("exit = %d stderr=%s", code, stderr.String())
+	}
+	var result struct {
+		DifferenceCount int `json:"differenceCount"`
+		Sheets          []struct {
+			AddedRowCount    int `json:"addedRowCount"`
+			ModifiedRowCount int `json:"modifiedRowCount"`
+		} `json:"sheets"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
+	}
+	if result.DifferenceCount != 2 || len(result.Sheets) != 1 ||
+		result.Sheets[0].AddedRowCount != 1 || result.Sheets[0].ModifiedRowCount != 0 {
+		t.Fatalf("ID-aligned CLI result = %+v", result)
 	}
 }
 
@@ -622,6 +651,28 @@ func copyFileForCLITest(t *testing.T, source, target string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeCLIWorkbook(t *testing.T, path string, rows [][]any) {
+	t.Helper()
+	file := excelize.NewFile()
+	for rowIndex, row := range rows {
+		for colIndex, value := range row {
+			axis, err := excelize.CoordinatesToCellName(colIndex+1, rowIndex+1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := file.SetCellValue("Sheet1", axis, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := file.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
 }

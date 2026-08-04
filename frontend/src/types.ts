@@ -18,6 +18,8 @@ export type RowStatus = "unchanged" | "added" | "deleted" | "modified" | "confli
 
 export interface RowDiff {
   row: number;
+  leftRow?: number;
+  rightRow?: number;
   id?: string;
   status: RowStatus;
 }
@@ -33,6 +35,7 @@ export interface RowResolution {
   sheet: string;
   sourceRow: number;
   targetRow?: number;
+  targetSourceRow?: number;
   targetId?: string;
   kind: ResolutionKind;
   cellCount?: number;
@@ -81,6 +84,18 @@ export interface Summary {
   dirty: boolean;
   undoCount: number;
   warnings: string[];
+  rowAlignment: {
+    mode: "auto" | "position";
+    available: boolean;
+    applied: boolean;
+    moved: number;
+    sheets: Record<string, {
+      available: boolean;
+      applied: boolean;
+      moved: number;
+      keyColumn: number;
+    }>;
+  };
   mergeNotice: string;
   selectedSheet: string;
 }

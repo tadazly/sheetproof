@@ -61,6 +61,12 @@ pipeline for both.
 - Use the Go row classification for added, deleted, modified, and conflict colors/counts.
   Follow split Git colors for modified cells (old/left red, new/right green), use orange for
   conflicts, and preserve each semantic background under the blue selection border.
+- Keep safe unique-ID alignment shared by direct files, repository, UGit/Git difftool and CLI
+  reports. Require a same-position `id` header, then align IDs that are non-empty and unique on
+  both sides even when blank, duplicate or helper rows exist elsewhere in the sheet. Keep only
+  those ambiguous records on conservative physical-row semantics; never let one ambiguous record
+  disable alignment for the whole sheet. Keep the pre-edit ID/physical-row toggle and never remap
+  an existing undo history.
 - Keep conflict row copy/overwrite/append operations in Session merge/history. Auto IDs continue
   from the largest integer ID on the left; specified IDs are one per selected source row.
 - Keep conflict resolution markers in Session state, remove them with the corresponding undo,

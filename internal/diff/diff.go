@@ -48,9 +48,11 @@ type CellDiff struct {
 }
 
 type RowDiff struct {
-	Row    int       `json:"row"`
-	ID     string    `json:"id,omitempty"`
-	Status RowStatus `json:"status"`
+	Row      int       `json:"row"`
+	LeftRow  int       `json:"leftRow,omitempty"`
+	RightRow int       `json:"rightRow,omitempty"`
+	ID       string    `json:"id,omitempty"`
+	Status   RowStatus `json:"status"`
 }
 
 type SheetDiff struct {
@@ -83,12 +85,27 @@ type WorkbookDiff struct {
 }
 
 func Compare(left, right *workbook.WorkbookSnapshot) *WorkbookDiff {
+	return CompareWithKeyColumns(left, right, nil)
+}
+
+// CompareWithKeyColumns compares already row-aligned snapshots while using
+// the supplied per-sheet record-key columns for row and conflict semantics.
+// A missing map entry retains automatic header-based key detection; an
+// explicit zero disables key semantics for that sheet.
+func CompareWithKeyColumns(
+	left, right *workbook.WorkbookSnapshot,
+	keyColumns map[string]int,
+) *WorkbookDiff {
 	result := &WorkbookDiff{LeftFile: left.Path, RightFile: right.Path}
 	names := orderedUnion(left, right)
 	for _, name := range names {
 		ls := left.ByName[name]
 		rs := right.ByName[name]
-		sd := compareSheet(name, ls, rs)
+		keyColumn, configured := keyColumns[name]
+		if !configured {
+			keyColumn = findIDColumn(ls, rs)
+		}
+		sd := compareSheet(name, ls, rs, keyColumn)
 		result.Sheets = append(result.Sheets, sd)
 		if sd.Status != SheetEqual || sd.OrderDifferent {
 			result.DifferentSheetCount++
@@ -115,9 +132,9 @@ func orderedUnion(left, right *workbook.WorkbookSnapshot) []string {
 	return names
 }
 
-func compareSheet(name string, left, right *workbook.SheetSnapshot) *SheetDiff {
+func compareSheet(name string, left, right *workbook.SheetSnapshot, keyColumn int) *SheetDiff {
 	sd := &SheetDiff{Name: name, LeftIndex: -1, RightIndex: -1}
-	defer classifyRows(sd, left, right)
+	defer classifyRows(sd, left, right, keyColumn)
 	if left != nil {
 		sd.LeftIndex = left.Index
 		sd.MaxRow = left.MaxRow
@@ -204,13 +221,13 @@ func compareSheet(name string, left, right *workbook.SheetSnapshot) *SheetDiff {
 	return sd
 }
 
-func classifyRows(sd *SheetDiff, left, right *workbook.SheetSnapshot) {
+func classifyRows(sd *SheetDiff, left, right *workbook.SheetSnapshot, keyColumn int) {
 	sd.Rows = nil
 	sd.AddedRowCount = 0
 	sd.DeletedRowCount = 0
 	sd.ModifiedRowCount = 0
 	sd.ConflictRowCount = 0
-	sd.IDColumn = findIDColumn(left, right)
+	sd.IDColumn = keyColumn
 	sd.NextID = nextLeftID(left, right, sd.IDColumn)
 	sd.MaxRow = max(sheetMaxRow(left), sheetMaxRow(right))
 	sd.MaxCol = max(sheetMaxCol(left), sheetMaxCol(right))
@@ -269,20 +286,7 @@ func classifyRows(sd *SheetDiff, left, right *workbook.SheetSnapshot) {
 }
 
 func findIDColumn(left, right *workbook.SheetSnapshot) int {
-	maxCol := max(sheetMaxCol(left), sheetMaxCol(right))
-	for col := 1; col <= maxCol; col++ {
-		for _, sheet := range []*workbook.SheetSnapshot{left, right} {
-			value := sheet.Cell(1, col)
-			label := value.Raw
-			if label == "" {
-				label = value.Display
-			}
-			if strings.EqualFold(strings.TrimSpace(label), "id") {
-				return col
-			}
-		}
-	}
-	return 0
+	return workbook.RecordKeyColumn(left, right)
 }
 
 func nextLeftID(left, right *workbook.SheetSnapshot, idColumn int) int64 {
@@ -426,7 +430,7 @@ func (result *WorkbookDiff) ReclassifyRows(
 ) error {
 	for _, sheet := range result.Sheets {
 		if sheet.Name == sheetName {
-			classifyRows(sheet, left, right)
+			classifyRows(sheet, left, right, sheet.IDColumn)
 			return nil
 		}
 	}

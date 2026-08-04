@@ -36,6 +36,10 @@ export const backend = {
   setRepositorySidebarWidth: (width: number): Promise<void> =>
     controller().SetRepositorySidebarWidth(width),
   summary: (): Promise<Summary> => controller().Summary(),
+  setRowAlignment: (mode: "auto" | "position"): Promise<Summary> =>
+    controller().SetRowAlignment(mode),
+  setKeyColumn: (sheet: string, column: number): Promise<Summary> =>
+    controller().SetKeyColumn(sheet, column),
   checkExternalChanges: (): Promise<ExternalChanges> => controller().CheckExternalChanges(),
   reloadExternal: (side: "left" | "right"): Promise<ExternalReloadResult> =>
     controller().ReloadExternal(side),
