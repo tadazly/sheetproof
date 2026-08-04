@@ -1166,7 +1166,7 @@ cd frontend && npm run test && npm run typecheck
   `build/acceptance/id-alignment/position.png`，两个验收进程均正常关闭。
 - 官网源内容和静态产物已同步并通过构建测试；生产部署因当前请求没有单独明确授权修改
   生产站点而被安全审核拒绝，没有通过其他方式绕过，线上站点保持原状。取得维护者明确
-  部署授权后，应使用 `scripts/deploy-site-lightsail.ps1 -SshHost luyilabs` 发布并核对源站、
+  部署授权后，应使用 `scripts/deploy-site-lightsail.ps1 -SshHost <ssh-host>` 发布并核对源站、
   Cloudflare 公网地址和同一 Caddy 实例的既有站点。
 - 随后真实仓库截图暴露首版策略过严：工作表只要另有一个空白或重复 ID 行，就会在按钮
   显示“ID 对齐”时整表静默回退，导致 `7/8/9` 删除后从 `1001` 开始的共同记录仍连续错位。
@@ -1224,11 +1224,11 @@ cd frontend && npm run test && npm run typecheck
   `build/acceptance/key-alignment/01-jump-overview.png`、`03-column-menu-fixed.png` 和
   `04-manual-b-key.png`；所有验收进程正常退出，真实工作簿未保存或修改。
 
-## 2026-08-04：v0.3.0 正式发布候选准备
+## 2026-08-04：v0.3.0 正式发布
 
-- GitHub 只读核验确认最新已发布、非草稿版本为预览版 `v0.2.0`，包含 Windows amd64、
-  macOS universal 和 `SHA256SUMS.txt`。当前 `main`、`origin/main` 与 `HEAD` 均为
-  `f573a36`，本轮用户可见成果仍位于未提交工作树。
+- 发布准备开始时，GitHub 最新已发布、非草稿版本为预览版 `v0.2.0`，包含 Windows amd64、
+  macOS universal 和 `SHA256SUMS.txt`；当时 `main`、`origin/main` 与 `HEAD` 均为
+  `f573a36`，本轮用户可见成果位于未提交工作树。
 - 本轮新增滚动条差异位置、大表视口性能优化、普通/仓库/UGit/CLI 共用的安全主键记录
   对齐、邻近位置保持和可配置主键列，属于向后兼容的显著工作流扩展，因此从 `0.2.0`
   推导为次版本 `0.3.0`，继续标记为预览版。
@@ -1252,5 +1252,22 @@ cd frontend && npm run test && npm run typecheck
   EXE，未发现私钥、令牌、凭据赋值、带认证 URL、私人用户路径、私网地址或可疑敏感文件名；
   EXE 也未嵌入当前用户目录或工作区路径。根目录既有未跟踪 `node_modules/`、`.pnpm-store/`
   和忽略的 `build/` 证据目录均不进入发布提交。
-- 候选尚未 commit、push、创建或推送 `v0.3.0` 标签、运行远端 Release workflow、发布
-  GitHub Release 或部署正式官网。必须先取得维护者对正式发布 `v0.3.0` 的明确确认。
+- 维护者明确确认后，41 个候选文件以发布提交
+  `50db929b2ff022dda2f4b07ff84945729a60e637` 无强推地推送到 `origin/main`。提交级 Release
+  workflow（run `30896565272`）的源码验证、Windows amd64 和 macOS universal 构建全部成功；
+  随后创建并无强推地推送 annotated tag `v0.3.0`，标签级 workflow（run `30896935909`）
+  再次完成源码验证、双平台构建、校验和及 Draft Release 创建。
+- GitHub Release 已作为预览版公开在
+  `https://github.com/tadazly/sheetproof/releases/tag/v0.3.0`。Windows EXE、macOS ZIP 和
+  `SHA256SUMS.txt` 三项资产均可公网下载，校验和文件中的 SHA-256 与实际资产一致：Windows
+  为 `5E6082A43AB38768E70BE3499192859D64049BD8F7134D2AFDFCD88865A58D8F`，macOS 为
+  `0369300570631618756E5895946409FF98AB98698FBD6508F083620A92930104`。正式 Windows 产物
+  未签名，macOS 产物未签名或公证，发布说明保留这些限制。
+- 最终发布资产和校验和再次执行隐私扫描，未发现私钥、令牌、凭据、带认证 URL、构建机路径、
+  私网地址或服务器身份；无需凭据轮换，也未重写公开历史。
+- 通过 `scripts/deploy-site-lightsail.ps1` 将已验证静态产物部署到
+  `https://sheetproof.luyilabs.com/`。部署脚本完成源站根页面健康检查并保留上一站点目录用于回退；
+  后续源站只读验收确认下载页显示 `v0.3.0`、Caddy 配置有效，同一 Caddy 实例识别到的 5 个
+  站点全部健康。Cloudflare 公网首页、功能、使用说明、下载、更新日志、favicon、品牌 SVG 和
+  Open Graph 图片均返回 200；下载页与更新日志显示当前版本，三个 GitHub Release 资产均可
+  实际访问且大小匹配。正式发布至此完成。
