@@ -1589,3 +1589,33 @@ cd frontend && npm run test && npm run typecheck
   `v0.4.1` 标签，核对 Draft Release 的 Windows/macOS 资产与校验和，发布 Preview Release，
   最后重新同步、构建、测试并通过 Lightsail/Caddy 脚本原子部署官网，核对源站、Cloudflare
   三语页面、下载链接和同实例既有站点。
+
+## 2026-08-05：v0.4.1 正式发布完成
+
+- 维护者明确确认正式发布后，29 个候选文件以 `Release SheetProof v0.4.1` 提交为
+  `5074bf2771adc8d9df45ee91b5b99a9ab1c249eb`，并以普通 fast-forward 推送到
+  `origin/main`。没有强推、分支切换、覆盖无关修改或混入忽略目录中的截图、测试缓存和发布资产。
+- 提交级 `Build desktop release` workflow #30991478353 通过源码验证、Windows amd64 与
+  macOS universal 构建；无标签运行按设计跳过 Draft Release。随后创建并推送 annotated tag
+  `v0.4.1`，标签对象剥离后精确指向上述发布提交，没有移动既有标签。
+- 标签 workflow #30991843719 再次通过源码验证、双平台构建和 Draft Release 创建。下载并核对
+  Draft 资产后，`SheetProof-windows-amd64.exe` 为 16,914,432 字节、SHA-256 为
+  `FD6E233C913A8B7E9919E6474699B943BB3BB0633FCBDA14252DAC413F9E14AD`；
+  `SheetProof-macos-universal.zip` 为 11,046,641 字节、SHA-256 为
+  `B7FDCD92E8CE88A5B3BEFE71568CA6B4610D3AF9E4EB2622F2E8EFF23E74C57`。两项均与
+  192 字节的 `SHA256SUMS.txt` 一致；macOS 包含完整
+  `SheetProof.app/Contents` 结构，Windows EXE 返回版本 `0.4.1`。
+- Release Notes 已替换为仅两项用户可见修复，没有重新列入官网标题排版。GitHub Release
+  `https://github.com/tadazly/sheetproof/releases/tag/v0.4.1` 于 2026-08-05 17:17（UTC+8）
+  公开为 prerelease；EXE、macOS ZIP 和校验文件三个未认证公网下载均返回 200，长度与核验资产
+  一致。Windows 产物仍未签名，macOS 产物仍未公证，Release 与官网继续明确 Preview 限制。
+- 实际 Release EXE 与展开后的 macOS 应用再次扫描私钥、GitHub/云/OpenAI 令牌、认证 URL、
+  私人用户路径、工作区路径和私网 IPv4，所有类别均为 0；最终发布范围未发现敏感数据，不需要
+  移除资产、轮换凭据或重写历史。
+- Release 公开后重新通过内容同步检查；官网 lint 为 0 错误和 4 条既有 `<img>` warning，
+  16 条静态路由构建及 10/10 渲染测试通过。`scripts/deploy-site-lightsail.ps1` 已把构建结果
+  原子部署到正式域名；源站英语、简体中文和日语更新日志文件 SHA-256 与本地静态产物逐项一致，
+  Caddy 配置有效，同实例 5 个已配置站点全部健康。
+- Cloudflare 公网 15 个三语产品路由均返回 200 且具有代理响应头；三语更新日志均显示
+  `0.4.1` 和两项正确修复，英文页面不包含误归档的标题排版条目，下载页面已指向
+  `v0.4.1`，实际 `/brand/favicon.ico` 返回 200 且非空。
