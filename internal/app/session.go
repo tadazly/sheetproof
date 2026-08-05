@@ -22,6 +22,7 @@ import (
 
 type Options struct {
 	Locale         string `json:"locale,omitempty"`
+	LocaleExplicit bool   `json:"-"`
 	Title          string `json:"title"`
 	LeftLabel      string `json:"leftLabel"`
 	RightLabel     string `json:"rightLabel"`

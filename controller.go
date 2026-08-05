@@ -88,9 +88,18 @@ type Controller struct {
 }
 
 func NewController(left, right string, options coreapp.Options) *Controller {
+	return newControllerWithPreferences(left, right, options, preferences.NewStore())
+}
+
+func newControllerWithPreferences(left, right string, options coreapp.Options, prefs preferences.Store) *Controller {
+	if options.Locale != "" && !options.LocaleExplicit {
+		if preference := prefs.LanguagePreference(); preference != "system" {
+			options.Locale = preference
+		}
+	}
 	return &Controller{
 		left: left, right: right, options: options,
-		prefs: preferences.NewStore(), dialog: showChoiceDialog,
+		prefs: prefs, dialog: showChoiceDialog,
 	}
 }
 
@@ -188,8 +197,12 @@ type UGitConfigurationResult struct {
 }
 
 func (c *Controller) LanguagePreference() string {
-	if c.options.Locale != "" {
-		return c.options.Locale
+	c.mu.Lock()
+	explicit := c.options.LocaleExplicit
+	locale := c.options.Locale
+	c.mu.Unlock()
+	if explicit {
+		return locale
 	}
 	c.prefsMu.Lock()
 	defer c.prefsMu.Unlock()
@@ -211,6 +224,39 @@ func (c *Controller) SetRuntimeLocale(value string) error {
 	c.options.Locale = string(locale)
 	c.mu.Unlock()
 	return nil
+}
+
+// ClearDifferenceIndexCache removes only persisted semantic repository index
+// results. The current comparison and saved repository history remain open.
+func (c *Controller) ClearDifferenceIndexCache() error {
+	return c.clearStoredApplicationData(false)
+}
+
+// ClearAllData removes persisted application data without touching any
+// repository, workbook, or Git state. The active in-memory comparison remains
+// available until the app closes, but the next launch starts without a repo.
+func (c *Controller) ClearAllData() error {
+	return c.clearStoredApplicationData(true)
+}
+
+func (c *Controller) clearStoredApplicationData(all bool) error {
+	c.mu.Lock()
+	c.differenceIndexGeneration++
+	if c.differenceIndexCancel != nil {
+		c.differenceIndexCancel()
+		c.differenceIndexCancel = nil
+	}
+	c.repositoryView.DifferenceIndexing = false
+	c.prefsMu.Lock()
+	var err error
+	if all {
+		err = c.prefs.ClearAllData()
+	} else {
+		err = c.prefs.ClearRepositoryIndexes()
+	}
+	c.prefsMu.Unlock()
+	c.mu.Unlock()
+	return err
 }
 
 type ExternalReloadResult struct {
@@ -1733,17 +1779,23 @@ func (c *Controller) startRepositoryDifferenceIndex(
 			}
 		}
 		if err == nil && indexContext.Err() == nil {
-			c.prefsMu.Lock()
-			cacheErr := c.prefs.RecordRepositoryIndex(
-				repo.Root(), branch.FullName, signature, result,
-			)
-			c.prefsMu.Unlock()
-			if cacheErr != nil {
-				cacheWarning = fmt.Sprintf(uiText(locale,
-					"The changed-workbook list was built, but it could not be cached: %v",
-					"差异表索引已建立，但无法缓存：%v",
-					"差分のあるブック一覧は作成されましたが、キャッシュに保存できませんでした：%v"), cacheErr)
+			c.mu.Lock()
+			current := generation == c.differenceIndexGeneration &&
+				c.repo == repo && c.repositoryView.SelectedRef == branch.FullName
+			if current {
+				c.prefsMu.Lock()
+				cacheErr := c.prefs.RecordRepositoryIndex(
+					repo.Root(), branch.FullName, signature, result,
+				)
+				c.prefsMu.Unlock()
+				if cacheErr != nil {
+					cacheWarning = fmt.Sprintf(uiText(locale,
+						"The changed-workbook list was built, but it could not be cached: %v",
+						"差异表索引已建立，但无法缓存：%v",
+						"差分のあるブック一覧は作成されましたが、キャッシュに保存できませんでした：%v"), cacheErr)
+				}
 			}
+			c.mu.Unlock()
 		}
 
 		c.mu.Lock()

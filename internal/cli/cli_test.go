@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/tadazly/sheetproof/internal/app"
+	"github.com/tadazly/sheetproof/internal/localization"
 	"github.com/tadazly/sheetproof/internal/testutil"
 	"github.com/tadazly/sheetproof/internal/workbook"
 	"github.com/xuri/excelize/v2"
@@ -558,6 +559,30 @@ func TestCompareDoesNotConfusePartialGitEnvironmentWithDiffTool(t *testing.T) {
 	}
 	if launched.GitDiff || launched.ReadonlyLeft {
 		t.Fatalf("ordinary compare options = %+v, want editable non-Git comparison", launched)
+	}
+}
+
+func TestParseLanguageDistinguishesEnvironmentDefaultFromExplicitOverride(t *testing.T) {
+	args, _, explicit, err := parseLanguage([]string{"compare"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if explicit {
+		t.Fatal("environment locale was marked as an explicit override")
+	}
+	if len(args) != 1 || args[0] != "compare" {
+		t.Fatalf("remaining args = %q", args)
+	}
+
+	args, locale, explicit, err := parseLanguage([]string{"compare", "--lang", "zh-CN"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !explicit || locale != localization.SimplifiedChinese {
+		t.Fatalf("explicit locale = %q, explicit = %t", locale, explicit)
+	}
+	if len(args) != 1 || args[0] != "compare" {
+		t.Fatalf("remaining args = %q", args)
 	}
 }
 

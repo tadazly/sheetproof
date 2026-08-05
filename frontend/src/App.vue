@@ -53,7 +53,6 @@ const selectionAnchor = ref<CellPoint | null>(null);
 const selection = ref<SelectionRange | null>(null);
 const busy = ref(false);
 const error = ref("");
-const integrationNotice = ref("");
 const externalNotice = ref("");
 const diffFilter = ref<DiffFilter>("modified");
 const selectedRowFilters = ref<DiffFilter[]>([]);
@@ -85,6 +84,9 @@ const repositorySwitchDialog = ref<{
 const repositoryOpenDialog = ref(false);
 const repositoryOpening = ref(false);
 const repositoryOpenError = ref("");
+const settingsDialog = ref(false);
+const settingsConfirmation = ref<"cache" | "all" | null>(null);
+const settingsNotice = ref<{ kind: "success" | "error" | "info"; message: string } | null>(null);
 const externalChangeDialog = ref<{
   visible: boolean;
   side: "left" | "right";
@@ -614,12 +616,15 @@ function clearWorkbook() {
 
 async function changeLanguage(event: Event) {
   const next = (event.target as HTMLSelectElement).value as LocalePreference;
+  settingsNotice.value = null;
   setLocalePreference(next);
   try {
     await backend.setRuntimeLocale(locale.value);
     await backend.setLanguagePreference(next);
   } catch (reason) {
-    error.value = localizeBackendError(reason);
+    const message = localizeBackendError(reason);
+    if (settingsDialog.value) settingsNotice.value = { kind: "error", message };
+    else error.value = message;
   }
 }
 
@@ -716,11 +721,81 @@ async function chooseFiles() {
   } else scheduleDifferenceIndexPoll();
 }
 
+function openSettings() {
+  settingsNotice.value = null;
+  settingsConfirmation.value = null;
+  settingsDialog.value = true;
+}
+
+function closeSettings() {
+  if (busy.value) return;
+  settingsConfirmation.value = null;
+  settingsDialog.value = false;
+}
+
+async function runSettingsAction<T>(action: () => Promise<T>): Promise<T | undefined> {
+  pendingActions++;
+  busy.value = true;
+  settingsNotice.value = null;
+  try {
+    return await action();
+  } catch (reason) {
+    settingsNotice.value = { kind: "error", message: localizeBackendError(reason) };
+  } finally {
+    pendingActions = Math.max(0, pendingActions - 1);
+    busy.value = pendingActions > 0;
+  }
+}
+
 async function configureUGit() {
-  integrationNotice.value = "";
-  const result = await guard(() => backend.configureUGit());
-  if (result && !result.cancelled) {
-    integrationNotice.value = result.message;
+  const result = await runSettingsAction(() => backend.configureUGit());
+  if (result) {
+    settingsNotice.value = {
+      kind: result.cancelled ? "info" : "success",
+      message: result.message
+    };
+  }
+}
+
+function clearStoredClientData() {
+  const prefixes = [
+    REPOSITORY_SEARCH_HISTORY_PREFIX,
+    LEGACY_REPOSITORY_SEARCH_HISTORY_PREFIX,
+    SHEET_LAYOUT_PREFIX,
+    LEGACY_SHEET_LAYOUT_PREFIX
+  ];
+  const keys: string[] = [];
+  for (let index = 0; index < window.localStorage.length; index++) {
+    const key = window.localStorage.key(index);
+    if (key && prefixes.some((prefix) => key.startsWith(prefix))) keys.push(key);
+  }
+  for (const key of keys) window.localStorage.removeItem(key);
+}
+
+async function refreshRepositoryAfterDataCleanup() {
+  window.clearTimeout(differenceIndexTimer);
+  if (!repository.value) return;
+  const result = await backend.repository();
+  acceptRepositoryView(result.repository);
+}
+
+async function confirmSettingsCleanup() {
+  const action = settingsConfirmation.value;
+  if (!action) return;
+  settingsConfirmation.value = null;
+  const completed = await runSettingsAction(async () => {
+    if (action === "cache") await backend.clearDifferenceIndexCache();
+    else await backend.clearAllData();
+    if (action === "all") clearStoredClientData();
+    await refreshRepositoryAfterDataCleanup();
+    return true;
+  });
+  if (completed) {
+    repositorySearchHistory.value = action === "all" ? [] : repositorySearchHistory.value;
+    settingsNotice.value = {
+      kind: "success",
+      message: action === "cache" ? t("settings.cacheCleared") : t("settings.allDataCleared")
+    };
   }
 }
 
@@ -1539,6 +1614,14 @@ async function undo() {
 }
 
 function onWindowKeyDown(event: KeyboardEvent) {
+  if (event.key === "Escape" && settingsConfirmation.value) {
+    settingsConfirmation.value = null;
+    return;
+  }
+  if (event.key === "Escape" && settingsDialog.value) {
+    closeSettings();
+    return;
+  }
   if (event.key === "Escape" && externalChangeDialog.value.visible) {
     deferExternalReload();
     return;
@@ -2082,11 +2165,13 @@ onBeforeUnmount(() => {
       <div class="toolbar-group file-actions" :aria-label="t('toolbar.sources')">
         <button class="secondary" :disabled="busy" @click="showRepositoryOpenDialog">
           <AppIcon name="repository" />
-          <span class="button-label">{{ t("toolbar.openRepository") }}</span>
+          <span class="button-label full-label">{{ t("toolbar.openRepository") }}</span>
+          <span class="button-label compact-label" aria-hidden="true">{{ t("toolbar.openRepositoryShort") }}</span>
         </button>
         <button class="ghost" :disabled="busy" @click="chooseFiles">
           <AppIcon name="files" />
-          <span class="button-label">{{ t("toolbar.openFiles") }}</span>
+          <span class="button-label full-label">{{ t("toolbar.openFiles") }}</span>
+          <span class="button-label compact-label" aria-hidden="true">{{ t("toolbar.openFilesShort") }}</span>
         </button>
       </div>
 
@@ -2116,10 +2201,12 @@ onBeforeUnmount(() => {
         <button
           :disabled="!copyTargets.length || busy || summary?.options.readonlyLeft || !comparisonActive"
           class="primary merge-action"
+          :title="t('toolbar.copyCellsToLeft', { count: copyTargets.length })"
           @click="copySelection"
         >
           <AppIcon name="merge" />
-          <span>{{ t("toolbar.copyCellsToLeft", { count: copyTargets.length }) }}</span>
+          <span class="full-label">{{ t("toolbar.copyCellsToLeft", { count: copyTargets.length }) }}</span>
+          <span class="compact-label" aria-hidden="true">{{ t("toolbar.copyCellsToLeftShort", { count: copyTargets.length }) }}</span>
         </button>
         <button
           class="icon-button"
@@ -2132,7 +2219,7 @@ onBeforeUnmount(() => {
           class="zoom-button ghost"
           :title="t('toolbar.zoomHelp', { percent: Math.round(zoom * 100) })"
           @click="resetZoom"
-        ><AppIcon name="zoom" />{{ t("toolbar.zoom", { percent: Math.round(zoom * 100) }) }}</button>
+        ><AppIcon name="zoom" /><span class="full-label">{{ t("toolbar.zoom", { percent: Math.round(zoom * 100) }) }}</span><span class="compact-label" aria-hidden="true">{{ t("toolbar.zoomShort", { percent: Math.round(zoom * 100) }) }}</span></button>
       </div>
 
       <div class="toolbar-group save-actions" :aria-label="t('toolbar.saveResults')">
@@ -2146,32 +2233,25 @@ onBeforeUnmount(() => {
         <button
           :disabled="!summary?.dirty || busy || summary.options.readonlyLeft"
           class="save"
+          :title="repository || summary?.options.ugitWorktree ? t('toolbar.saveWorktree') : t('toolbar.saveLeft')"
           @click="save(false)"
         >
           <AppIcon name="save" />
-          <span>{{ repository || summary?.options.ugitWorktree ? t("toolbar.saveWorktree") : t("toolbar.saveLeft") }}</span>
+          <span class="full-label">{{ repository || summary?.options.ugitWorktree ? t("toolbar.saveWorktree") : t("toolbar.saveLeft") }}</span>
+          <span class="compact-label" aria-hidden="true">{{ repository || summary?.options.ugitWorktree ? t("toolbar.saveWorktreeShort") : t("toolbar.saveLeftShort") }}</span>
         </button>
       </div>
-      <div class="toolbar-group integration-actions" :aria-label="t('toolbar.integration')">
+      <div class="toolbar-group settings-actions" :aria-label="t('toolbar.settings')">
         <button
           class="icon-button ghost"
           :disabled="busy"
-          :title="t('toolbar.configureUGitHelp')"
-          :aria-label="t('toolbar.configureUGit')"
-          @click="configureUGit"
+          :title="t('toolbar.settings')"
+          :aria-label="t('toolbar.settings')"
+          @click="openSettings"
         >
           <AppIcon name="settings" />
-          <span class="button-label">{{ t("toolbar.configureUGit") }}</span>
+          <span class="button-label">{{ t("toolbar.settings") }}</span>
         </button>
-        <label class="language-select" :title="t('language.label')">
-          <span class="sr-only">{{ t("language.label") }}</span>
-          <select :value="preference" :aria-label="t('language.label')" @change="changeLanguage">
-            <option value="system">{{ t("language.followSystem") }}</option>
-            <option value="en">English</option>
-            <option value="zh-CN">简体中文</option>
-            <option value="ja">日本語</option>
-          </select>
-        </label>
       </div>
       <div v-if="busy" class="toolbar-progress" aria-hidden="true"></div>
     </header>
@@ -2180,18 +2260,6 @@ onBeforeUnmount(() => {
       <AppIcon name="alert" />
       <span>{{ error }}</span>
       <button class="icon-button" :title="t('common.closeError')" :aria-label="t('common.closeError')" @click="error = ''">
-        <AppIcon name="x" />
-      </button>
-    </div>
-    <div v-if="integrationNotice" class="success-banner" role="status">
-      <AppIcon name="check" />
-      <span>{{ integrationNotice }}</span>
-      <button
-        class="icon-button"
-        :title="t('common.closeNotice')"
-        :aria-label="t('common.closeNotice')"
-        @click="integrationNotice = ''"
-      >
         <AppIcon name="x" />
       </button>
     </div>
@@ -2956,6 +3024,100 @@ onBeforeUnmount(() => {
           >{{ t("dialog.appendLeft") }}</button>
         </div>
       </form>
+    </div>
+    <div v-if="settingsDialog" class="settings-overlay" @pointerdown.self="closeSettings">
+      <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="repository-switch-header">
+          <div>
+            <strong id="settings-title">{{ t("settings.title") }}</strong>
+            <span>{{ t("settings.description") }}</span>
+          </div>
+          <button
+            class="icon-button"
+            :title="t('common.close')"
+            :aria-label="t('common.close')"
+            :disabled="busy"
+            @click="closeSettings"
+          ><AppIcon name="x" /></button>
+        </div>
+        <div class="settings-content">
+          <section class="settings-section">
+            <div class="settings-section-heading">
+              <strong>{{ t("settings.languageTitle") }}</strong>
+              <span>{{ t("settings.languageDescription") }}</span>
+            </div>
+            <label class="settings-language-row">
+              <span>{{ t("language.label") }}</span>
+              <select :value="preference" :aria-label="t('language.label')" :disabled="busy" @change="changeLanguage">
+                <option value="system">{{ t("language.followSystem") }}</option>
+                <option value="en">English</option>
+                <option value="zh-CN">简体中文</option>
+                <option value="ja">日本語</option>
+              </select>
+            </label>
+          </section>
+          <section class="settings-section">
+            <div class="settings-section-heading">
+              <strong>{{ t("settings.integrationTitle") }}</strong>
+              <span>{{ t("settings.integrationDescription") }}</span>
+            </div>
+            <div class="settings-action-row">
+              <button
+                class="secondary"
+                :disabled="busy"
+                :title="t('toolbar.configureUGitHelp')"
+                :aria-label="t('toolbar.configureUGit')"
+                @click="configureUGit"
+              >
+                <AppIcon name="settings" />{{ t("toolbar.configureUGit") }}
+              </button>
+            </div>
+          </section>
+          <div
+            v-if="settingsNotice"
+            class="settings-result"
+            :class="settingsNotice.kind"
+            :role="settingsNotice.kind === 'error' ? 'alert' : 'status'"
+          >
+            <AppIcon :name="settingsNotice.kind === 'error' ? 'alert' : settingsNotice.kind === 'success' ? 'check' : 'info'" />
+            <span>{{ settingsNotice.message }}</span>
+          </div>
+          <section class="settings-section">
+            <div class="settings-section-heading">
+              <strong>{{ t("settings.storageTitle") }}</strong>
+              <span>{{ t("settings.storageDescription") }}</span>
+            </div>
+            <div class="settings-storage-actions">
+              <div>
+                <span>{{ t("settings.clearCacheDescription") }}</span>
+                <button :disabled="busy" @click="settingsConfirmation = 'cache'">{{ t("settings.clearCache") }}</button>
+              </div>
+              <div>
+                <span>{{ t("settings.clearAllDescription") }}</span>
+                <button class="danger" :disabled="busy" @click="settingsConfirmation = 'all'">{{ t("settings.clearAll") }}</button>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="repository-switch-actions">
+          <button :disabled="busy" @click="closeSettings">{{ t("common.close") }}</button>
+        </div>
+      </section>
+    </div>
+    <div v-if="settingsConfirmation" class="settings-confirm-overlay" @pointerdown.self="settingsConfirmation = null">
+      <section class="settings-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="settings-confirm-title">
+        <span class="external-change-icon"><AppIcon name="alert" :size="20" /></span>
+        <div>
+          <strong id="settings-confirm-title">{{ settingsConfirmation === "cache" ? t("settings.clearCacheConfirmTitle") : t("settings.clearAllConfirmTitle") }}</strong>
+          <p>{{ settingsConfirmation === "cache" ? t("settings.clearCacheConfirmDescription") : t("settings.clearAllConfirmDescription") }}</p>
+        </div>
+        <div class="settings-confirm-actions">
+          <button :disabled="busy" @click="settingsConfirmation = null">{{ t("common.cancel") }}</button>
+          <button class="danger" :disabled="busy" @click="confirmSettingsCleanup">
+            {{ settingsConfirmation === "cache" ? t("settings.confirmClearCache") : t("settings.confirmClearAll") }}
+          </button>
+        </div>
+      </section>
     </div>
     <div
       v-if="repositorySwitchDialog.visible"

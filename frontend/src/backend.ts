@@ -21,6 +21,8 @@ export const backend = {
   languagePreference: (): Promise<string> => controller().LanguagePreference(),
   setLanguagePreference: (preference: string): Promise<void> => controller().SetLanguagePreference(preference),
   setRuntimeLocale: (locale: string): Promise<void> => controller().SetRuntimeLocale(locale),
+  clearDifferenceIndexCache: (): Promise<void> => controller().ClearDifferenceIndexCache(),
+  clearAllData: (): Promise<void> => controller().ClearAllData(),
   bootstrap: (): Promise<BootstrapState> =>
     controller().Bootstrap(),
   configureUGit: (): Promise<UGitConfigurationResult> =>

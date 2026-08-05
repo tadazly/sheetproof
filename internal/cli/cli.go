@@ -29,28 +29,28 @@ const (
 type Launcher func(left, right string, options app.Options) error
 
 func Run(args []string, stdout, stderr io.Writer, launch Launcher) int {
-	args, locale, err := parseLanguage(args)
+	args, locale, localeExplicit, err := parseLanguage(args)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return ExitRuntime
 	}
 	if len(args) == 0 {
-		if err := launch("", "", app.Options{Locale: string(locale)}); err != nil {
+		if err := launch("", "", app.Options{Locale: string(locale), LocaleExplicit: localeExplicit}); err != nil {
 			fmt.Fprintln(stderr, err)
 			return exitCode(err)
 		}
 		return ExitOK
 	}
-	if handled, code := runUGitSpreadsheetCompare(args, stderr, launch, locale); handled {
+	if handled, code := runUGitSpreadsheetCompare(args, stderr, launch, locale, localeExplicit); handled {
 		return code
 	}
 	switch args[0] {
 	case "diff":
 		return runDiff(args[1:], stdout, stderr, locale)
 	case "compare":
-		return runCompare(args[1:], stderr, launch, locale)
+		return runCompare(args[1:], stderr, launch, locale, localeExplicit)
 	case "repo":
-		return runRepository(args[1:], stderr, launch, locale)
+		return runRepository(args[1:], stderr, launch, locale, localeExplicit)
 	case "help", "--help", "-h":
 		printUsage(stdout, locale)
 		return ExitOK
@@ -64,7 +64,7 @@ func Run(args []string, stdout, stderr io.Writer, launch Launcher) int {
 	}
 }
 
-func runRepository(args []string, stderr io.Writer, launch Launcher, locale localization.Locale) int {
+func runRepository(args []string, stderr io.Writer, launch Launcher, locale localization.Locale, localeExplicit bool) int {
 	flags := flag.NewFlagSet("repo", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	path := flags.String("path", "", "local Git repository path")
@@ -111,6 +111,7 @@ func runRepository(args []string, stderr io.Writer, launch Launcher, locale loca
 	}
 	options := app.Options{
 		Locale:         string(locale),
+		LocaleExplicit: localeExplicit,
 		RepositoryPath: info.Root,
 		RepositoryFile: normalizedFile,
 		RepositoryRef:  fullRef,
@@ -183,7 +184,7 @@ func runDiff(args []string, stdout, stderr io.Writer, locale localization.Locale
 	return ExitOK
 }
 
-func runCompare(args []string, stderr io.Writer, launch Launcher, locale localization.Locale) int {
+func runCompare(args []string, stderr io.Writer, launch Launcher, locale localization.Locale, localeExplicit bool) int {
 	flags := flag.NewFlagSet("compare", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	left := flags.String("left", "", "left .xlsx path")
@@ -224,8 +225,8 @@ func runCompare(args []string, stderr io.Writer, launch Launcher, locale localiz
 	gitDiff := isGitDiffToolInvocation()
 	resolvedLeftLabel, resolvedRightLabel := resolveCompareLabels(*leftLabel, *rightLabel)
 	options := app.Options{
-		Locale: string(locale),
-		Title:  *title, LeftLabel: resolvedLeftLabel, RightLabel: resolvedRightLabel,
+		Locale: string(locale), LocaleExplicit: localeExplicit,
+		Title: *title, LeftLabel: resolvedLeftLabel, RightLabel: resolvedRightLabel,
 		ReadonlyLeft: *readonly || gitDiff, GitDiff: gitDiff, Output: *output,
 		GitMerge:  hasMergeBaseArgument,
 		MergeBase: mergeBase,
@@ -242,7 +243,7 @@ func runCompare(args []string, stderr io.Writer, launch Launcher, locale localiz
 // workbook paths to a temporary text file and starts the configured program
 // with only that file as its argument. Unlike git difftool, this route launches
 // even when Git has no byte-level difference to hand to an external command.
-func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher, locale localization.Locale) (bool, int) {
+func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher, locale localization.Locale, localeExplicit bool) (bool, int) {
 	if len(args) != 1 {
 		return false, ExitRuntime
 	}
@@ -272,7 +273,7 @@ func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher,
 	}
 	if worktree, snapshot, snapshotLabel, ok := identifyUGitWorktreeComparison(listPath, paths[0], paths[1], locale); ok {
 		options := app.Options{
-			Locale:    string(locale),
+			Locale: string(locale), LocaleExplicit: localeExplicit,
 			LeftLabel: sourceLabel(locale, "worktree"), RightLabel: snapshotLabel,
 			UGitWorktree: true,
 		}
@@ -287,7 +288,7 @@ func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher,
 		rightLabel = sourceLabel(locale, "worktree")
 	}
 	options := app.Options{
-		Locale:    string(locale),
+		Locale: string(locale), LocaleExplicit: localeExplicit,
 		LeftLabel: sourceLabel(locale, "selectedRevision"), RightLabel: rightLabel,
 		ReadonlyLeft: true, GitDiff: true,
 	}
@@ -524,8 +525,9 @@ func printUsage(w io.Writer, locale localization.Locale) {
 	fmt.Fprintln(w, cliMessage(locale, "usage"))
 }
 
-func parseLanguage(args []string) ([]string, localization.Locale, error) {
+func parseLanguage(args []string) ([]string, localization.Locale, bool, error) {
 	locale := localization.FromEnvironment()
+	explicit := false
 	result := make([]string, 0, len(args))
 	for index := 0; index < len(args); index++ {
 		argument := args[index]
@@ -533,7 +535,7 @@ func parseLanguage(args []string) ([]string, localization.Locale, error) {
 		switch {
 		case argument == "--lang":
 			if index+1 >= len(args) {
-				return nil, locale, errors.New("--lang requires en, zh-CN, or ja")
+				return nil, locale, explicit, errors.New("--lang requires en, zh-CN, or ja")
 			}
 			index++
 			value = args[index]
@@ -545,11 +547,12 @@ func parseLanguage(args []string) ([]string, localization.Locale, error) {
 		}
 		parsed, err := localization.Parse(value)
 		if err != nil {
-			return nil, locale, err
+			return nil, locale, explicit, err
 		}
 		locale = parsed
+		explicit = true
 	}
-	return result, locale, nil
+	return result, locale, explicit, nil
 }
 
 func cliMessage(locale localization.Locale, key string) string {

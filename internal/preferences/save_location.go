@@ -275,6 +275,25 @@ func (s Store) RecordRepositoryIndex(root, ref, signature string, files []string
 	return s.write(value)
 }
 
+// ClearRepositoryIndexes removes only the cached semantic changed-workbook
+// results. Repository history, comparison refs, and other preferences remain.
+func (s Store) ClearRepositoryIndexes() error {
+	value := s.load()
+	if len(value.RepositoryIndexes) == 0 {
+		return nil
+	}
+	value.RepositoryIndexes = nil
+	return s.write(value)
+}
+
+// ClearAllData removes persisted application data while retaining the active
+// language choice so the confirmation result does not unexpectedly switch
+// languages. It never touches repositories or workbook files.
+func (s Store) ClearAllData() error {
+	value := savePreferences{LanguagePreference: s.load().LanguagePreference}
+	return s.write(value)
+}
+
 func (s Store) RepositoryWidth() int {
 	width := s.load().RepositoryWidth
 	if width < 180 || width > 520 {

@@ -43,8 +43,11 @@ switch 或 fetch。临时文件位于系统临时目录，切换来源和退出�
 - `internal/merge`：单元格内容、公式、样式、超链接、批注的捕获和应用。
 - `internal/history`：会话级命令栈。
 - `internal/storage`：安全保存与保存后验证。
-- `internal/preferences`：跨会话保存“另存为”的最后目录、最近 10 个仓库、侧栏宽度、
-  各仓库的对比引用和精确语义差异文件索引。
+- `internal/preferences`：跨会话保存界面语言、“另存为”的最后目录、最近 10 个仓库、
+  侧栏宽度、各仓库的对比引用和精确语义差异文件索引；设置窗口可只清除语义索引，
+  或清除除当前语言以外的全部已保存应用数据。
+  普通 GUI 启动优先恢复保存的语言；只有用户明确传入 `--lang` 时才覆盖本次启动，
+  不能把从操作系统探测到的默认语言误判为命令行覆盖。
 - `internal/repository`：Git 根目录发现、XLSX 扫描、分支排序、状态读取、变化候选筛选和引用对象导出。
 - `internal/ugit`：UGit `*.xlsx` 外部工具配置检测、跨平台 Git 定位、路径更新和失败回滚。
 - `internal/backgroundcmd`：仅对后台 CLI 子进程应用平台进程属性；Windows 使用
@@ -184,7 +187,7 @@ UGit 5.51.0 会额外注入 `LOCAL_TITLE`、`REMOTE_TITLE` 和 `WORKSPACE_PATH`�
 不参与路径解析、差异相等判断或保存目标选择；普通 Git 未提供这些 UGit 扩展
 变量时继续使用现有文件名回退显示。
 
-顶部“配置 UGit”调用 `internal/ugit`，通过参数数组执行 `git config --global`，
+设置窗口中的“配置 UGit”调用 `internal/ugit`，通过参数数组执行 `git config --global`，
 不直接编辑用户的配置文件，也不调用 shell。注册前读取所有符合 UGit 命名规则
 的全局 `*.xlsx` 差异/合并项；用户在原生对话框确认后，只清理这些 XLSX 项，
 再依次写入工具名为 `SpreadsheetCompare` 的 UGit 直连差异命令、供普通 Git
@@ -201,6 +204,14 @@ Windows 使用当前 `.exe`。再次配置会把已经移动失效的旧路径�
 `mingw64\\bin\\git.exe`，之后才使用 `PATH` 和其他常见安装位置。读取配置时
 同时取得 `--show-origin`，确认框、成功结果和错误均显示实际 Git 或来源。
 UGit 没有公开的工具注册 API，因此外部写入后提示用户重启正在运行的 UGit。
+配置完成、取消或失败后的信息显示在设置窗口内，不写到被模态层遮住的主界面提示条。
+
+同一设置窗口提供两级本地数据清理。“清理缓存”只清除
+`RepositoryIndexes`，保留最近仓库、对比引用和其他偏好；“清除所有数据”还清除
+最近仓库、对比引用、另存目录、侧栏宽度以及 WebView 中的仓库搜索记录和工作簿
+视图设置，但保留当前语言，且不关闭当前内存会话、不删除工作簿、不修改仓库或 Git。
+两项操作都由前端三语二次确认；清理时取消正在运行的差异索引并递增代次，旧任务不得
+在确认完成后重新写回缓存。下次启动不再自动打开任何仓库。
 
 Windows 上 Wails 2.10.2 的 `MessageDialog` 不使用调用方给出的自定义按钮，而会
 把问题对话框固定成 Win32 `MB_YESNO` 并返回英文 `Yes` / `No`。根包因此以 build
@@ -254,7 +265,8 @@ Windows 不能启用 `DisableWebViewDrop`，因为 WebView2 会同时拒绝外�
 `EmptyState.vue` 复用空状态结构；没有引入第三方 UI 或图标依赖。顶部按
 “来源 / 差异导航 / 编辑与合并 / 保存结果”分组，文件来源卡与结果摘要位于
 网格之前。响应式规则只改变次要标签的可见性和紧凑度，不改变操作语义、
-表格区域请求或左右布局。
+表格区域请求或左右布局。工具栏低于 1280px 时使用三语短标签并收起次要按钮文字；
+语言和 UGit 配置统一放在设置窗口，工具栏只保留一个设置入口。
 
 操作系统级应用图标使用 `build/appicon.svg` 作为设计源：左右表格表示对比，
 红/绿差异块沿用网格的删除/增加语义，中心双向箭头表示检查与合并。
@@ -370,6 +382,10 @@ Git mergetool 入口额外传入 `$BASE` 并设置 `Options.GitMerge`。它继�
 Wails 暴露的 `Controller` 方法如下：
 
 - `Bootstrap`、`SelectAndOpen`、`OpenFiles`：启动和文件选择。
+- `LanguagePreference`、`SetLanguagePreference`、`SetRuntimeLocale`：设置窗口的语言读取、
+  持久化和当前运行时切换。
+- `ClearDifferenceIndexCache`、`ClearAllData`：只清除差异索引缓存，或清除全部已保存
+  应用数据；均不修改当前工作簿、仓库和 Git 状态。
 - `SelectRepository`、`OpenRepository`、`Repository`：打开和读取仓库状态。
 - `SelectRepositoryFile`、`SelectRepositoryRef`：加载工作区文件并替换右侧引用。
 - `RefreshRepository`、`SetRepositorySidebarWidth`：重新扫描和持久化目录树宽度。

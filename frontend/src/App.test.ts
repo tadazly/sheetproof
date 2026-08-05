@@ -94,7 +94,7 @@ describe("App", () => {
     expect(wrapper.text()).toContain("/tmp/右侧 文件.xlsx");
   });
 
-  it("configures UGit from the persistent low-frequency action and reports success", async () => {
+  it("configures UGit inside settings and keeps the result visible above the main interface", async () => {
     const configureUGit = vi.fn(async () => ({
       configured: true,
       changed: true,
@@ -113,13 +113,57 @@ describe("App", () => {
     const wrapper = mount(App);
     await flushPromises();
 
+    expect(wrapper.find('.toolbar select[aria-label="语言"]').exists()).toBe(false);
+    await wrapper.get('button[aria-label="设置"]').trigger("click");
     const button = wrapper.get('button[aria-label="配置 UGit"]');
-    expect(button.attributes("title")).toContain("*.xlsx");
     await button.trigger("click");
     await flushPromises();
 
     expect(configureUGit).toHaveBeenCalledOnce();
-    expect(wrapper.get(".success-banner").text()).toContain("*.xlsx 差异与合并工具已更新");
+    expect(wrapper.get(".settings-result").text()).toContain("*.xlsx 差异与合并工具已更新");
+    expect(wrapper.find(".success-banner").exists()).toBe(false);
+  });
+
+  it("explains and confirms cache-only and all-data cleanup from settings", async () => {
+    const clearDifferenceIndexCache = vi.fn(async () => undefined);
+    const clearAllData = vi.fn(async () => undefined);
+    window.localStorage.setItem("sheetproof:repository-search-history:repo", "[]");
+    window.localStorage.setItem("sheetproof:sheet-layout:v1:file:sheet", "{}");
+    window.localStorage.setItem("unrelated", "keep");
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: false, error: "" }),
+          ClearDifferenceIndexCache: clearDifferenceIndexCache,
+          ClearAllData: clearAllData
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+    await wrapper.get('button[aria-label="设置"]').trigger("click");
+
+    const cacheButton = wrapper.findAll("button").find((item) => item.text() === "清理缓存");
+    expect(cacheButton).toBeDefined();
+    await cacheButton!.trigger("click");
+    expect(wrapper.get(".settings-confirm-dialog").text()).toContain("只会删除已缓存的差异表索引结果");
+    const confirmCache = wrapper.findAll(".settings-confirm-dialog button").find((item) => item.text() === "清理缓存");
+    await confirmCache!.trigger("click");
+    await flushPromises();
+    expect(clearDifferenceIndexCache).toHaveBeenCalledOnce();
+    expect(wrapper.get(".settings-result").text()).toContain("缓存已清理");
+
+    const clearAllButton = wrapper.findAll("button").find((item) => item.text() === "清除所有数据");
+    await clearAllButton!.trigger("click");
+    expect(wrapper.get(".settings-confirm-dialog").text()).toContain("下次启动时不会自动打开任何仓库");
+    const confirmAll = wrapper.findAll(".settings-confirm-dialog button").find((item) => item.text() === "清除所有数据");
+    await confirmAll!.trigger("click");
+    await flushPromises();
+    expect(clearAllData).toHaveBeenCalledOnce();
+    expect(window.localStorage.getItem("sheetproof:repository-search-history:repo")).toBeNull();
+    expect(window.localStorage.getItem("sheetproof:sheet-layout:v1:file:sheet")).toBeNull();
+    expect(window.localStorage.getItem("unrelated")).toBe("keep");
+    expect(wrapper.get(".settings-result").text()).toContain("下次启动时不会自动打开仓库");
   });
 
   it("renders Git difftool snapshots as read-only without exposing temporary directories", async () => {
@@ -1433,7 +1477,7 @@ describe("App", () => {
     };
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.get(".zoom-button").text()).toBe("缩放 100%");
+    expect(wrapper.get(".zoom-button .full-label").text()).toBe("缩放 100%");
     wrapper.get(".grid-scroll").element.dispatchEvent(new WheelEvent("wheel", {
       bubbles: true,
       cancelable: true,
@@ -1443,10 +1487,10 @@ describe("App", () => {
       clientY: 40
     }));
     await flushPromises();
-    expect(wrapper.get(".zoom-button").text()).toBe("缩放 110%");
+    expect(wrapper.get(".zoom-button .full-label").text()).toBe("缩放 110%");
     expect(window.localStorage.length).toBe(1);
     await wrapper.get(".zoom-button").trigger("click");
-    expect(wrapper.get(".zoom-button").text()).toBe("缩放 100%");
+    expect(wrapper.get(".zoom-button .full-label").text()).toBe("缩放 100%");
     const gridScrolls = wrapper.findAll(".grid-scroll");
     const initialTop = (gridScrolls[0].element as HTMLElement).scrollTop;
     const initialLeft = (gridScrolls[0].element as HTMLElement).scrollLeft;

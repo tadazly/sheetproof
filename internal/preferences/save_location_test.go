@@ -119,6 +119,109 @@ func TestStoreRemembersRepositoryAndSidebarWidthWithoutLosingSaveDirectory(t *te
 	}
 }
 
+func TestStoreClearsOnlyRepositoryIndexCache(t *testing.T) {
+	root := t.TempDir()
+	repository := filepath.Join(root, "repository")
+	saveDirectory := filepath.Join(root, "saved")
+	for _, directory := range []string{repository, saveDirectory} {
+		if err := os.Mkdir(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := NewStoreAt(filepath.Join(root, "config", preferencesFilename))
+	if err := store.RecordLanguagePreference("ja"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordSaveTarget(filepath.Join(saveDirectory, "book.xlsx")); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepositoryRef(repository, "refs/heads/develop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepositoryIndex(repository, "refs/heads/develop", "signature", []string{"book.xlsx"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.ClearRepositoryIndexes(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := NewStoreAt(store.path)
+	if _, exists := reopened.RepositoryIndex(repository, "refs/heads/develop", "signature"); exists {
+		t.Fatal("repository index cache was not cleared")
+	}
+	if got := reopened.LastRepository(); got != repository {
+		t.Fatalf("last repository changed to %q", got)
+	}
+	if got := reopened.RepositoryRef(repository); got != "refs/heads/develop" {
+		t.Fatalf("repository ref changed to %q", got)
+	}
+	if got := reopened.SaveDirectory(); got != saveDirectory {
+		t.Fatalf("save directory changed to %q", got)
+	}
+	if got := reopened.LanguagePreference(); got != "ja" {
+		t.Fatalf("language changed to %q", got)
+	}
+}
+
+func TestStoreClearsAllDataWithoutTouchingLanguageChoice(t *testing.T) {
+	root := t.TempDir()
+	repository := filepath.Join(root, "repository")
+	saveDirectory := filepath.Join(root, "saved")
+	for _, directory := range []string{repository, saveDirectory} {
+		if err := os.Mkdir(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := NewStoreAt(filepath.Join(root, "config", preferencesFilename))
+	if err := store.RecordLanguagePreference("zh-CN"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordSaveTarget(filepath.Join(saveDirectory, "book.xlsx")); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepositoryWidth(360); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepositoryRef(repository, "refs/heads/develop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepositoryIndex(repository, "refs/heads/develop", "signature", []string{"book.xlsx"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.ClearAllData(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := NewStoreAt(store.path)
+	if got := reopened.LastRepository(); got != "" {
+		t.Fatalf("last repository = %q", got)
+	}
+	if recent := reopened.RecentRepositories(); len(recent) != 0 {
+		t.Fatalf("recent repositories = %#v", recent)
+	}
+	if got := reopened.RepositoryRef(repository); got != "" {
+		t.Fatalf("repository ref = %q", got)
+	}
+	if _, exists := reopened.RepositoryIndex(repository, "refs/heads/develop", "signature"); exists {
+		t.Fatal("repository index cache was not cleared")
+	}
+	if got := reopened.RepositoryWidth(); got != 280 {
+		t.Fatalf("repository width = %d", got)
+	}
+	if got := reopened.SaveDirectory(); got == saveDirectory {
+		t.Fatalf("save directory was retained: %q", got)
+	}
+	if got := reopened.LanguagePreference(); got != "zh-CN" {
+		t.Fatalf("language changed to %q", got)
+	}
+}
+
 func TestStoreKeepsTenRecentRepositoriesInMostRecentOrder(t *testing.T) {
 	root := t.TempDir()
 	store := NewStoreAt(filepath.Join(root, "config", preferencesFilename))

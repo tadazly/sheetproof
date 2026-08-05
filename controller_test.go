@@ -17,6 +17,86 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+func TestControllerClearsDifferenceCacheAndAllStoredData(t *testing.T) {
+	root := t.TempDir()
+	repositoryRoot := filepath.Join(root, "repository")
+	if err := os.Mkdir(repositoryRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := preferences.NewStoreAt(filepath.Join(root, "preferences.json"))
+	if err := store.RecordLanguagePreference("ja"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepository(repositoryRoot); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepositoryRef(repositoryRoot, "refs/heads/develop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRepositoryIndex(repositoryRoot, "refs/heads/develop", "signature", []string{"book.xlsx"}); err != nil {
+		t.Fatal(err)
+	}
+	controller := NewController("", "", coreapp.Options{})
+	controller.prefs = store
+
+	if err := controller.ClearDifferenceIndexCache(); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := store.RepositoryIndex(repositoryRoot, "refs/heads/develop", "signature"); exists {
+		t.Fatal("difference index cache was not cleared")
+	}
+	if got := store.LastRepository(); got != repositoryRoot {
+		t.Fatalf("repository history changed to %q", got)
+	}
+	if got := store.RepositoryRef(repositoryRoot); got != "refs/heads/develop" {
+		t.Fatalf("repository ref changed to %q", got)
+	}
+
+	if err := store.RecordRepositoryIndex(repositoryRoot, "refs/heads/develop", "signature", []string{"book.xlsx"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.ClearAllData(); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.LastRepository(); got != "" {
+		t.Fatalf("last repository = %q", got)
+	}
+	if got := store.RepositoryRef(repositoryRoot); got != "" {
+		t.Fatalf("repository ref = %q", got)
+	}
+	if _, exists := store.RepositoryIndex(repositoryRoot, "refs/heads/develop", "signature"); exists {
+		t.Fatal("difference index cache returned after clearing all data")
+	}
+	if got := store.LanguagePreference(); got != "ja" {
+		t.Fatalf("language changed to %q", got)
+	}
+}
+
+func TestControllerRestoresSavedLanguageUnlessCommandLineOverridesIt(t *testing.T) {
+	store := preferences.NewStoreAt(filepath.Join(t.TempDir(), "preferences.json"))
+	if err := store.RecordLanguagePreference("ja"); err != nil {
+		t.Fatal(err)
+	}
+
+	restored := newControllerWithPreferences("", "", coreapp.Options{Locale: "en"}, store)
+	if got := restored.LanguagePreference(); got != "ja" {
+		t.Fatalf("restored language preference = %q, want ja", got)
+	}
+	if got := restored.options.Locale; got != "ja" {
+		t.Fatalf("restored runtime locale = %q, want ja", got)
+	}
+
+	overridden := newControllerWithPreferences("", "", coreapp.Options{
+		Locale: "en", LocaleExplicit: true,
+	}, store)
+	if got := overridden.LanguagePreference(); got != "en" {
+		t.Fatalf("explicit language preference = %q, want en", got)
+	}
+	if got := overridden.options.Locale; got != "en" {
+		t.Fatalf("explicit runtime locale = %q, want en", got)
+	}
+}
+
 func TestControllerAsyncBootstrapAndViewportAPI(t *testing.T) {
 	pair, err := testutil.CreatePair(t.TempDir())
 	if err != nil {
