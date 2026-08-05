@@ -16,8 +16,10 @@ Keyed records stay near their original neighbors, key columns can be detected or
 - Large difference views use bounded viewport reads and filtered-row mappings; external-file polling pauses while the app is hidden.
 - Direct-file, repository, and UGit/Git comparisons align records when both sides share an id header or one unambiguous *ID header. Ambiguous headers fall back to physical rows.
 - Records present on only one side remain between their neighboring shared keys instead of moving to the end. A key column can also be set or cleared from the column header.
+- Repository mode now stays in its startup loading state until a preselected XLSX file and revision are fully open, so the comparison cannot be replaced by an empty workspace.
 - The mobile site navigation uses native browser disclosure, so it remains available before scripts start.
 - Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.
+- The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference.
 
 ## 0.2.0 — 2026-08-03
 

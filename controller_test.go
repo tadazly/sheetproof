@@ -129,6 +129,24 @@ func TestControllerAsyncBootstrapAndViewportAPI(t *testing.T) {
 	controller.shutdown(context.Background())
 }
 
+func TestControllerRepositoryBootstrapWaitsForSelectedWorkbook(t *testing.T) {
+	root, relative := createControllerRepository(t)
+	controller := newControllerWithPreferences("", "", coreapp.Options{
+		Locale:         "en",
+		LocaleExplicit: true,
+		RepositoryPath: root,
+		RepositoryFile: relative,
+		RepositoryRef:  "refs/remotes/origin/develop",
+	}, preferences.NewStoreAt(filepath.Join(t.TempDir(), "preferences.json")))
+	controller.startup(context.Background())
+	waitForBootstrap(t, controller)
+	state := controller.Bootstrap()
+	if state.Error != "" || !state.HasSession || state.Repository == nil || state.Repository.SelectedFile != relative {
+		t.Fatalf("repository bootstrap completed before the selected workbook was ready: %+v", state)
+	}
+	controller.shutdown(context.Background())
+}
+
 func TestDragAndDropOptionsKeepNativeDirectoryDropInsideApplication(t *testing.T) {
 	options := dragAndDropOptions()
 	if !options.EnableFileDrop {

@@ -77,7 +77,7 @@ export const zhCN = {
   "repository.sidebar": "仓库侧栏",
   "repository.files": "仓库文件",
   "repository.differingWorkbooks": "差异表",
-  "repository.sheetsAndDifferences": "工作表与差异",
+  "repository.sheetsAndDifferences": "工作表",
   "repository.refresh": "刷新文件和引用",
   "repository.searchDifferences": "筛选差异工作簿或目录",
   "repository.searchFiles": "筛选文件或目录",

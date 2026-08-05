@@ -1394,3 +1394,22 @@ cd frontend && npm run test && npm run typecheck
   偏好。现在 `Options.LocaleExplicit` 只标记真实 `--lang`；普通启动在创建 Controller 时
   恢复偏好语言，显式参数仍只覆盖当前启动。隔离配置实机完成“设置为日语、正常关闭、
   不带 `--lang` 重启”，重启后的主界面和设置下拉框均保持日语。
+
+## 2026-08-05：三语最终验收中的仓库启动竞态
+
+- 最终验收使用当次 Windows Wails 产物和三份隔离临时 Git 仓库独立复现：带预选文件与
+  引用启动仓库模式时，文件树已经出现，但比较区会永久停留为空白工作区。后端纯控制器
+  检查同时显示仓库扫描成功且稍后能够建立 31 处工作簿差异，因此不是 Git 数据或演示工作簿问题。
+- 根因是 `openRepositoryInternal` 在预选工作簿会话仍异步打开时提前清除了 `loading`；前端
+  启动轮询据此停止，后续会话结果不再进入初始界面。现在只由预选文件打开流程的最终路径
+  清除加载状态；无预选文件的仓库入口仍在扫描完成后正常结束加载。
+- 新增 `TestControllerRepositoryBootstrapWaitsForSelectedWorkbook`，修复前连续 20 次均可
+  复现 `Loading=false` 且 `HasSession=false`，修复后连续 20 次通过。重新构建的 Wails 产物
+  已在 en、zh-CN、ja 三种界面打开真实仓库会话，显示预选引用、16 处首表差异、工作区未提交
+  标记及只读右侧。验收截图保存在忽略目录 `build/acceptance/localization-final/gui/`。
+
+## 2026-08-05：官网首页轮播与减少动态效果
+
+- 首页 `HeroMessageCarousel` 原先在 `prefers-reduced-motion: reduce` 时不创建定时器，导致
+  使用该系统偏好的浏览器永远停在第一条说明。现在三条使用说明始终每 4.8 秒轮换，并保留
+  原有的 0.28 秒文字淡入/4px 位移和 0.18 秒圆点高度/颜色过渡；该轻量效果不再因浏览器偏好减配。

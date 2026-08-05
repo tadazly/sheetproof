@@ -14,7 +14,6 @@ export function HeroMessageCarousel({ locale }: { locale: Locale }) {
   const text = copy[locale];
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const timer = window.setInterval(() => setActive((current) => (current + 1) % text.messages.length), 4800);
     return () => window.clearInterval(timer);
   }, [text.messages.length]);

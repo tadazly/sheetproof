@@ -577,7 +577,6 @@ func (c *Controller) openRepositoryInternal(
 	c.repositoryView = view
 	c.mode = modeRepository
 	c.loadErr = ""
-	c.loading = false
 	c.loadGeneration++
 	c.repositoryView.LoadGeneration = c.loadGeneration
 	c.mu.Unlock()

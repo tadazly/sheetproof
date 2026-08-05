@@ -29,7 +29,7 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 - **Current-sheet row filters**: Combine added, deleted, modified, and conflict filters without losing the source row being reviewed.
 - **Controlled merge and undo**: Write only selected cells or rows to the left; edits and merge operations remain undoable.
 - **Hold to compare before and after**: Hold Before/After or Tab in a grid to see the left workbook exactly as it was opened.
-- **Local Git repository mode**: Read the real worktree against a validated local or remote-tracking reference without checkout, fetch, or branch switching.
+- **Local Git repository mode**: Read the real worktree against a validated local or remote-tracking reference without checkout, fetch, or branch switching. A preselected workbook and revision finish loading before the workspace is shown.
 - **Guarded local saving**: Detect external changes, write a temporary file in the same directory, reopen it for validation, then replace the original atomically.
 
 ## Download

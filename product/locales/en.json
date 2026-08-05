@@ -13,7 +13,7 @@
     "rowFilters": { "title": "Current-sheet row filters", "summary": "Combine added, deleted, modified, and conflict filters without losing the source row being reviewed." },
     "controlledMerge": { "title": "Controlled merge and undo", "summary": "Write only selected cells or rows to the left; edits and merge operations remain undoable." },
     "beforeAfter": { "title": "Hold to compare before and after", "summary": "Hold Before/After or Tab in a grid to see the left workbook exactly as it was opened." },
-    "repositoryMode": { "title": "Local Git repository mode", "summary": "Read the real worktree against a validated local or remote-tracking reference without checkout, fetch, or branch switching." },
+    "repositoryMode": { "title": "Local Git repository mode", "summary": "Read the real worktree against a validated local or remote-tracking reference without checkout, fetch, or branch switching. A preselected workbook and revision finish loading before the workspace is shown." },
     "safeSave": { "title": "Guarded local saving", "summary": "Detect external changes, write a temporary file in the same directory, reopen it for validation, then replace the original atomically." }
   },
   "useCases": {

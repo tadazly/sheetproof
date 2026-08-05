@@ -361,8 +361,8 @@ SheetProof compare \
    发布计划、私人路径、账号或凭据。
 4. 确认首页首屏使用“让 Git 中的 XLSX，也能像代码一样审阅和选择性合并。”作为
    唯一主标题，并轮播三条非程序员也能直接理解的场景说明：插入记录不放大差异、
-   适用于按 ID 管理的行业配置表、逐项确认后在本机合并且可撤销。减少动画偏好下
-   不自动轮播，圆点按钮仍可手动切换。首屏示例应显示“当前工作区 / origin/main”、
+   适用于按 ID 管理的行业配置表、逐项确认后在本机合并且可撤销。无论浏览器是否开启
+   减少动态效果，内容仍自动轮换并保留原有轻量过渡；圆点按钮仍可手动切换。首屏示例应显示“当前工作区 / origin/main”、
    “主键：地图ID”和“1 条真实删除 / 0 条错位修改”。首页随后只突出 Git 版本读取、
    主键记录对齐和左侧合并保存三项事实，不使用 Git-native、Record-aware、
    Merge-safe 等概念包装，也不暗示格式、图表、宏或 Excel 级编辑能力；UGit 作为
@@ -399,3 +399,14 @@ SheetProof compare \
 8. 对最终 Windows/macOS 产物做字符串隐私扫描，确认不包含构建者用户目录、仓库工作区
    路径、密钥或令牌。Windows 离线入口与 Release workflow 必须保留 Go `-trimpath`；
    官网与 README 的产品截图只能显示通用演示数据和不指向真实工作区的演示路径。
+
+## 仓库启动竞态回归
+
+1. 建立包含共同 `.xlsx` 相对路径和至少一个可选引用的临时 Git 仓库，保持工作区文件相对
+   该引用存在未提交差异。
+2. 使用 `sheetproof repo --path <root> --file <relative.xlsx> --ref <validated-ref>` 启动
+   当次构建的桌面产物，不先点击文件树。
+3. 确认加载界面不会提前结束为空白工作区；完成后文件树、选定引用、工作表与差异数量同时
+   可见，左侧来自真实工作区并保留未提交状态，右侧保持只读。
+4. 分别用 English、简体中文和日本語复查一次，并运行
+   `go test . -run TestControllerRepositoryBootstrapWaitsForSelectedWorkbook -count=20`。

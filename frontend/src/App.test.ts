@@ -866,7 +866,7 @@ describe("App", () => {
       const navigation = wrapper.findAll("button").find((button) => button.text() === label);
       expect(navigation?.attributes("disabled")).toBeDefined();
     }
-    const sheetTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("工作表与差异"));
+    const sheetTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("工作表"));
     expect(sheetTab).toBeDefined();
     await sheetTab!.trigger("click");
     expect(wrapper.get(".repository-sheet-pane").text()).toContain("Sheet1");

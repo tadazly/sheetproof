@@ -13,7 +13,7 @@
     "rowFilters": { "title": "当前工作表行筛选", "summary": "组合筛选新增、删除、修改和冲突，同时保留正在核对的来源行。" },
     "controlledMerge": { "title": "可控合并与撤销", "summary": "只把选定单元格或整行写入左侧；编辑和合并均可撤销。" },
     "beforeAfter": { "title": "按住回看修改前", "summary": "按住“前后对比”或在表格内按住 Tab，可查看左侧工作簿刚打开时的状态。" },
-    "repositoryMode": { "title": "本地 Git 仓库模式", "summary": "比较真实工作区与经过校验的本地或远端跟踪引用，不 checkout、fetch 或切换分支。" },
+    "repositoryMode": { "title": "本地 Git 仓库模式", "summary": "比较真实工作区与经过校验的本地或远端跟踪引用，不 checkout、fetch 或切换分支；预选工作簿与引用加载完成后才显示工作区。" },
     "safeSave": { "title": "安全的本地保存", "summary": "检测外部修改，并经过同目录临时文件、重开校验和原子替换完成保存。" }
   },
   "useCases": {
