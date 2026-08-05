@@ -1,9 +1,9 @@
 {
   "0.5.0": {
     "title": "Find in the current worksheet",
-    "summary": "Each comparison grid can search its current worksheet independently without loading the workbook into the WebView.",
+    "summary": "Search the current worksheet independently in either comparison grid.",
     "changes": {
-      "currentSheetFind": "Open Find for the focused left or right grid, combine case, Unicode whole-word, and RE2 regular-expression options, navigate cyclically with synchronized grids, and keep searches scoped to the current row filters. Keyboard focus remains clear without drawing stacked blue frames around the Find input."
+      "currentSheetFind": "Search either comparison grid with case-sensitive, whole-word, or regular-expression matching. Results cycle within the active row filter while both grids stay aligned."
     }
   },
   "0.4.1": {

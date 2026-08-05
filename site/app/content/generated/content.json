@@ -534,9 +534,9 @@
       "en": {
         "0.5.0": {
           "title": "Find in the current worksheet",
-          "summary": "Each comparison grid can search its current worksheet independently without loading the workbook into the WebView.",
+          "summary": "Search the current worksheet independently in either comparison grid.",
           "changes": {
-            "currentSheetFind": "Open Find for the focused left or right grid, combine case, Unicode whole-word, and RE2 regular-expression options, navigate cyclically with synchronized grids, and keep searches scoped to the current row filters. Keyboard focus remains clear without drawing stacked blue frames around the Find input."
+            "currentSheetFind": "Search either comparison grid with case-sensitive, whole-word, or regular-expression matching. Results cycle within the active row filter while both grids stay aligned."
           }
         },
         "0.4.1": {
@@ -606,9 +606,9 @@
       "zh-CN": {
         "0.5.0": {
           "title": "当前工作表查找",
-          "summary": "左右对比网格可独立搜索当前工作表，无需把整本工作簿加载到 WebView。",
+          "summary": "可在左右对比网格中分别查找当前工作表的内容。",
           "changes": {
-            "currentSheetFind": "可在当前聚焦的左右网格打开查找，组合大小写、Unicode 全词与 RE2 正则选项，在同步双栏中循环导航，并将范围限定为当前差异行筛选。键盘焦点保持清楚，但不会在查找输入区叠加蓝色矩形框。"
+            "currentSheetFind": "左右网格可分别查找当前工作表，支持区分大小写、全词匹配和正则表达式；结果会在当前行筛选范围内循环定位，双栏同步滚动。"
           }
         },
         "0.4.1": {
@@ -678,9 +678,9 @@
       "ja": {
         "0.5.0": {
           "title": "現在のシート内を検索",
-          "summary": "ブック全体を WebView に読み込まず、左右の比較グリッドで現在のシートを別々に検索できます。",
+          "summary": "左右いずれかの比較グリッドで、現在のシートを個別に検索できます。",
           "changes": {
-            "currentSheetFind": "フォーカス中の左右グリッドで検索を開き、大文字小文字、Unicode 単語全体、RE2 正規表現を組み合わせ、同期した 2 ペインを循環移動し、現在の行絞り込み内だけを対象にできます。キーボードフォーカスを判別できる状態を保ちながら、検索入力欄の周囲に青い枠が重なって表示されないようにしました。"
+            "currentSheetFind": "左右の比較グリッドを個別に検索でき、大文字小文字の区別、単語全体、正規表現を組み合わせられます。結果は現在の行フィルター内を循環し、2 つのグリッドは同じ位置に連動します。"
           }
         },
         "0.4.1": {

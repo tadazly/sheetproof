@@ -10,9 +10,9 @@ User-visible SheetProof changes.
 
 _Preview · Find in the current worksheet_
 
-Each comparison grid can search its current worksheet independently without loading the workbook into the WebView.
+Search the current worksheet independently in either comparison grid.
 
-- Open Find for the focused left or right grid, combine case, Unicode whole-word, and RE2 regular-expression options, navigate cyclically with synchronized grids, and keep searches scoped to the current row filters. Keyboard focus remains clear without drawing stacked blue frames around the Find input.
+- Search either comparison grid with case-sensitive, whole-word, or regular-expression matching. Results cycle within the active row filter while both grids stay aligned.
 
 ## 0.4.1 — 2026-08-05
 
