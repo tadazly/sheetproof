@@ -1511,5 +1511,11 @@ cd frontend && npm run test && npm run typecheck
   渲染测试通过。仓库没有 `typecheck` 脚本；对 `site/app` 的严格 TypeScript 检查通过，直接按
   根 `tsconfig.json` 检查仍会因既有 `worker/index.ts` 未声明 Cloudflare `Fetcher` 与
   `D1Database` 全局类型而失败，本轮未扩大范围修改 Worker 配置。
-- 按维护者要求，本候选只保留为本地未提交改动；尚未暂存、提交、推送或部署正式官网，等待
-  维护者查看截图和差异后再决定后续动作。
+- 维护者查看截图和差异后明确授权推送与部署。上述 16 个文件已以
+  `Improve multilingual homepage hero typography` 提交并推送到 `origin/main`，没有强推或
+  混入截图、临时产物及无关文件。提交前隐私扫描未发现私钥、令牌、认证 URL、私人用户路径、
+  私网地址或未跟踪文件。
+- 正式官网部署继续使用 `scripts/deploy-site-lightsail.ps1`，但当前 Codex 执行环境把 SSH
+  连接导向隔离网络并在认证前关闭，静态归档未上传，远端站点目录没有被替换。Cloudflare
+  公网三语首页均仍返回 200，并保持上一版标题，未出现半部署。下一步需在具有正常 SSH
+  连通性的维护者主机上重新执行该脚本，再核对源站、公网三语路由和同一 Caddy 实例的既有站点。
