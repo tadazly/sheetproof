@@ -8,6 +8,7 @@ import (
 
 	coreapp "github.com/tadazly/sheetproof/internal/app"
 	"github.com/tadazly/sheetproof/internal/cli"
+	"github.com/tadazly/sheetproof/internal/localization"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -25,7 +26,14 @@ func launchGUI(left, right string, appOptions coreapp.Options) error {
 	controller := NewController(left, right, appOptions)
 	title := appOptions.Title
 	if title == "" {
-		title = "SheetProof 表鉴 — Excel 对比与合并"
+		switch localization.Normalize(appOptions.Locale) {
+		case localization.SimplifiedChinese:
+			title = "SheetProof — XLSX 差异审阅"
+		case localization.Japanese:
+			title = "SheetProof — XLSX 差分レビュー"
+		default:
+			title = "SheetProof — XLSX diff review"
+		}
 	}
 	if err := wails.Run(&options.App{
 		Title: title, Width: 1440, Height: 900, MinWidth: 960, MinHeight: 640,

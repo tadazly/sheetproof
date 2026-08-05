@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { Locale } from "../i18n";
+
+const viewerCopy = {
+  en: { open: "Open and zoom", view: "View full size", desktop: "Wheel to zoom · Drag to pan", mobile: "Pinch to zoom · Drag to pan", controls: "Image zoom controls", out: "Zoom out", reset: "Reset image scale", in: "Zoom in", close: "Close full-size image", closeText: "Close", dialog: "Full-size screenshot" },
+  "zh-CN": { open: "单独查看并缩放", view: "查看大图", desktop: "滚轮缩放 · 拖动查看", mobile: "双指缩放 · 拖动查看", controls: "图片缩放控制", out: "缩小图片", reset: "恢复图片原始比例", in: "放大图片", close: "关闭大图", closeText: "关闭", dialog: "大图查看器" },
+  ja: { open: "単独で表示して拡大", view: "大きく表示", desktop: "ホイールで拡大 · ドラッグで移動", mobile: "ピンチで拡大 · ドラッグで移動", controls: "画像の拡大操作", out: "縮小", reset: "元の倍率に戻す", in: "拡大", close: "拡大画像を閉じる", closeText: "閉じる", dialog: "スクリーンショット拡大表示" },
+} as const;
 
 type ScreenshotViewerProps = {
   src: string;
@@ -10,6 +17,7 @@ type ScreenshotViewerProps = {
   width?: number;
   height?: number;
   className?: string;
+  locale?: Locale;
 };
 
 type ViewTransform = {
@@ -46,7 +54,8 @@ function distance(first: PointerPosition, second: PointerPosition) {
   return Math.hypot(second.x - first.x, second.y - first.y);
 }
 
-export function ScreenshotViewer({ src, alt, caption, width, height, className = "" }: ScreenshotViewerProps) {
+export function ScreenshotViewer({ src, alt, caption, width, height, className = "", locale = "en" }: ScreenshotViewerProps) {
+  const text = viewerCopy[locale];
   const reactId = useId();
   const viewerId = `screenshot-viewer-${reactId.replace(/:/g, "")}`;
   const triggerId = `${viewerId}-trigger`;
@@ -271,21 +280,21 @@ export function ScreenshotViewer({ src, alt, caption, width, height, className =
 
   return <>
     <figure id={triggerId} className={`app-shot ${className}`.trim()}>
-      <a className="screenshot-open" href={`#${viewerId}`} onClick={(event) => { event.preventDefault(); openViewer(); }} aria-label={`单独查看并缩放：${alt}`}>
+      <a className="screenshot-open" href={`#${viewerId}`} onClick={(event) => { event.preventDefault(); openViewer(); }} aria-label={`${text.open}: ${alt}`}>
         <img src={src} alt={alt} width={width} height={height} />
-        <span>查看大图</span>
+        <span>{text.view}</span>
       </a>
       <figcaption>{caption}</figcaption>
     </figure>
-    <div ref={viewerRef} id={viewerId} className={`screenshot-lightbox ${open ? "is-open" : "is-closed"}`} role="dialog" aria-modal="true" aria-label={alt} onClick={handleBackdropClick}>
+    <div ref={viewerRef} id={viewerId} className={`screenshot-lightbox ${open ? "is-open" : "is-closed"}`} role="dialog" aria-modal="true" aria-label={`${text.dialog}: ${alt}`} onClick={handleBackdropClick}>
       <div className="lightbox-toolbar">
-        <p><span className="desktop-zoom-hint">滚轮缩放 · 拖动查看</span><span className="mobile-zoom-hint">双指缩放 · 拖动查看</span></p>
-        <div className="lightbox-controls" aria-label="图片缩放控制">
-          <button type="button" onClick={() => zoomBy(-.35)} aria-label="缩小图片">−</button>
-          <button className="lightbox-scale" type="button" onClick={resetView} aria-label="恢复图片原始比例">{Math.round(transform.scale * 100)}%</button>
-          <button type="button" onClick={() => zoomBy(.35)} aria-label="放大图片">＋</button>
+        <p><span className="desktop-zoom-hint">{text.desktop}</span><span className="mobile-zoom-hint">{text.mobile}</span></p>
+        <div className="lightbox-controls" aria-label={text.controls}>
+          <button type="button" onClick={() => zoomBy(-.35)} aria-label={text.out}>−</button>
+          <button className="lightbox-scale" type="button" onClick={resetView} aria-label={text.reset}>{Math.round(transform.scale * 100)}%</button>
+          <button type="button" onClick={() => zoomBy(.35)} aria-label={text.in}>＋</button>
         </div>
-        <a className="lightbox-close" href={`#${triggerId}`} onClick={(event) => { event.preventDefault(); closeViewer(); }} aria-label="关闭大图">关闭</a>
+        <a className="lightbox-close" href={`#${triggerId}`} onClick={(event) => { event.preventDefault(); closeViewer(); }} aria-label={text.close}>{text.closeText}</a>
       </div>
       <div
         ref={stageRef}

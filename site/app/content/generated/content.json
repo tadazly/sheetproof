@@ -1,0 +1,613 @@
+{
+  "notice": "Generated from product facts and locale content. Do not edit directly.",
+  "facts": {
+    "product": {
+      "name": "SheetProof",
+      "legacyName": "ugxlsx",
+      "version": "0.3.0",
+      "channel": "preview",
+      "formats": [
+        ".xlsx"
+      ],
+      "platforms": [
+        "windows-amd64",
+        "macos-universal"
+      ],
+      "repository": "https://github.com/tadazly/sheetproof",
+      "issues": "https://github.com/tadazly/sheetproof/issues",
+      "website": "https://sheetproof.luyilabs.com",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 tadazly",
+      "signed": false,
+      "macosNotarized": false
+    },
+    "downloads": {
+      "releases": "https://github.com/tadazly/sheetproof/releases",
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.3.0.zip"
+    },
+    "screenshots": {
+      "keyAlignment": {
+        "file": "key-alignment.png",
+        "width": 1424,
+        "height": 861
+      },
+      "physicalRows": {
+        "file": "physical-rows.png",
+        "width": 1424,
+        "height": 861
+      },
+      "focusedDifference": {
+        "file": "focused-difference.png",
+        "width": 1204,
+        "height": 650
+      },
+      "mergeResult": {
+        "file": "merge-result.png",
+        "width": 1204,
+        "height": 650
+      }
+    }
+  },
+  "locales": {
+    "en": {
+      "localeName": "English",
+      "product": {
+        "displayName": "SheetProof",
+        "slogan": "Review XLSX changes in Git.",
+        "tagline": "Review and apply XLSX changes in Git.",
+        "description": "SheetProof compares .xlsx workbooks in a Git worktree with validated Git revisions, aligns records by key, and applies approved changes to the editable left workbook.",
+        "channel": "Preview"
+      },
+      "features": {
+        "workbookComparison": {
+          "title": "Workbook-aware comparison",
+          "summary": "Compare worksheets, values, formulas, explicit blanks, and types. Display formatting does not determine whether cells are equal."
+        },
+        "sideBySideReview": {
+          "title": "Side-by-side review",
+          "summary": "Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data."
+        },
+        "rowFilters": {
+          "title": "Current-sheet row filters",
+          "summary": "Combine added, deleted, modified, and conflict filters without losing the source row being reviewed."
+        },
+        "controlledMerge": {
+          "title": "Controlled merge and undo",
+          "summary": "Write only selected cells or rows to the left; edits and merge operations remain undoable."
+        },
+        "beforeAfter": {
+          "title": "Hold to compare before and after",
+          "summary": "Hold Before/After or Tab in a grid to see the left workbook exactly as it was opened."
+        },
+        "repositoryMode": {
+          "title": "Local Git repository mode",
+          "summary": "Read the real worktree against a validated local or remote-tracking reference without checkout, fetch, or branch switching."
+        },
+        "safeSave": {
+          "title": "Guarded local saving",
+          "summary": "Detect external changes, write a temporary file in the same directory, reopen it for validation, then replace the original atomically."
+        }
+      },
+      "useCases": {
+        "configurationReview": {
+          "title": "Review configuration workbooks",
+          "summary": "Check values, formulas, types, and row changes before a commit or release."
+        },
+        "gitChanges": {
+          "title": "Resolve XLSX changes in Git",
+          "summary": "Compare a worktree with local or remote-tracking references without interrupting the current branch."
+        },
+        "selectiveMerge": {
+          "title": "Apply selected corrections",
+          "summary": "Accept only confirmed cells or rows and keep the option to undo before saving."
+        }
+      },
+      "screenshots": {
+        "keyAlignment": {
+          "alt": "SheetProof comparing an English character growth workbook by key",
+          "caption": "Key alignment keeps an inserted character beside its neighboring records and leaves 16 actual differences."
+        },
+        "physicalRows": {
+          "alt": "SheetProof comparing the same character data by physical row",
+          "caption": "Without a key column, one inserted record shifts later rows and produces 90 coordinate differences."
+        },
+        "focusedDifference": {
+          "alt": "SheetProof focused on character name and balance changes",
+          "caption": "Name, HP, and attack changes use the two-sided difference colors; the new character remains separate."
+        },
+        "mergeResult": {
+          "alt": "SheetProof after merging one HP value to the left",
+          "caption": "After the approved HP value is copied left, that cell is equal while every other difference remains."
+        }
+      },
+      "seo": {
+        "home": {
+          "title": "SheetProof — Review and apply XLSX changes in Git",
+          "description": "Compare .xlsx workbooks with Git revisions, align records by key, and apply approved cells or rows locally."
+        },
+        "features": {
+          "title": "Features",
+          "description": "Workbook-aware Git comparison, key alignment, selective application, undo, and safe local saving."
+        },
+        "guide": {
+          "title": "Guide",
+          "description": "Open files or repositories, review differences, configure UGit, and save SheetProof results safely."
+        },
+        "download": {
+          "title": "Download",
+          "description": "Download the unsigned SheetProof preview for Windows amd64 or macOS universal and verify SHA-256."
+        },
+        "changelog": {
+          "title": "Changelog",
+          "description": "User-visible changes in SheetProof 0.1.0, 0.2.0, and 0.3.0."
+        }
+      }
+    },
+    "zh-CN": {
+      "localeName": "简体中文",
+      "product": {
+        "displayName": "SheetProof · 表鉴",
+        "slogan": "审阅 Git 中的 XLSX 变更。",
+        "tagline": "Git 工作流中的 XLSX 差异审阅工具。",
+        "description": "SheetProof 比较 Git 工作区中的 .xlsx 与经过校验的 Git 版本，按主键对齐记录，并将确认的单元格或整行应用到可编辑左侧。",
+        "channel": "预览版"
+      },
+      "features": {
+        "workbookComparison": {
+          "title": "理解工作簿语义的对比",
+          "summary": "比较工作表、值、公式、显式空值和类型；显示格式不参与相等判断。"
+        },
+        "sideBySideReview": {
+          "title": "双栏差异审阅",
+          "summary": "使用同步虚拟网格、差异导航和滚动条标记核对新增、删除、修改与冲突。"
+        },
+        "rowFilters": {
+          "title": "当前工作表行筛选",
+          "summary": "组合筛选新增、删除、修改和冲突，同时保留正在核对的来源行。"
+        },
+        "controlledMerge": {
+          "title": "可控合并与撤销",
+          "summary": "只把选定单元格或整行写入左侧；编辑和合并均可撤销。"
+        },
+        "beforeAfter": {
+          "title": "按住回看修改前",
+          "summary": "按住“前后对比”或在表格内按住 Tab，可查看左侧工作簿刚打开时的状态。"
+        },
+        "repositoryMode": {
+          "title": "本地 Git 仓库模式",
+          "summary": "比较真实工作区与经过校验的本地或远端跟踪引用，不 checkout、fetch 或切换分支。"
+        },
+        "safeSave": {
+          "title": "安全的本地保存",
+          "summary": "检测外部修改，并经过同目录临时文件、重开校验和原子替换完成保存。"
+        }
+      },
+      "useCases": {
+        "configurationReview": {
+          "title": "审阅配置表变更",
+          "summary": "在提交或发版前核对数值、公式、类型和整行变化。"
+        },
+        "gitChanges": {
+          "title": "处理 Git 中的 XLSX 变化",
+          "summary": "比较工作区与本地分支或远端跟踪引用，不打断当前分支。"
+        },
+        "selectiveMerge": {
+          "title": "选择性应用修改",
+          "summary": "只接收确认过的单元格或整行，保存前仍可撤销。"
+        }
+      },
+      "screenshots": {
+        "keyAlignment": {
+          "alt": "SheetProof 按主键比较中文角色成长配置表",
+          "caption": "按主键对齐后，中间新增的角色仍位于相邻记录之间，当前工作表保留 16 处实际差异。"
+        },
+        "physicalRows": {
+          "alt": "SheetProof 按物理行比较同一组角色配置",
+          "caption": "未设置主键时，中间新增一条记录会使后续行错位，并产生 90 处坐标差异。"
+        },
+        "focusedDifference": {
+          "alt": "SheetProof 聚焦显示角色名称和数值差异",
+          "caption": "角色名称、生命值和攻击力调整按双栏差异色显示，新增角色单独标出。"
+        },
+        "mergeResult": {
+          "alt": "SheetProof 将一项生命值合并到左侧后的界面",
+          "caption": "把确认的生命值复制到左侧后，该单元格恢复一致，其他差异保持不变。"
+        }
+      },
+      "seo": {
+        "home": {
+          "title": "SheetProof · 表鉴 — 审阅并应用 Git 中的 XLSX 修改",
+          "description": "比较 .xlsx 工作簿与 Git 版本，按主键对齐记录，并在本机应用确认的单元格或整行。"
+        },
+        "features": {
+          "title": "功能",
+          "description": "工作簿语义对比、主键记录对齐、选择性应用、撤销与安全本地保存。"
+        },
+        "guide": {
+          "title": "使用说明",
+          "description": "打开文件或仓库、核对差异、配置 UGit，并安全保存 SheetProof 结果。"
+        },
+        "download": {
+          "title": "下载",
+          "description": "下载未签名的 SheetProof Windows amd64 或 macOS universal 预览版并核对 SHA-256。"
+        },
+        "changelog": {
+          "title": "更新日志",
+          "description": "SheetProof 0.1.0、0.2.0 和 0.3.0 的用户可见变化。"
+        }
+      }
+    },
+    "ja": {
+      "localeName": "日本語",
+      "product": {
+        "displayName": "SheetProof（シートプルーフ）",
+        "slogan": "Git 上の XLSX 変更をレビュー。",
+        "tagline": "Git 上の XLSX 変更を確認し、必要な項目だけを反映。",
+        "description": "SheetProof は Git ワークツリーの .xlsx と検証済みの Git リビジョンを比較し、レコードをキーで揃え、確認したセルまたは行を編集可能な左側へ反映します。",
+        "channel": "プレビュー"
+      },
+      "features": {
+        "workbookComparison": {
+          "title": "ブック内容の比較",
+          "summary": "シート、値、数式、明示的な空値、型を比較します。表示書式はセルが同じかどうかの判定に含めません。"
+        },
+        "sideBySideReview": {
+          "title": "2 ペイン差分レビュー",
+          "summary": "同期した仮想グリッド、差分移動、スクロールバーの印で追加・削除・変更・競合を確認します。"
+        },
+        "rowFilters": {
+          "title": "現在のシートの行絞り込み",
+          "summary": "確認中の元行を保ったまま、追加・削除・変更・競合を組み合わせて絞り込めます。"
+        },
+        "controlledMerge": {
+          "title": "選んで反映・元に戻す",
+          "summary": "選択したセルまたは行だけを左側へ反映します。編集と反映操作は元に戻せます。"
+        },
+        "beforeAfter": {
+          "title": "押している間だけ変更前を確認",
+          "summary": "「変更前後」を押すか、表で Tab を押している間、左側を開いた時点の状態に戻します。"
+        },
+        "repositoryMode": {
+          "title": "ローカル Git リポジトリモード",
+          "summary": "実際のワークツリーと検証済みのローカル／リモート追跡参照を、checkout、fetch、ブランチ切り替えなしで比較します。"
+        },
+        "safeSave": {
+          "title": "安全なローカル保存",
+          "summary": "外部変更を検出し、同じディレクトリの一時ファイル、再オープン検証、アトミック置換を経て保存します。"
+        }
+      },
+      "useCases": {
+        "configurationReview": {
+          "title": "設定ブックの変更レビュー",
+          "summary": "コミットやリリースの前に、値、数式、型、行全体の変更を確認します。"
+        },
+        "gitChanges": {
+          "title": "Git 上の XLSX 変更を整理",
+          "summary": "現在のブランチ作業を中断せず、ワークツリーとローカル／リモート追跡参照を比較します。"
+        },
+        "selectiveMerge": {
+          "title": "確認した修正だけを反映",
+          "summary": "承認したセルまたは行だけを取り込み、保存前なら取り消せます。"
+        }
+      },
+      "screenshots": {
+        "keyAlignment": {
+          "alt": "SheetProof で日本語のキャラクター成長表をキー比較",
+          "caption": "キーで揃えると、途中に追加したキャラクターは前後のレコード間に残り、実際の差分 16 件だけを表示します。"
+        },
+        "physicalRows": {
+          "alt": "SheetProof で同じキャラクターデータを物理行比較",
+          "caption": "キー列を使わない場合、途中の 1 レコード追加で後続行がずれ、座標差分が 90 件になります。"
+        },
+        "focusedDifference": {
+          "alt": "SheetProof でキャラクター名と調整値の差分にフォーカス",
+          "caption": "名前、HP、攻撃力の変更を左右の差分色で示し、新キャラクターは独立して表示します。"
+        },
+        "mergeResult": {
+          "alt": "SheetProof で HP を 1 件左側へ反映した結果",
+          "caption": "確認した HP を左側へ反映すると、そのセルだけが一致し、ほかの差分はそのまま残ります。"
+        }
+      },
+      "seo": {
+        "home": {
+          "title": "SheetProof — Git 上の XLSX 変更を確認して反映",
+          "description": ".xlsx と Git リビジョンを比較し、レコードをキーで揃え、確認したセルや行だけをローカルで反映します。"
+        },
+        "features": {
+          "title": "機能",
+          "description": "ブック差分、キー対応付け、選択的な反映、取り消し、安全なローカル保存。"
+        },
+        "guide": {
+          "title": "使い方",
+          "description": "ファイルまたはリポジトリを開き、差分を確認し、UGit を設定して結果を安全に保存する手順。"
+        },
+        "download": {
+          "title": "ダウンロード",
+          "description": "未署名の SheetProof Windows amd64／macOS universal プレビューをダウンロードし、SHA-256 を確認できます。"
+        },
+        "changelog": {
+          "title": "変更履歴",
+          "description": "SheetProof 0.1.0、0.2.0、0.3.0 のユーザー向け変更履歴。"
+        }
+      }
+    }
+  },
+  "glossary": {
+    "workbook": {
+      "en": "workbook",
+      "zh-CN": "工作簿",
+      "ja": "ブック"
+    },
+    "worksheet": {
+      "en": "worksheet",
+      "zh-CN": "工作表",
+      "ja": "シート"
+    },
+    "cell": {
+      "en": "cell",
+      "zh-CN": "单元格",
+      "ja": "セル"
+    },
+    "worktree": {
+      "en": "worktree",
+      "zh-CN": "工作区",
+      "ja": "ワークツリー"
+    },
+    "gitReference": {
+      "en": "Git revision",
+      "zh-CN": "Git 版本",
+      "ja": "Git リビジョン"
+    },
+    "keyColumn": {
+      "en": "key column",
+      "zh-CN": "主键列",
+      "ja": "キー列"
+    },
+    "physicalRow": {
+      "en": "physical row",
+      "zh-CN": "物理行",
+      "ja": "物理行"
+    },
+    "difference": {
+      "en": "difference",
+      "zh-CN": "差异",
+      "ja": "差分"
+    },
+    "added": {
+      "en": "added",
+      "zh-CN": "新增",
+      "ja": "追加"
+    },
+    "deleted": {
+      "en": "deleted",
+      "zh-CN": "删除",
+      "ja": "削除"
+    },
+    "modified": {
+      "en": "modified",
+      "zh-CN": "修改",
+      "ja": "変更"
+    },
+    "conflict": {
+      "en": "conflict",
+      "zh-CN": "冲突",
+      "ja": "競合"
+    },
+    "readOnly": {
+      "en": "read-only",
+      "zh-CN": "只读",
+      "ja": "読み取り専用"
+    },
+    "editable": {
+      "en": "editable",
+      "zh-CN": "可编辑",
+      "ja": "編集可能"
+    },
+    "saveAs": {
+      "en": "Save As",
+      "zh-CN": "另存为",
+      "ja": "名前を付けて保存"
+    },
+    "undo": {
+      "en": "Undo",
+      "zh-CN": "撤销",
+      "ja": "元に戻す"
+    },
+    "externalChange": {
+      "en": "external change",
+      "zh-CN": "外部修改",
+      "ja": "外部での変更"
+    },
+    "atomicReplacement": {
+      "en": "atomic replacement",
+      "zh-CN": "原子替换",
+      "ja": "アトミック置換"
+    }
+  },
+  "changelog": {
+    "releases": [
+      {
+        "version": "0.3.0",
+        "date": "2026-08-04",
+        "channel": "preview",
+        "changes": [
+          "scrollbarMarkers",
+          "viewportPerformance",
+          "keyAlignment",
+          "neighborPlacement",
+          "mobileNavigation",
+          "screenshotViewer"
+        ]
+      },
+      {
+        "version": "0.2.0",
+        "date": "2026-08-03",
+        "channel": "preview",
+        "changes": [
+          "repositoryDrop",
+          "repositoryLoading",
+          "externalReload",
+          "bulkClear"
+        ]
+      },
+      {
+        "version": "0.1.0",
+        "date": "2026-08-02",
+        "channel": "preview",
+        "changes": [
+          "entryModes",
+          "semanticDiff",
+          "semanticIndex",
+          "rowFilters",
+          "mergeAlignment",
+          "ugitWorktree",
+          "conflictAppend",
+          "beforeAfter",
+          "windowsBackground",
+          "undoAndSave",
+          "mitMigration",
+          "mobileSite",
+          "filterShortcuts",
+          "narrowViewport"
+        ]
+      }
+    ],
+    "locales": {
+      "en": {
+        "0.3.0": {
+          "title": "More accurate and faster review of large workbooks",
+          "summary": "Keyed records stay near their original neighbors, key columns can be detected or selected from a column header, and scrollbars show difference locations.",
+          "changes": {
+            "scrollbarMarkers": "Horizontal and vertical scrollbars now mark added, deleted, modified, and conflicting positions with the existing semantic colors.",
+            "viewportPerformance": "Large difference views use bounded viewport reads and filtered-row mappings; external-file polling pauses while the app is hidden.",
+            "keyAlignment": "Direct-file, repository, and UGit/Git comparisons align records when both sides share an id header or one unambiguous *ID header. Ambiguous headers fall back to physical rows.",
+            "neighborPlacement": "Records present on only one side remain between their neighboring shared keys instead of moving to the end. A key column can also be set or cleared from the column header.",
+            "mobileNavigation": "The mobile site navigation uses native browser disclosure, so it remains available before scripts start.",
+            "screenshotViewer": "Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected."
+          }
+        },
+        "0.2.0": {
+          "title": "Safer imports, reloads, and bulk editing",
+          "summary": "Repositories can be dropped into the app, externally changed workbooks can be reloaded safely, and selections can be cleared as one undoable action.",
+          "changes": {
+            "repositoryDrop": "Fixed the blank WebView caused by dropping a repository before the app had opened; repository folders can now be selected or dropped.",
+            "repositoryLoading": "Large repository imports immediately show progress, and failures remain visible inside the import dialog.",
+            "externalReload": "The app detects external changes: read-only sources reload after notice, while an editable left workbook asks before discarding session edits.",
+            "bulkClear": "Ctrl/Command+A selects the current worksheet, and Backspace/Delete clears the editable selection as one undoable operation."
+          }
+        },
+        "0.1.0": {
+          "title": "First preview",
+          "summary": "Review and merge .xlsx differences from direct files, Git repositories, and UGit.",
+          "changes": {
+            "entryModes": "Open two .xlsx files directly, or compare a worktree file with an existing local or remote-tracking Git reference.",
+            "semanticDiff": "Differences include values, formulas, cell types, and worksheet order; equivalent shared and inline strings are normalized.",
+            "semanticIndex": "The repository list includes only workbooks with confirmed semantic differences; one corrupt, encrypted, or legacy file no longer stops the rest.",
+            "rowFilters": "Combine added, deleted, modified, and conflict filters for the current worksheet while keeping the reviewed source row in view.",
+            "mergeAlignment": "Git merge sessions align reliable unique IDs and use the common base to distinguish file-level conflicts from changes made by both sides.",
+            "ugitWorktree": "UGit worktree comparisons keep the real worktree editable on the left and the Git snapshot read-only; two snapshots stay read-only.",
+            "conflictAppend": "Conflicting integer IDs can be appended with automatic or specified IDs; text IDs retain their values, and ordinary modified rows do not offer append actions.",
+            "beforeAfter": "Hold Before/After or Tab in a grid to see the left workbook as it was opened, then release to return to the current result.",
+            "windowsBackground": "Background Git commands no longer open console windows on Windows, and native confirmations have compatibility fallbacks.",
+            "undoAndSave": "Edits, cell copies, row overwrites, and appends can be undone. Saving writes only the left file and never stages, commits, pushes, or switches branches.",
+            "mitMigration": "The source is licensed under MIT and the repository and release links now use tadazly/sheetproof.",
+            "mobileSite": "The website provides full navigation on phones and tablets and explains its focus on versioned configuration and data workbooks.",
+            "filterShortcuts": "The guide documents row-filter shortcuts as 1–4 for categories and 5 for all differences.",
+            "narrowViewport": "The website fixes page overflow at mobile zoom and very narrow widths, wraps command examples, and documents UGit configuration."
+          }
+        }
+      },
+      "zh-CN": {
+        "0.3.0": {
+          "title": "更准确、更快地核对大表差异",
+          "summary": "主键记录按原有邻近位置对齐，可自动识别或从列标题右键指定；滚动条会标出大表中的差异位置。",
+          "changes": {
+            "scrollbarMarkers": "左右表格的横向和纵向滚动条新增差异位置标记，并沿用新增、删除、修改和冲突的既有颜色。",
+            "viewportPerformance": "优化大差异表的视口读取与筛选行映射，快速滚动时只处理当前窗口附近的差异；应用不可见时暂停外部文件轮询。",
+            "keyAlignment": "双方首行同列存在 id，或只有一个同名表头以 ID 结尾时，双文件、仓库和 UGit/Git 差异会对齐双方可靠的唯一主键；歧义表头保守回退物理行。",
+            "neighborPlacement": "中间仅一侧存在的记录会保留在相邻共同主键之间；也可右键列标题手动设置或取消主键。",
+            "mobileNavigation": "移动端导航改用浏览器原生展开结构，即使页面脚本尚未启动也能打开。",
+            "screenshotViewer": "官网产品图可在独立查看器中打开，支持桌面滚轮缩放与手机双指缩放、拖动，并修复关闭、滚动恢复和手势锁定问题。"
+          }
+        },
+        "0.2.0": {
+          "title": "更稳妥的导入、重载与批量编辑",
+          "summary": "仓库可以直接拖入，外部修改可以安全重载，表格支持全选与可撤销的批量清空。",
+          "changes": {
+            "repositoryDrop": "修复首次拖入仓库目录时 WebView 跳转为空白页的问题；仓库既可手动选择，也可拖入。",
+            "repositoryLoading": "打开较大仓库时会立即显示加载状态，失败原因保留在导入弹窗内。",
+            "externalReload": "应用主动检测外部修改：只读侧提示后自动重载，可编辑左侧先询问是否放弃当前会话修改。",
+            "bulkClear": "Ctrl/Command+A 可全选当前工作表；Backspace/Delete 可清空左侧选区，并作为一次操作撤销。"
+          }
+        },
+        "0.1.0": {
+          "title": "首次预览",
+          "summary": "可以在双文件、Git 仓库和 UGit 中查看并合并 .xlsx 差异。",
+          "changes": {
+            "entryModes": "可直接打开两个 .xlsx，也可在本地 Git 仓库中比较工作区文件与已有分支或远端跟踪引用。",
+            "semanticDiff": "差异按值、公式、单元格类型和工作表顺序计算；共享字符串和内联字符串按同一种文本处理。",
+            "semanticIndex": "仓库差异表只显示确有语义差异的工作簿；单个损坏、加密或旧格式文件不会中断其余检查。",
+            "rowFilters": "当前工作表可组合筛选新增、删除、修改和冲突行，切换筛选后仍停在正在核对的来源行附近。",
+            "mergeAlignment": "Git 合并按可靠唯一 ID 对齐记录，共同基线用于区分文件级冲突和双方实际修改。",
+            "ugitWorktree": "UGit 工作区对比把真实工作区放在可编辑左侧，Git 快照保持只读；两个历史快照仍双侧只读。",
+            "conflictAppend": "整数 ID 冲突行可自动续号或指定 ID 追加；文本 ID 保留原值，普通修改行不提供追加。",
+            "beforeAfter": "按住“前后对比”或在表格内按住 Tab，可查看左侧文件刚打开时的内容。",
+            "windowsBackground": "Windows 后台 Git 命令不再弹出控制台窗口，原生确认对话框增加兼容回退。",
+            "undoAndSave": "编辑、复制、整行覆盖和追加均可撤销；保存只写左侧，不自动暂存、提交、推送或切换分支。",
+            "mitMigration": "项目采用 MIT License，源码仓库与发布链接统一迁移到 tadazly/sheetproof。",
+            "mobileSite": "官网在手机和平板上提供完整导航，并明确说明面向 Git 管理的配置表和数据表。",
+            "filterShortcuts": "使用说明将差异行筛选快捷键精简为“1–4 切换分类，5 全选”。",
+            "narrowViewport": "官网修复手机缩放和极窄视口横向溢出，命令可在卡片内换行，并补充 UGit 配置步骤。"
+          }
+        }
+      },
+      "ja": {
+        "0.3.0": {
+          "title": "大規模ブックの差分を、より正確かつ高速に確認",
+          "summary": "キーで対応付けたレコードを元の前後関係に保ち、キー列の自動検出・手動指定に対応しました。スクロールバーには差分位置も表示されます。",
+          "changes": {
+            "scrollbarMarkers": "左右の表の縦横スクロールバーに、追加・削除・変更・競合の位置を既存の色で表示します。",
+            "viewportPerformance": "大きな差分表の表示範囲読み込みと絞り込み行マッピングを最適化し、アプリが非表示の間は外部変更のポーリングを休止します。",
+            "keyAlignment": "両側の先頭行に同じ id、または一意に判断できる *ID 見出しがある場合、ファイル・リポジトリ・UGit/Git の各比較でレコードを対応付けます。曖昧な見出しは物理行に戻します。",
+            "neighborPlacement": "片側だけにあるレコードを共通キーの間に保ちます。列見出しの右クリックからキー列の設定と解除もできます。",
+            "mobileNavigation": "モバイルナビゲーションをブラウザー標準の開閉要素に変更し、スクリプト起動前でも利用できるようにしました。",
+            "screenshotViewer": "製品画像を専用ビューアーで開き、デスクトップのホイール拡大とモバイルのピンチ・ドラッグに対応しました。閉じる操作、スクロール復元、ジェスチャー固定も修正しました。"
+          }
+        },
+        "0.2.0": {
+          "title": "インポート、再読み込み、一括編集をより安全に",
+          "summary": "リポジトリのドラッグ＆ドロップ、外部変更されたブックの安全な再読み込み、選択範囲の取り消し可能な一括クリアに対応しました。",
+          "changes": {
+            "repositoryDrop": "初回のリポジトリドロップで WebView が空白になる問題を修正し、フォルダー選択とドロップの両方に対応しました。",
+            "repositoryLoading": "大きなリポジトリでは読み込み状況をすぐに表示し、失敗理由をインポートダイアログ内に残します。",
+            "externalReload": "外部変更を検出し、読み取り専用側は通知後に再読み込み、編集可能な左側はセッション編集を破棄する前に確認します。",
+            "bulkClear": "Ctrl/Command+A で現在のシートを選択し、Backspace/Delete で左側の選択範囲を一つの履歴としてクリアできます。"
+          }
+        },
+        "0.1.0": {
+          "title": "初回プレビュー",
+          "summary": "2 ファイル、Git リポジトリ、UGit から .xlsx の差分を確認し、選択的に取り込めます。",
+          "changes": {
+            "entryModes": "2 つの .xlsx を直接開くほか、ローカル Git リポジトリのワークツリーファイルと既存の参照を比較できます。",
+            "semanticDiff": "値、数式、セル型、シート順を比較し、共有文字列とインライン文字列は同じ文字列型として扱います。",
+            "semanticIndex": "リポジトリの差分一覧には意味上異なるブックだけを表示し、破損・暗号化・旧形式の 1 ファイルが他の確認を止めないようにしました。",
+            "rowFilters": "現在のシートで追加・削除・変更・競合を組み合わせて絞り込み、切り替え後も確認中の元行付近を保ちます。",
+            "mergeAlignment": "Git マージでは信頼できる一意 ID を対応付け、共通ベースからファイル競合と双方の実変更を区別します。",
+            "ugitWorktree": "UGit のワークツリー比較では実ファイルを編集可能な左側、Git スナップショットを読み取り専用の右側に置きます。履歴同士は両側読み取り専用です。",
+            "conflictAppend": "整数 ID の競合行は自動採番または指定 ID で追加でき、文字列 ID はそのまま保持します。通常の変更行には追加操作を出しません。",
+            "beforeAfter": "「変更前後」を押している間、または表で Tab を押している間、左側を開いた時点の内容に戻して確認できます。",
+            "windowsBackground": "Windows のバックグラウンド Git コマンドがコンソールを表示しないようにし、ネイティブ確認ダイアログに互換フォールバックを追加しました。",
+            "undoAndSave": "編集、セルコピー、行上書き、行追加を取り消せます。保存は左側だけを書き換え、stage、commit、push、ブランチ切り替えを行いません。",
+            "mitMigration": "ソースを MIT License で公開し、リポジトリとリリース URL を tadazly/sheetproof に統一しました。",
+            "mobileSite": "Web サイトにスマートフォンとタブレット向けの完全なナビゲーションを追加し、Git 管理の設定表・データ表向けであることを明確にしました。",
+            "filterShortcuts": "ガイドの行絞り込みショートカットを、1〜4 で分類切り替え、5 ですべての差分に統一しました。",
+            "narrowViewport": "モバイル拡大時と極端に狭い画面の横あふれを修正し、コマンドの折り返しと UGit 設定手順を追加しました。"
+          }
+        }
+      }
+    }
+  }
+}

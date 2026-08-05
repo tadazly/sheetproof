@@ -1,0 +1,37 @@
+{
+  "localeName": "简体中文",
+  "product": {
+    "displayName": "SheetProof · 表鉴",
+    "slogan": "审阅 Git 中的 XLSX 变更。",
+    "tagline": "Git 工作流中的 XLSX 差异审阅工具。",
+    "description": "SheetProof 比较 Git 工作区中的 .xlsx 与经过校验的 Git 版本，按主键对齐记录，并将确认的单元格或整行应用到可编辑左侧。",
+    "channel": "预览版"
+  },
+  "features": {
+    "workbookComparison": { "title": "理解工作簿语义的对比", "summary": "比较工作表、值、公式、显式空值和类型；显示格式不参与相等判断。" },
+    "sideBySideReview": { "title": "双栏差异审阅", "summary": "使用同步虚拟网格、差异导航和滚动条标记核对新增、删除、修改与冲突。" },
+    "rowFilters": { "title": "当前工作表行筛选", "summary": "组合筛选新增、删除、修改和冲突，同时保留正在核对的来源行。" },
+    "controlledMerge": { "title": "可控合并与撤销", "summary": "只把选定单元格或整行写入左侧；编辑和合并均可撤销。" },
+    "beforeAfter": { "title": "按住回看修改前", "summary": "按住“前后对比”或在表格内按住 Tab，可查看左侧工作簿刚打开时的状态。" },
+    "repositoryMode": { "title": "本地 Git 仓库模式", "summary": "比较真实工作区与经过校验的本地或远端跟踪引用，不 checkout、fetch 或切换分支。" },
+    "safeSave": { "title": "安全的本地保存", "summary": "检测外部修改，并经过同目录临时文件、重开校验和原子替换完成保存。" }
+  },
+  "useCases": {
+    "configurationReview": { "title": "审阅配置表变更", "summary": "在提交或发版前核对数值、公式、类型和整行变化。" },
+    "gitChanges": { "title": "处理 Git 中的 XLSX 变化", "summary": "比较工作区与本地分支或远端跟踪引用，不打断当前分支。" },
+    "selectiveMerge": { "title": "选择性应用修改", "summary": "只接收确认过的单元格或整行，保存前仍可撤销。" }
+  },
+  "screenshots": {
+    "keyAlignment": { "alt": "SheetProof 按主键比较中文角色成长配置表", "caption": "按主键对齐后，中间新增的角色仍位于相邻记录之间，当前工作表保留 16 处实际差异。" },
+    "physicalRows": { "alt": "SheetProof 按物理行比较同一组角色配置", "caption": "未设置主键时，中间新增一条记录会使后续行错位，并产生 90 处坐标差异。" },
+    "focusedDifference": { "alt": "SheetProof 聚焦显示角色名称和数值差异", "caption": "角色名称、生命值和攻击力调整按双栏差异色显示，新增角色单独标出。" },
+    "mergeResult": { "alt": "SheetProof 将一项生命值合并到左侧后的界面", "caption": "把确认的生命值复制到左侧后，该单元格恢复一致，其他差异保持不变。" }
+  },
+  "seo": {
+    "home": { "title": "SheetProof · 表鉴 — 审阅并应用 Git 中的 XLSX 修改", "description": "比较 .xlsx 工作簿与 Git 版本，按主键对齐记录，并在本机应用确认的单元格或整行。" },
+    "features": { "title": "功能", "description": "工作簿语义对比、主键记录对齐、选择性应用、撤销与安全本地保存。" },
+    "guide": { "title": "使用说明", "description": "打开文件或仓库、核对差异、配置 UGit，并安全保存 SheetProof 结果。" },
+    "download": { "title": "下载", "description": "下载未签名的 SheetProof Windows amd64 或 macOS universal 预览版并核对 SHA-256。" },
+    "changelog": { "title": "更新日志", "description": "SheetProof 0.1.0、0.2.0 和 0.3.0 的用户可见变化。" }
+  }
+}

@@ -13,6 +13,24 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+func TestDefaultSourceLabelsFollowLocale(t *testing.T) {
+	tests := []struct {
+		locale string
+		left   string
+		right  string
+	}{
+		{"en", "Local (editable)", "Comparison source (read-only)"},
+		{"zh-CN", "本地（可编辑）", "对比来源（只读）"},
+		{"ja", "ローカル（編集可能）", "比較元（読み取り専用）"},
+	}
+	for _, test := range tests {
+		options := defaultOptions(Options{Locale: test.locale})
+		if options.LeftLabel != test.left || options.RightLabel != test.right {
+			t.Errorf("%s labels = %q / %q, want %q / %q", test.locale, options.LeftLabel, options.RightLabel, test.left, test.right)
+		}
+	}
+}
+
 func TestSessionEndToEndMergeEditUndoSaveAndReopen(t *testing.T) {
 	pair, err := testutil.CreatePair(t.TempDir())
 	if err != nil {
@@ -643,7 +661,7 @@ func TestGitMergeAlignsShiftedUniqueIDsAndExplainsFileConflict(t *testing.T) {
 		sheet.ModifiedRowCount != 1 || sheet.ConflictRowCount != 0 {
 		t.Fatalf("aligned summary = %+v", sheet)
 	}
-	if len(summary.Warnings) < 1 || !strings.Contains(summary.MergeNotice, "右侧与共同基线语义一致") {
+	if len(summary.Warnings) < 1 || !strings.Contains(summary.MergeNotice, "right side matches the common base") {
 		t.Fatalf("merge warnings = %#v, notice = %q", summary.Warnings, summary.MergeNotice)
 	}
 	region, err := session.Region("Sheet1", 2, 3, 1, 3)
@@ -708,7 +726,7 @@ func TestOrdinaryComparisonAlignsInsertedUniqueIDAndPreservesConflictRule(t *tes
 		summary.RowAlignment.Mode != RowAlignmentAuto || summary.RowAlignment.Moved != 2 {
 		t.Fatalf("alignment summary = %+v", summary.RowAlignment)
 	}
-	if len(summary.Warnings) == 0 || !strings.Contains(summary.Warnings[0], "唯一 ID 对齐") {
+	if len(summary.Warnings) == 0 || !strings.Contains(summary.Warnings[0], "aligned by unique ID") {
 		t.Fatalf("alignment warnings = %#v", summary.Warnings)
 	}
 

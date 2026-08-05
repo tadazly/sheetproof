@@ -1,0 +1,37 @@
+{
+  "localeName": "English",
+  "product": {
+    "displayName": "SheetProof",
+    "slogan": "Review XLSX changes in Git.",
+    "tagline": "Review and apply XLSX changes in Git.",
+    "description": "SheetProof compares .xlsx workbooks in a Git worktree with validated Git revisions, aligns records by key, and applies approved changes to the editable left workbook.",
+    "channel": "Preview"
+  },
+  "features": {
+    "workbookComparison": { "title": "Workbook-aware comparison", "summary": "Compare worksheets, values, formulas, explicit blanks, and types. Display formatting does not determine whether cells are equal." },
+    "sideBySideReview": { "title": "Side-by-side review", "summary": "Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data." },
+    "rowFilters": { "title": "Current-sheet row filters", "summary": "Combine added, deleted, modified, and conflict filters without losing the source row being reviewed." },
+    "controlledMerge": { "title": "Controlled merge and undo", "summary": "Write only selected cells or rows to the left; edits and merge operations remain undoable." },
+    "beforeAfter": { "title": "Hold to compare before and after", "summary": "Hold Before/After or Tab in a grid to see the left workbook exactly as it was opened." },
+    "repositoryMode": { "title": "Local Git repository mode", "summary": "Read the real worktree against a validated local or remote-tracking reference without checkout, fetch, or branch switching." },
+    "safeSave": { "title": "Guarded local saving", "summary": "Detect external changes, write a temporary file in the same directory, reopen it for validation, then replace the original atomically." }
+  },
+  "useCases": {
+    "configurationReview": { "title": "Review configuration workbooks", "summary": "Check values, formulas, types, and row changes before a commit or release." },
+    "gitChanges": { "title": "Resolve XLSX changes in Git", "summary": "Compare a worktree with local or remote-tracking references without interrupting the current branch." },
+    "selectiveMerge": { "title": "Apply selected corrections", "summary": "Accept only confirmed cells or rows and keep the option to undo before saving." }
+  },
+  "screenshots": {
+    "keyAlignment": { "alt": "SheetProof comparing an English character growth workbook by key", "caption": "Key alignment keeps an inserted character beside its neighboring records and leaves 16 actual differences." },
+    "physicalRows": { "alt": "SheetProof comparing the same character data by physical row", "caption": "Without a key column, one inserted record shifts later rows and produces 90 coordinate differences." },
+    "focusedDifference": { "alt": "SheetProof focused on character name and balance changes", "caption": "Name, HP, and attack changes use the two-sided difference colors; the new character remains separate." },
+    "mergeResult": { "alt": "SheetProof after merging one HP value to the left", "caption": "After the approved HP value is copied left, that cell is equal while every other difference remains." }
+  },
+  "seo": {
+    "home": { "title": "SheetProof — Review and apply XLSX changes in Git", "description": "Compare .xlsx workbooks with Git revisions, align records by key, and apply approved cells or rows locally." },
+      "features": { "title": "Features", "description": "Workbook-aware Git comparison, key alignment, selective application, undo, and safe local saving." },
+    "guide": { "title": "Guide", "description": "Open files or repositories, review differences, configure UGit, and save SheetProof results safely." },
+    "download": { "title": "Download", "description": "Download the unsigned SheetProof preview for Windows amd64 or macOS universal and verify SHA-256." },
+    "changelog": { "title": "Changelog", "description": "User-visible changes in SheetProof 0.1.0, 0.2.0, and 0.3.0." }
+  }
+}

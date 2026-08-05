@@ -1,0 +1,37 @@
+{
+  "localeName": "日本語",
+  "product": {
+    "displayName": "SheetProof（シートプルーフ）",
+    "slogan": "Git 上の XLSX 変更をレビュー。",
+    "tagline": "Git 上の XLSX 変更を確認し、必要な項目だけを反映。",
+    "description": "SheetProof は Git ワークツリーの .xlsx と検証済みの Git リビジョンを比較し、レコードをキーで揃え、確認したセルまたは行を編集可能な左側へ反映します。",
+    "channel": "プレビュー"
+  },
+  "features": {
+    "workbookComparison": { "title": "ブック内容の比較", "summary": "シート、値、数式、明示的な空値、型を比較します。表示書式はセルが同じかどうかの判定に含めません。" },
+    "sideBySideReview": { "title": "2 ペイン差分レビュー", "summary": "同期した仮想グリッド、差分移動、スクロールバーの印で追加・削除・変更・競合を確認します。" },
+    "rowFilters": { "title": "現在のシートの行絞り込み", "summary": "確認中の元行を保ったまま、追加・削除・変更・競合を組み合わせて絞り込めます。" },
+    "controlledMerge": { "title": "選んで反映・元に戻す", "summary": "選択したセルまたは行だけを左側へ反映します。編集と反映操作は元に戻せます。" },
+    "beforeAfter": { "title": "押している間だけ変更前を確認", "summary": "「変更前後」を押すか、表で Tab を押している間、左側を開いた時点の状態に戻します。" },
+    "repositoryMode": { "title": "ローカル Git リポジトリモード", "summary": "実際のワークツリーと検証済みのローカル／リモート追跡参照を、checkout、fetch、ブランチ切り替えなしで比較します。" },
+    "safeSave": { "title": "安全なローカル保存", "summary": "外部変更を検出し、同じディレクトリの一時ファイル、再オープン検証、アトミック置換を経て保存します。" }
+  },
+  "useCases": {
+    "configurationReview": { "title": "設定ブックの変更レビュー", "summary": "コミットやリリースの前に、値、数式、型、行全体の変更を確認します。" },
+    "gitChanges": { "title": "Git 上の XLSX 変更を整理", "summary": "現在のブランチ作業を中断せず、ワークツリーとローカル／リモート追跡参照を比較します。" },
+    "selectiveMerge": { "title": "確認した修正だけを反映", "summary": "承認したセルまたは行だけを取り込み、保存前なら取り消せます。" }
+  },
+  "screenshots": {
+    "keyAlignment": { "alt": "SheetProof で日本語のキャラクター成長表をキー比較", "caption": "キーで揃えると、途中に追加したキャラクターは前後のレコード間に残り、実際の差分 16 件だけを表示します。" },
+    "physicalRows": { "alt": "SheetProof で同じキャラクターデータを物理行比較", "caption": "キー列を使わない場合、途中の 1 レコード追加で後続行がずれ、座標差分が 90 件になります。" },
+    "focusedDifference": { "alt": "SheetProof でキャラクター名と調整値の差分にフォーカス", "caption": "名前、HP、攻撃力の変更を左右の差分色で示し、新キャラクターは独立して表示します。" },
+    "mergeResult": { "alt": "SheetProof で HP を 1 件左側へ反映した結果", "caption": "確認した HP を左側へ反映すると、そのセルだけが一致し、ほかの差分はそのまま残ります。" }
+  },
+  "seo": {
+    "home": { "title": "SheetProof — Git 上の XLSX 変更を確認して反映", "description": ".xlsx と Git リビジョンを比較し、レコードをキーで揃え、確認したセルや行だけをローカルで反映します。" },
+    "features": { "title": "機能", "description": "ブック差分、キー対応付け、選択的な反映、取り消し、安全なローカル保存。" },
+    "guide": { "title": "使い方", "description": "ファイルまたはリポジトリを開き、差分を確認し、UGit を設定して結果を安全に保存する手順。" },
+    "download": { "title": "ダウンロード", "description": "未署名の SheetProof Windows amd64／macOS universal プレビューをダウンロードし、SHA-256 を確認できます。" },
+    "changelog": { "title": "変更履歴", "description": "SheetProof 0.1.0、0.2.0、0.3.0 のユーザー向け変更履歴。" }
+  }
+}

@@ -508,6 +508,7 @@ func cellText(value workbook.CellValue) string {
 
 func mergeSemanticNotice(
 	base, left, right *workbook.WorkbookSnapshot,
+	locale string,
 ) string {
 	leftAlignment := alignRightRows(base, left, false, nil)
 	rightAlignment := alignRightRows(base, right, false, nil)
@@ -519,12 +520,28 @@ func mergeSemanticNotice(
 	).Equal
 	switch {
 	case leftChanged && rightChanged:
-		return "Git 已将此 XLSX 标记为文件级冲突；左右两侧都相对共同基线存在表格语义变化，橙色仅标记同一 ID 记录的双方不兼容修改。"
+		return sessionText(locale,
+			"Git reports a file-level conflict. Both sides contain workbook changes relative to the common base; orange marks incompatible changes to the same ID record.",
+			"Git 已将此 XLSX 标记为文件级冲突。左右两侧相对共同基线都有工作簿语义变化；橙色只标记同一 ID 记录中互不兼容的修改。",
+			"Git はこの XLSX をファイル単位の競合として報告しています。共通ベースに対して両側にブック内容の変更があり、同じ ID のレコードで両立しない変更だけをオレンジで示します。",
+		)
 	case leftChanged:
-		return "Git 已将此 XLSX 标记为文件级冲突，但右侧与共同基线语义一致；当前只有左侧存在实际表格变化，没有双方语义冲突。"
+		return sessionText(locale,
+			"Git reports a file-level conflict, but the right side matches the common base semantically. Only the left workbook has actual content changes, so there is no two-sided semantic conflict.",
+			"Git 已将此 XLSX 标记为文件级冲突，但右侧与共同基线的语义一致。只有左侧存在实际内容变化，因此没有双方语义冲突。",
+			"Git はこの XLSX をファイル単位の競合として報告していますが、右側の内容は共通ベースと同じです。実際に変更されているのは左側だけなので、双方の内容が競合している状態ではありません。",
+		)
 	case rightChanged:
-		return "Git 已将此 XLSX 标记为文件级冲突，但左侧与共同基线语义一致；当前只有右侧存在实际表格变化，没有双方语义冲突。"
+		return sessionText(locale,
+			"Git reports a file-level conflict, but the left side matches the common base semantically. Only the right workbook has actual content changes, so there is no two-sided semantic conflict.",
+			"Git 已将此 XLSX 标记为文件级冲突，但左侧与共同基线的语义一致。只有右侧存在实际内容变化，因此没有双方语义冲突。",
+			"Git はこの XLSX をファイル単位の競合として報告していますが、左側の内容は共通ベースと同じです。実際に変更されているのは右側だけなので、双方の内容が競合している状態ではありません。",
+		)
 	default:
-		return "Git 已将此 XLSX 标记为文件级冲突，但两侧与共同基线的表格语义均一致；差别仅来自 OOXML 二进制封装或未参与相等判断的显示/样式。"
+		return sessionText(locale,
+			"Git reports a file-level conflict, but both sides match the common base semantically. The difference is limited to OOXML packaging or display and style data that is not part of equality.",
+			"Git 已将此 XLSX 标记为文件级冲突，但两侧与共同基线的语义都一致。差别只来自 OOXML 封装，或不参与相等判断的显示与样式数据。",
+			"Git はこの XLSX をファイル単位の競合として報告していますが、両側の内容は共通ベースと同じです。差異は OOXML のパッケージ構造、または同一判定に含めない表示・スタイル情報に限られます。",
+		)
 	}
 }

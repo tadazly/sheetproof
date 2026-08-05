@@ -18,12 +18,39 @@ const (
 )
 
 type savePreferences struct {
+	LanguagePreference string                                      `json:"language,omitempty"`
 	LastSaveDirectory  string                                      `json:"lastSaveDirectory"`
 	LastRepository     string                                      `json:"lastRepository,omitempty"`
 	RecentRepositories []string                                    `json:"recentRepositories,omitempty"`
 	RepositoryWidth    int                                         `json:"repositoryWidth,omitempty"`
 	RepositoryRefs     map[string]string                           `json:"repositoryRefs,omitempty"`
 	RepositoryIndexes  map[string]map[string]repositoryIndexRecord `json:"repositoryIndexes,omitempty"`
+}
+
+// LanguagePreference returns system, en, zh-CN, or ja. Older preferences
+// without the field continue to follow the operating-system locale.
+func (s Store) LanguagePreference() string {
+	value := s.load().LanguagePreference
+	switch value {
+	case "en", "zh-CN", "ja", "system":
+		return value
+	default:
+		return "system"
+	}
+}
+
+func (s Store) RecordLanguagePreference(preference string) error {
+	switch preference {
+	case "en", "zh-CN", "ja", "system":
+	default:
+		return fmt.Errorf("unsupported language preference %q", preference)
+	}
+	value := s.load()
+	if value.LanguagePreference == preference {
+		return nil
+	}
+	value.LanguagePreference = preference
+	return s.write(value)
 }
 
 type repositoryIndexRecord struct {

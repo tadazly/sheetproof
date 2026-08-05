@@ -9,14 +9,18 @@ import type {
   Summary,
   UGitConfigurationResult
 } from "./types";
+import { t } from "./i18n";
 
 function controller(): Record<string, (...args: any[]) => Promise<any>> {
   const value = window.go?.main?.Controller;
-  if (!value) throw new Error("Wails 后端尚未就绪");
+  if (!value) throw new Error(t("errors.backendUnavailable"));
   return value;
 }
 
 export const backend = {
+  languagePreference: (): Promise<string> => controller().LanguagePreference(),
+  setLanguagePreference: (preference: string): Promise<void> => controller().SetLanguagePreference(preference),
+  setRuntimeLocale: (locale: string): Promise<void> => controller().SetRuntimeLocale(locale),
   bootstrap: (): Promise<BootstrapState> =>
     controller().Bootstrap(),
   configureUGit: (): Promise<UGitConfigurationResult> =>

@@ -1,48 +1,52 @@
+<!-- Generated from product facts and locale content. Do not edit directly. -->
+
+English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
+
 # Changelog
 
-SheetProof 的面向用户变化记录。产品事实来源为 `product/changelog.json`；请不要直接编辑本文件。
+User-visible SheetProof changes.
 
 ## 0.3.0 — 2026-08-04
 
-_预览版 · 更准确、更快地核对大表差异_
+_Preview · More accurate and faster review of large workbooks_
 
-主键记录按原有邻近位置对齐，可自动识别或从列标题右键指定；滚动条会标出大表中的差异位置。
+Keyed records stay near their original neighbors, key columns can be detected or selected from a column header, and scrollbars show difference locations.
 
-- 左右表格的横向和纵向滚动条新增差异位置标记，并沿用新增、删除、修改和冲突的既有颜色。
-- 优化大差异表的视口读取与筛选行映射，快速滚动时只处理当前窗口附近的差异；应用不可见时暂停外部文件轮询。
-- 双方首行同列存在 id，或只有一个同名表头以 ID 结尾（如“地图ID”）时，双文件、仓库和 UGit/Git 差异会对齐双方可靠的唯一主键；多个限定 ID 表头会保守回退物理行，中间新增或删除记录不会再把后续行误报为连续修改。
-- 中间仅一侧存在的记录会保留在相邻共同主键之间，不再统一跑到对比视图底部；没有可识别表头时默认不设置主键，也可右键 A/B/C…列标题手动设置或取消。
-- 移动端导航改用浏览器原生展开结构；即使页面脚本尚未启动，首页、功能、使用说明和下载页的菜单按钮仍可打开。
-- 官网产品图点击后会在独立查看窗口打开；手机支持双指缩放和拖动，桌面支持滚轮缩放，且不会连带缩放页面。修复关闭后仍显示查看窗口、页面跳回顶部，以及缩放过程中页面锁定反复重置导致双指手势中断的问题。中文标题采用更舒展的行高和字距，正文与图片说明同步提高可读性；使用说明中的 macOS 快捷键改用 ⌘ 符号。
+- Horizontal and vertical scrollbars now mark added, deleted, modified, and conflicting positions with the existing semantic colors.
+- Large difference views use bounded viewport reads and filtered-row mappings; external-file polling pauses while the app is hidden.
+- Direct-file, repository, and UGit/Git comparisons align records when both sides share an id header or one unambiguous *ID header. Ambiguous headers fall back to physical rows.
+- Records present on only one side remain between their neighboring shared keys instead of moving to the end. A key column can also be set or cleared from the column header.
+- The mobile site navigation uses native browser disclosure, so it remains available before scripts start.
+- Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.
 
 ## 0.2.0 — 2026-08-03
 
-_预览版 · 更稳妥的导入、重载与批量编辑_
+_Preview · Safer imports, reloads, and bulk editing_
 
-仓库可以直接拖入，外部修改可以安全重载，表格支持全选与可撤销的批量清空。
+Repositories can be dropped into the app, externally changed workbooks can be reloaded safely, and selections can be cleared as one undoable action.
 
-- 修复首次拖入仓库目录时 WebView 跳转为空白页的问题；已进入应用后，“打开本地仓库”也同时支持拖入目录和手动选择。
-- 打开较大仓库时，导入弹窗会立即显示加载状态；导入失败的原因直接显示在弹窗内，不再被遮罩挡住。
-- 应用会主动检测左右工作簿的外部修改：只读侧提示后自动重载，可编辑左侧先询问是否放弃当前会话状态并载入磁盘最新版。
-- 表格聚焦时可用 Ctrl/Command+A 全选当前工作表单元格；可编辑左侧支持 Backspace/Delete 清空所选内容，并可将多格清空一次撤销。
+- Fixed the blank WebView caused by dropping a repository before the app had opened; repository folders can now be selected or dropped.
+- Large repository imports immediately show progress, and failures remain visible inside the import dialog.
+- The app detects external changes: read-only sources reload after notice, while an editable left workbook asks before discarding session edits.
+- Ctrl/Command+A selects the current worksheet, and Backspace/Delete clears the editable selection as one undoable operation.
 
 ## 0.1.0 — 2026-08-02
 
-_预览版 · 首次预览_
+_Preview · First preview_
 
-可以在双文件、Git 仓库和 UGit 中查看并合并 .xlsx 差异。
+Review and merge .xlsx differences from direct files, Git repositories, and UGit.
 
-- 可直接打开两个 .xlsx，也可在本地 Git 仓库中比较工作区文件与已有分支或远端跟踪引用。
-- 差异按值、公式、单元格类型和工作表顺序计算；共享字符串和内联字符串按同一种文本处理，不再把相同内容误报为类型差异。
-- 仓库中的差异表只显示内容确实不同的工作簿；单个损坏、加密或旧格式文件不会再中断其余文件的检查。
-- 当前工作表可以组合筛选新增、删除、修改和冲突行；切换或取消筛选后，视图仍停在原来核对的数据行附近。
-- Git 合并会按唯一 ID 对齐左右记录，减少插入或删除行造成的大段错位；共同基线用于区分文件级冲突和双方实际修改。
-- UGit 与工作区对比时，真实工作区放在可编辑左侧，Git 版本快照保持只读；两个历史快照仍以双侧只读方式打开。
-- 整数 ID 冲突行可以自动续号或指定 ID 追加；文本 ID 冲突行按原值追加，普通修改行不再出现整行追加操作。
-- 按住“前后对比”或在表格内按住 Tab，可以查看左侧文件刚打开时的内容，松开后立即回到当前结果。
-- Windows 后台 Git 命令不再弹出控制台窗口；原生确认对话框增加兼容回退，避免配置 UGit 或切换文件时中断。
-- 编辑、复制、整行覆盖和追加都可以撤销；保存只写回左侧文件，不会自动暂存、提交、推送或切换分支。
-- 项目源码采用 MIT License，源码仓库与发布链接统一迁移到 tadazly/sheetproof。
-- 官网在手机和平板上提供完整导航抽屉，并更明确地说明 SheetProof 面向 Git 管理的配置表与数据表。
-- 官网使用说明将差异行筛选快捷键精简为“1–4 切换分类，5 全选”。
-- 官网修复手机缩放及极窄视口下的页面横向溢出，双文件与 Git 仓库模式代码不再超出卡片，并补充完整的 UGit 配置步骤。
+- Open two .xlsx files directly, or compare a worktree file with an existing local or remote-tracking Git reference.
+- Differences include values, formulas, cell types, and worksheet order; equivalent shared and inline strings are normalized.
+- The repository list includes only workbooks with confirmed semantic differences; one corrupt, encrypted, or legacy file no longer stops the rest.
+- Combine added, deleted, modified, and conflict filters for the current worksheet while keeping the reviewed source row in view.
+- Git merge sessions align reliable unique IDs and use the common base to distinguish file-level conflicts from changes made by both sides.
+- UGit worktree comparisons keep the real worktree editable on the left and the Git snapshot read-only; two snapshots stay read-only.
+- Conflicting integer IDs can be appended with automatic or specified IDs; text IDs retain their values, and ordinary modified rows do not offer append actions.
+- Hold Before/After or Tab in a grid to see the left workbook as it was opened, then release to return to the current result.
+- Background Git commands no longer open console windows on Windows, and native confirmations have compatibility fallbacks.
+- Edits, cell copies, row overwrites, and appends can be undone. Saving writes only the left file and never stages, commits, pushes, or switches branches.
+- The source is licensed under MIT and the repository and release links now use tadazly/sheetproof.
+- The website provides full navigation on phones and tablets and explains its focus on versioned configuration and data workbooks.
+- The guide documents row-filter shortcuts as 1–4 for categories and 5 for all differences.
+- The website fixes page overflow at mobile zoom and very narrow widths, wraps command examples, and documents UGit configuration.

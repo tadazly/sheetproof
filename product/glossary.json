@@ -1,0 +1,20 @@
+{
+  "workbook": { "en": "workbook", "zh-CN": "工作簿", "ja": "ブック" },
+  "worksheet": { "en": "worksheet", "zh-CN": "工作表", "ja": "シート" },
+  "cell": { "en": "cell", "zh-CN": "单元格", "ja": "セル" },
+  "worktree": { "en": "worktree", "zh-CN": "工作区", "ja": "ワークツリー" },
+  "gitReference": { "en": "Git revision", "zh-CN": "Git 版本", "ja": "Git リビジョン" },
+  "keyColumn": { "en": "key column", "zh-CN": "主键列", "ja": "キー列" },
+  "physicalRow": { "en": "physical row", "zh-CN": "物理行", "ja": "物理行" },
+  "difference": { "en": "difference", "zh-CN": "差异", "ja": "差分" },
+  "added": { "en": "added", "zh-CN": "新增", "ja": "追加" },
+  "deleted": { "en": "deleted", "zh-CN": "删除", "ja": "削除" },
+  "modified": { "en": "modified", "zh-CN": "修改", "ja": "変更" },
+  "conflict": { "en": "conflict", "zh-CN": "冲突", "ja": "競合" },
+  "readOnly": { "en": "read-only", "zh-CN": "只读", "ja": "読み取り専用" },
+  "editable": { "en": "editable", "zh-CN": "可编辑", "ja": "編集可能" },
+  "saveAs": { "en": "Save As", "zh-CN": "另存为", "ja": "名前を付けて保存" },
+  "undo": { "en": "Undo", "zh-CN": "撤销", "ja": "元に戻す" },
+  "externalChange": { "en": "external change", "zh-CN": "外部修改", "ja": "外部での変更" },
+  "atomicReplacement": { "en": "atomic replacement", "zh-CN": "原子替换", "ja": "アトミック置換" }
+}

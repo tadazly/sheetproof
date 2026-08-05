@@ -69,6 +69,8 @@ describe("App", () => {
 
   beforeEach(() => {
     selectAndOpen.mockClear();
+    Object.defineProperty(navigator, "languages", { configurable: true, value: ["zh-CN"] });
+    Object.defineProperty(navigator, "language", { configurable: true, value: "zh-CN" });
     window.localStorage.clear();
     delete (window as Window & { runtime?: Record<string, unknown> }).runtime;
     window.go = {
@@ -138,7 +140,7 @@ describe("App", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("Git 差异快照 · 只读");
     expect(wrapper.text()).toContain("配置.xlsx");
-    expect(wrapper.text()).toContain("Git 快照 · 该版本不存在");
+    expect(wrapper.text()).toContain("Git 快照 · 此版本中不存在");
     expect(wrapper.text()).not.toContain("missing-right.xlsx");
     expect(wrapper.text()).not.toContain("/var/folders/random");
     expect(wrapper.findAll(".file-strip .readonly-source")).toHaveLength(2);
@@ -189,7 +191,7 @@ describe("App", () => {
     await flushPromises();
 
     expect(setRowAlignment).toHaveBeenCalledWith("position");
-    expect(wrapper.get(".alignment-toggle").text()).toBe("按行号");
+    expect(wrapper.get(".alignment-toggle").text()).toBe("按物理行");
     expect(wrapper.get(".alignment-toggle").attributes("aria-pressed")).toBe("false");
   });
 
@@ -271,7 +273,7 @@ describe("App", () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    expect(wrapper.text()).toContain("当前工作区 · 可编辑");
+    expect(wrapper.text()).toContain("当前工作区中的工作簿");
     expect(wrapper.text()).toContain("Git 版本快照 · 只读");
     expect(wrapper.text()).toContain("D:/repo 中文/config/reward.xlsx");
     expect(wrapper.text()).toContain("Git 快照 · temp-HEAD-config-reward.xlsx");
@@ -279,7 +281,7 @@ describe("App", () => {
     expect(wrapper.findAll(".file-strip .editable-source")).toHaveLength(1);
     expect(wrapper.findAll(".file-strip .readonly-source")).toHaveLength(1);
     expect(wrapper.findAll(".grid-panel")[0].get(".panel-permission").text()).toBe("可编辑");
-    expect(wrapper.text()).toContain("双击单元格编辑");
+    expect(wrapper.text()).toContain("双击单元格进行编辑");
     expect(wrapper.text()).toContain("保存到当前工作区");
   });
 
@@ -361,7 +363,7 @@ describe("App", () => {
 
     const search = wrapper.get('input[aria-label="筛选仓库文件或目录"]');
     await search.trigger("focus");
-    expect(wrapper.get('[role="listbox"][aria-label="最近搜索"]').text()).toContain("暂无搜索记录");
+    expect(wrapper.get('[role="listbox"][aria-label="最近搜索"]').text()).toContain("暂无最近搜索");
 
     for (let index = 1; index <= 6; index++) {
       await search.setValue(`搜索 ${index}`);
@@ -414,7 +416,7 @@ describe("App", () => {
     const otherWrapper = mount(App);
     await flushPromises();
     await otherWrapper.get('input[aria-label="筛选仓库文件或目录"]').trigger("focus");
-    expect(otherWrapper.get('[role="listbox"][aria-label="最近搜索"]').text()).toContain("暂无搜索记录");
+    expect(otherWrapper.get('[role="listbox"][aria-label="最近搜索"]').text()).toContain("暂无最近搜索");
   });
 
   it("migrates legacy repository search history and writes only the SheetProof key", async () => {
@@ -507,7 +509,7 @@ describe("App", () => {
     expect(wrapper.find(".repository-switch-dialog").exists()).toBe(false);
     expect(wrapper.text()).toContain(otherRepository.name);
 
-    const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开本地仓库"));
+    const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开 Git 仓库"));
     await openButton!.trigger("click");
     await flushPromises();
     expect(selectRepository).not.toHaveBeenCalled();
@@ -533,13 +535,13 @@ describe("App", () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开本地仓库"));
+    const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开 Git 仓库"));
     await openButton!.trigger("click");
     await wrapper.get(".repository-open-dialog button.primary").trigger("click");
     await flushPromises();
 
     expect(wrapper.get(".repository-open-dropzone.loading").text()).toContain("正在打开仓库");
-    expect(wrapper.get(".repository-open-dropzone.loading").text()).toContain("仓库较大时可能需要一些时间");
+    expect(wrapper.get(".repository-open-dropzone.loading").text()).toContain("大型仓库可能需要一些时间");
     expect(wrapper.get(".repository-open-dialog button.primary").attributes("disabled")).toBeDefined();
     await window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await flushPromises();
@@ -565,7 +567,7 @@ describe("App", () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开本地仓库"));
+    const openButton = wrapper.findAll("button").find((button) => button.text().includes("打开 Git 仓库"));
     await openButton!.trigger("click");
     await wrapper.get(".repository-open-dialog button.primary").trigger("click");
     await flushPromises();
@@ -634,13 +636,13 @@ describe("App", () => {
     window.dispatchEvent(new Event("focus"));
     await vi.advanceTimersByTimeAsync(250);
     await flushPromises();
-    expect(wrapper.get(".external-change-dialog").text()).toContain("左侧表格已在外部修改");
-    expect(wrapper.get(".external-change-dialog").text()).toContain("放弃 SheetProof 中尚未保存的修改");
+    expect(wrapper.get(".external-change-dialog").text()).toContain("左侧工作簿已在 SheetProof 外部修改");
+    expect(wrapper.get(".external-change-dialog").text()).toContain("放弃 SheetProof 中未保存的编辑");
     expect(reloadExternal).not.toHaveBeenCalled();
 
-    const deferButton = wrapper.findAll(".external-change-dialog button").find((button) => button.text() === "暂不重载");
+    const deferButton = wrapper.findAll(".external-change-dialog button").find((button) => button.text() === "暂不处理");
     await deferButton!.trigger("click");
-    expect(wrapper.get(".external-change-banner").text()).toContain("保存前请重载最新文件");
+    expect(wrapper.get(".external-change-banner").text()).toContain("保存前请重新加载");
     await wrapper.get(".external-change-banner button.compact-button").trigger("click");
     await flushPromises();
     expect(reloadExternal).toHaveBeenCalledWith("left");
@@ -714,7 +716,7 @@ describe("App", () => {
     const differenceTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("差异表"));
     expect(differenceTab?.text()).toContain("…");
     await differenceTab!.trigger("click");
-    expect(wrapper.text()).toContain("正在后台建立差异表索引");
+    expect(wrapper.text()).toContain("正在后台建立语义差异索引");
     expect(wrapper.find(".repository-tree").exists()).toBe(false);
 
     await vi.advanceTimersByTimeAsync(200);
@@ -816,11 +818,11 @@ describe("App", () => {
     expect(wrapper.findAll(".grid-panel")[1].find(".canvas").exists()).toBe(false);
     const copy = wrapper.findAll("button").find((button) => button.text().includes("复制到左侧"));
     expect(copy?.attributes("disabled")).toBeDefined();
-    for (const label of ["上一处", "下一处"]) {
+    for (const label of ["上一个", "下一个"]) {
       const navigation = wrapper.findAll("button").find((button) => button.text() === label);
       expect(navigation?.attributes("disabled")).toBeDefined();
     }
-    const sheetTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("工作表/差异"));
+    const sheetTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes("工作表与差异"));
     expect(sheetTab).toBeDefined();
     await sheetTab!.trigger("click");
     expect(wrapper.get(".repository-sheet-pane").text()).toContain("Sheet1");
@@ -883,7 +885,7 @@ describe("App", () => {
       }
     };
     const wrapper = mount(App);
-    expect(wrapper.get(".loading-dialog").text()).toContain("正在加载并比较工作簿");
+    expect(wrapper.get(".loading-dialog").text()).toContain("正在加载并对比工作簿");
     resolveBootstrap?.({ loading: false, hasSession: false, error: "" });
     await flushPromises();
     expect(wrapper.find(".loading-overlay").exists()).toBe(false);
@@ -1367,7 +1369,7 @@ describe("App", () => {
         }
       });
     }
-    const next = wrapper.findAll("button").find((button) => button.text() === "下一处");
+    const next = wrapper.findAll("button").find((button) => button.text() === "下一个");
     expect(next).toBeDefined();
     next!.element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     next!.element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1475,7 +1477,7 @@ describe("App", () => {
     const rightCells = wrapper.findAll(".grid-panel")[1].findAll(".cell");
     await rightCells[0].trigger("pointerdown", { button: 0 });
     await rightCells[1].trigger("pointerenter");
-    expect(wrapper.text()).toContain("已选 2 个单元格");
+    expect(wrapper.text()).toContain("已选择 2 格");
     (wrapper.get(".grid-scroll").element as HTMLElement).scrollTop = 250;
     await rightCells[1].trigger("contextmenu", { clientX: 120, clientY: 120 });
     expect(wrapper.find(".context-menu").exists()).toBe(true);
@@ -1707,7 +1709,7 @@ describe("App", () => {
       .find((button) => button.attributes("aria-selected") === "true");
     expect(activeConflictFilter?.text()).toContain("冲突");
     const addedFilter = wrapper.findAll(".diff-filter-tabs button")
-      .find((button) => button.text().includes("增加"));
+      .find((button) => button.text().includes("新增"));
     await addedFilter!.trigger("click");
     expect(wrapper.findAll(".diff-list button")).toHaveLength(1);
     expect(wrapper.get(".diff-list button").text()).toContain("6:A");
@@ -1722,10 +1724,10 @@ describe("App", () => {
     const rowThreeCell = rightPanel.findAll(".cell").find((cell) => cell.text() === "2");
     await rowThreeCell!.trigger("contextmenu", { clientX: 120, clientY: 120 });
     const menuText = wrapper.get(".context-menu").text();
-    expect(menuText).toContain("覆盖单元格到左侧");
-    expect(menuText).toContain("覆盖整行到左侧");
-    expect(menuText).toContain("将整行新增为 id:3~4 到左侧");
-    expect(menuText).toContain("将整行新增到指定 id 到左侧");
+    expect(menuText).toContain("覆盖左侧单元格");
+    expect(menuText).toContain("覆盖左侧整行");
+    expect(menuText).toContain("以 id:3~4 追加到左侧");
+    expect(menuText).toContain("指定 id 后新增到左侧");
 
     const specified = wrapper.findAll(".context-menu button")
       .find((button) => button.text().includes("指定 id"));
@@ -1739,8 +1741,8 @@ describe("App", () => {
     expect(appendRows).toHaveBeenCalledWith("冲突", [2, 3], ["10", "11"]);
     const markers = wrapper.findAll(".resolution-marker");
     expect(markers.map((marker) => marker.text())).toEqual(expect.arrayContaining([
-      "已新增为指定 ID 10",
-      "已新增为指定 ID 11"
+      "已使用指定 ID 10 追加",
+      "已使用指定 ID 11 追加"
     ]));
     const appendedLeftCell = wrapper.findAll(".grid-panel")[0].findAll(".cell")
       .find((cell) => cell.text() === "10");
@@ -1842,7 +1844,7 @@ describe("App", () => {
     await wrapper.findAll(".summary-metric")[1].trigger("click");
     await flushPromises();
     expect(filteredRegion).toHaveBeenLastCalledWith("筛选", ["added", "deleted"], 1, 48, 1, 20);
-    expect(wrapper.get(".summary-context").text()).toContain("增加行、删除行");
+    expect(wrapper.get(".summary-context").text()).toContain("新增、删除行");
     expect(wrapper.findAll(".grid-panel")[0].text()).toContain("删除值");
     expect(wrapper.findAll(".grid-panel")[1].text()).toContain("新增值");
     expect(window.localStorage.getItem("sheetproof:row-filters:v1")).toBeNull();
@@ -1967,7 +1969,7 @@ describe("App", () => {
     await rowHeaders[4].trigger("pointerenter");
     await rightPanel.findAll(".cell")[0].trigger("contextmenu", { clientX: 120, clientY: 120 });
     const menu = wrapper.get(".context-menu");
-    expect(menu.text()).toContain("选中的内容中包含冲突，请单独处理冲突部分");
+    expect(menu.text()).toContain("所选内容包含冲突，请单独处理冲突");
     expect(menu.findAll("button")).toHaveLength(0);
   });
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tadazly/sheetproof/internal/app"
+	"github.com/tadazly/sheetproof/internal/localization"
 	"github.com/tadazly/sheetproof/internal/repository"
 	"github.com/tadazly/sheetproof/internal/workbook"
 	"github.com/xuri/excelize/v2"
@@ -28,37 +29,42 @@ const (
 type Launcher func(left, right string, options app.Options) error
 
 func Run(args []string, stdout, stderr io.Writer, launch Launcher) int {
+	args, locale, err := parseLanguage(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return ExitRuntime
+	}
 	if len(args) == 0 {
-		if err := launch("", "", app.Options{}); err != nil {
+		if err := launch("", "", app.Options{Locale: string(locale)}); err != nil {
 			fmt.Fprintln(stderr, err)
 			return exitCode(err)
 		}
 		return ExitOK
 	}
-	if handled, code := runUGitSpreadsheetCompare(args, stderr, launch); handled {
+	if handled, code := runUGitSpreadsheetCompare(args, stderr, launch, locale); handled {
 		return code
 	}
 	switch args[0] {
 	case "diff":
-		return runDiff(args[1:], stdout, stderr)
+		return runDiff(args[1:], stdout, stderr, locale)
 	case "compare":
-		return runCompare(args[1:], stderr, launch)
+		return runCompare(args[1:], stderr, launch, locale)
 	case "repo":
-		return runRepository(args[1:], stderr, launch)
+		return runRepository(args[1:], stderr, launch, locale)
 	case "help", "--help", "-h":
-		printUsage(stdout)
+		printUsage(stdout, locale)
 		return ExitOK
 	case "version", "--version":
 		fmt.Fprintf(stdout, "SheetProof %s\n", Version)
 		return ExitOK
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
-		printUsage(stderr)
+		fmt.Fprintf(stderr, cliMessage(locale, "unknownCommand"), args[0])
+		printUsage(stderr, locale)
 		return ExitRuntime
 	}
 }
 
-func runRepository(args []string, stderr io.Writer, launch Launcher) int {
+func runRepository(args []string, stderr io.Writer, launch Launcher, locale localization.Locale) int {
 	flags := flag.NewFlagSet("repo", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	path := flags.String("path", "", "local Git repository path")
@@ -86,7 +92,7 @@ func runRepository(args []string, stderr io.Writer, launch Launcher) int {
 			}
 		}
 		if !found {
-			fmt.Fprintf(stderr, "仓库中不存在指定的 XLSX 文件: %s\n", *file)
+			fmt.Fprintf(stderr, cliMessage(locale, "repositoryFileMissing"), *file)
 			return ExitRead
 		}
 		if _, err := repo.ResolveRelativePath(normalizedFile); err != nil {
@@ -104,6 +110,7 @@ func runRepository(args []string, stderr io.Writer, launch Launcher) int {
 		fullRef = branch.FullName
 	}
 	options := app.Options{
+		Locale:         string(locale),
 		RepositoryPath: info.Root,
 		RepositoryFile: normalizedFile,
 		RepositoryRef:  fullRef,
@@ -115,7 +122,7 @@ func runRepository(args []string, stderr io.Writer, launch Launcher) int {
 	return ExitOK
 }
 
-func runDiff(args []string, stdout, stderr io.Writer) int {
+func runDiff(args []string, stdout, stderr io.Writer, locale localization.Locale) int {
 	flags := flag.NewFlagSet("diff", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	left := flags.String("left", "", "left .xlsx path")
@@ -167,7 +174,7 @@ func runDiff(args []string, stdout, stderr io.Writer) int {
 		}
 		return ExitOK
 	}
-	fmt.Fprintf(stdout, "left: %s\nright: %s\nequal: %t\nsheets: %d, different sheets: %d, cell differences: %d\n",
+	fmt.Fprintf(stdout, cliMessage(locale, "diffSummary"),
 		result.LeftFile, result.RightFile, result.Equal, result.SheetCount,
 		result.DifferentSheetCount, result.DifferenceCount)
 	for _, sheet := range result.Sheets {
@@ -176,7 +183,7 @@ func runDiff(args []string, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
-func runCompare(args []string, stderr io.Writer, launch Launcher) int {
+func runCompare(args []string, stderr io.Writer, launch Launcher, locale localization.Locale) int {
 	flags := flag.NewFlagSet("compare", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	left := flags.String("left", "", "left .xlsx path")
@@ -217,7 +224,8 @@ func runCompare(args []string, stderr io.Writer, launch Launcher) int {
 	gitDiff := isGitDiffToolInvocation()
 	resolvedLeftLabel, resolvedRightLabel := resolveCompareLabels(*leftLabel, *rightLabel)
 	options := app.Options{
-		Title: *title, LeftLabel: resolvedLeftLabel, RightLabel: resolvedRightLabel,
+		Locale: string(locale),
+		Title:  *title, LeftLabel: resolvedLeftLabel, RightLabel: resolvedRightLabel,
 		ReadonlyLeft: *readonly || gitDiff, GitDiff: gitDiff, Output: *output,
 		GitMerge:  hasMergeBaseArgument,
 		MergeBase: mergeBase,
@@ -234,7 +242,7 @@ func runCompare(args []string, stderr io.Writer, launch Launcher) int {
 // workbook paths to a temporary text file and starts the configured program
 // with only that file as its argument. Unlike git difftool, this route launches
 // even when Git has no byte-level difference to hand to an external command.
-func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher) (bool, int) {
+func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher, locale localization.Locale) (bool, int) {
 	if len(args) != 1 {
 		return false, ExitRuntime
 	}
@@ -245,7 +253,7 @@ func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher)
 	}
 	data, err := os.ReadFile(listPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "读取 UGit 差异文件列表: %v\n", err)
+		fmt.Fprintf(stderr, cliMessage(locale, "ugitListReadFailed"), err)
 		return true, ExitRead
 	}
 	var paths []string
@@ -255,16 +263,17 @@ func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher)
 		}
 	}
 	if len(paths) != 2 {
-		fmt.Fprintln(stderr, "UGit 差异文件列表必须恰好包含两个 XLSX 路径")
+		fmt.Fprintln(stderr, cliMessage(locale, "ugitListNeedsTwo"))
 		return true, ExitRuntime
 	}
 	if err := validateComparePaths(paths[0], paths[1]); err != nil {
 		fmt.Fprintln(stderr, err)
 		return true, exitCode(err)
 	}
-	if worktree, snapshot, snapshotLabel, ok := identifyUGitWorktreeComparison(listPath, paths[0], paths[1]); ok {
+	if worktree, snapshot, snapshotLabel, ok := identifyUGitWorktreeComparison(listPath, paths[0], paths[1], locale); ok {
 		options := app.Options{
-			LeftLabel: "当前工作区", RightLabel: snapshotLabel,
+			Locale:    string(locale),
+			LeftLabel: sourceLabel(locale, "worktree"), RightLabel: snapshotLabel,
 			UGitWorktree: true,
 		}
 		if err := launch(worktree, snapshot, options); err != nil {
@@ -273,12 +282,13 @@ func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher)
 		}
 		return true, ExitOK
 	}
-	rightLabel := "对比版本"
+	rightLabel := sourceLabel(locale, "comparisonRevision")
 	if !pathWithinDirectory(paths[1], filepath.Dir(listPath)) {
-		rightLabel = "工作区"
+		rightLabel = sourceLabel(locale, "worktree")
 	}
 	options := app.Options{
-		LeftLabel: "选中版本", RightLabel: rightLabel,
+		Locale:    string(locale),
+		LeftLabel: sourceLabel(locale, "selectedRevision"), RightLabel: rightLabel,
 		ReadonlyLeft: true, GitDiff: true,
 	}
 	if err := launch(paths[0], paths[1], options); err != nil {
@@ -288,7 +298,7 @@ func runUGitSpreadsheetCompare(args []string, stderr io.Writer, launch Launcher)
 	return true, ExitOK
 }
 
-func identifyUGitWorktreeComparison(listPath, snapshotPath, workspacePath string) (
+func identifyUGitWorktreeComparison(listPath, snapshotPath, workspacePath string, locale localization.Locale) (
 	worktree string,
 	snapshot string,
 	snapshotLabel string,
@@ -309,11 +319,32 @@ func identifyUGitWorktreeComparison(listPath, snapshotPath, workspacePath string
 	if !sameExistingDirectory(listDir, expectedDiffDir) {
 		return "", "", "", false
 	}
-	label := "选中版本"
+	label := sourceLabel(locale, "selectedRevision")
 	if strings.HasPrefix(strings.ToUpper(filepath.Base(snapshotPath)), "TEMP-HEAD-") {
 		label = "HEAD"
 	}
 	return worktreeFile.Path, snapshotPath, label, true
+}
+
+func sourceLabel(locale localization.Locale, key string) string {
+	labels := map[localization.Locale]map[string]string{
+		localization.English: {
+			"worktree":           "Current worktree",
+			"selectedRevision":   "Selected revision",
+			"comparisonRevision": "Comparison revision",
+		},
+		localization.SimplifiedChinese: {
+			"worktree":           "当前工作区",
+			"selectedRevision":   "所选版本",
+			"comparisonRevision": "对比版本",
+		},
+		localization.Japanese: {
+			"worktree":           "現在のワークツリー",
+			"selectedRevision":   "選択したリビジョン",
+			"comparisonRevision": "比較対象のリビジョン",
+		},
+	}
+	return labels[locale][key]
 }
 
 func sameExistingDirectory(left, right string) bool {
@@ -489,12 +520,85 @@ func exitCode(err error) int {
 	}
 }
 
-func printUsage(w io.Writer) {
-	fmt.Fprintln(w, `SheetProof - compare and merge Excel .xlsx workbooks
+func printUsage(w io.Writer, locale localization.Locale) {
+	fmt.Fprintln(w, cliMessage(locale, "usage"))
+}
+
+func parseLanguage(args []string) ([]string, localization.Locale, error) {
+	locale := localization.FromEnvironment()
+	result := make([]string, 0, len(args))
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		value := ""
+		switch {
+		case argument == "--lang":
+			if index+1 >= len(args) {
+				return nil, locale, errors.New("--lang requires en, zh-CN, or ja")
+			}
+			index++
+			value = args[index]
+		case strings.HasPrefix(argument, "--lang="):
+			value = strings.TrimPrefix(argument, "--lang=")
+		default:
+			result = append(result, argument)
+			continue
+		}
+		parsed, err := localization.Parse(value)
+		if err != nil {
+			return nil, locale, err
+		}
+		locale = parsed
+	}
+	return result, locale, nil
+}
+
+func cliMessage(locale localization.Locale, key string) string {
+	translations := map[localization.Locale]map[string]string{
+		localization.English: {
+			"unknownCommand":        "unknown command %q\n",
+			"diffSummary":           "left: %s\nright: %s\nequal: %t\nsheets: %d, different sheets: %d, cell differences: %d\n",
+			"repositoryFileMissing": "the repository does not contain the requested XLSX file: %s\n",
+			"ugitListReadFailed":    "read UGit diff file list: %v\n",
+			"ugitListNeedsTwo":      "the UGit diff file list must contain exactly two XLSX paths",
+			"usage": `SheetProof - review and apply changes in Excel .xlsx workbooks
 
 Usage:
-  sheetproof compare [--left FILE --right FILE] [--title TEXT] [--left-label TEXT] [--right-label TEXT] [--readonly-left] [--output FILE]
-  sheetproof repo --path DIRECTORY [--file RELATIVE.xlsx] [--ref BRANCH]
-  sheetproof diff --left FILE --right FILE [--format json|text]
-  sheetproof`)
+  sheetproof compare [--lang en|zh-CN|ja] [--left FILE --right FILE] [--title TEXT] [--left-label TEXT] [--right-label TEXT] [--readonly-left] [--output FILE]
+  sheetproof repo [--lang en|zh-CN|ja] --path DIRECTORY [--file RELATIVE.xlsx] [--ref BRANCH]
+  sheetproof diff [--lang en|zh-CN|ja] --left FILE --right FILE [--format json|text]
+  sheetproof`,
+		},
+		localization.SimplifiedChinese: {
+			"unknownCommand":        "未知命令 %q\n",
+			"diffSummary":           "左侧：%s\n右侧：%s\n相同：%t\n工作表：%d，不同工作表：%d，单元格差异：%d\n",
+			"repositoryFileMissing": "仓库中不存在指定的 XLSX 文件：%s\n",
+			"ugitListReadFailed":    "读取 UGit 差异文件列表失败：%v\n",
+			"ugitListNeedsTwo":      "UGit 差异文件列表必须恰好包含两个 XLSX 路径",
+			"usage": `SheetProof - 审阅并应用 Excel .xlsx 工作簿修改
+
+用法：
+  sheetproof compare [--lang en|zh-CN|ja] [--left 文件 --right 文件] [选项]
+  sheetproof repo [--lang en|zh-CN|ja] --path 目录 [--file 相对路径.xlsx] [--ref 引用]
+  sheetproof diff [--lang en|zh-CN|ja] --left 文件 --right 文件 [--format json|text]
+  sheetproof`,
+		},
+		localization.Japanese: {
+			"unknownCommand":        "不明なコマンド %q\n",
+			"diffSummary":           "左：%s\n右：%s\n同一：%t\nシート：%d、差分のあるシート：%d、セル差分：%d\n",
+			"repositoryFileMissing": "リポジトリに指定された XLSX ファイルがありません：%s\n",
+			"ugitListReadFailed":    "UGit の差分ファイル一覧を読み込めませんでした：%v\n",
+			"ugitListNeedsTwo":      "UGit の差分ファイル一覧には XLSX のパスが 2 件必要です",
+			"usage": `SheetProof - Excel .xlsx ブックの差分確認と反映
+
+使用方法：
+  sheetproof compare [--lang en|zh-CN|ja] [--left ファイル --right ファイル] [オプション]
+  sheetproof repo [--lang en|zh-CN|ja] --path ディレクトリ [--file 相対パス.xlsx] [--ref 参照]
+  sheetproof diff [--lang en|zh-CN|ja] --left ファイル --right ファイル [--format json|text]
+  sheetproof`,
+		},
+	}
+	if value := translations[locale][key]; value != "" {
+		return value
+	}
+	return translations[localization.English][key]
 }

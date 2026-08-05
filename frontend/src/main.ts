@@ -2,6 +2,9 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import "./style.css";
 import { OnFileDrop } from "../wailsjs/runtime/runtime";
+import { initializeLocale, t } from "./i18n";
+
+initializeLocale("system");
 
 const wailsWindow = window as Window & { runtime?: { OnFileDrop?: unknown } };
 if (typeof wailsWindow.runtime?.OnFileDrop === "function") {
@@ -17,7 +20,7 @@ function showFatal(reason: unknown) {
   root.replaceChildren();
   const panel = document.createElement("pre");
   panel.className = "fatal-error";
-  panel.textContent = `界面发生错误：\n${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}`;
+  panel.textContent = t("errors.interfaceFailure", { details: reason instanceof Error ? reason.stack ?? reason.message : String(reason) });
   root.append(panel);
 }
 

@@ -272,7 +272,7 @@ func TestUGitSpreadsheetCompareListAlwaysLaunchesReadOnly(t *testing.T) {
 	if launchedLeft != pair.Left || launchedRight != pair.Right {
 		t.Fatalf("launched paths = %q / %q", launchedLeft, launchedRight)
 	}
-	if !launched.GitDiff || !launched.ReadonlyLeft || launched.UGitWorktree || launched.LeftLabel != "选中版本" || launched.RightLabel != "工作区" {
+	if !launched.GitDiff || !launched.ReadonlyLeft || launched.UGitWorktree || launched.LeftLabel != "Selected revision" || launched.RightLabel != "Current worktree" {
 		t.Fatalf("UGit direct options = %+v", launched)
 	}
 }
@@ -324,7 +324,7 @@ func TestUGitSpreadsheetCompareMakesVerifiedWorktreeEditableOnLeft(t *testing.T)
 	if launched.ReadonlyLeft || launched.GitDiff || !launched.UGitWorktree {
 		t.Fatalf("UGit worktree options = %+v, want editable UGitWorktree session", launched)
 	}
-	if launched.LeftLabel != "当前工作区" || launched.RightLabel != "HEAD" {
+	if launched.LeftLabel != "Current worktree" || launched.RightLabel != "HEAD" {
 		t.Fatalf("UGit worktree labels = %q / %q", launched.LeftLabel, launched.RightLabel)
 	}
 }

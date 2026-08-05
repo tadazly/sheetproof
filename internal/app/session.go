@@ -13,6 +13,7 @@ import (
 
 	"github.com/tadazly/sheetproof/internal/diff"
 	"github.com/tadazly/sheetproof/internal/history"
+	"github.com/tadazly/sheetproof/internal/localization"
 	"github.com/tadazly/sheetproof/internal/merge"
 	"github.com/tadazly/sheetproof/internal/storage"
 	"github.com/tadazly/sheetproof/internal/workbook"
@@ -20,6 +21,7 @@ import (
 )
 
 type Options struct {
+	Locale         string `json:"locale,omitempty"`
 	Title          string `json:"title"`
 	LeftLabel      string `json:"leftLabel"`
 	RightLabel     string `json:"rightLabel"`
@@ -221,7 +223,7 @@ func OpenContext(ctx context.Context, leftPath, rightPath string, options Option
 			return nil, baseErr
 		}
 		_ = baseFile.Close()
-		mergeNotice = mergeSemanticNotice(base, left, rightSource)
+		mergeNotice = mergeSemanticNotice(base, left, rightSource, options.Locale)
 	}
 	options = defaultOptions(options)
 	return &Session{
@@ -230,7 +232,7 @@ func OpenContext(ctx context.Context, leftPath, rightPath string, options Option
 		right: right, rightSource: rightSource,
 		leftRows: alignment.leftSources, rightRows: rightRows, keyColumns: make(map[string]int),
 		alignedSheets: alignment.alignedSheets,
-		currentDiff:   currentDiff, alignmentNotice: alignmentWarning(alignment.moved),
+		currentDiff:   currentDiff, alignmentNotice: alignmentWarning(options.Locale, alignment.moved),
 		alignmentMode: RowAlignmentAuto, alignmentMoved: alignment.moved,
 		alignmentAvailable:  alignment.available,
 		alignmentSheetMoved: alignment.sheetMoved, alignmentSheetEligible: alignment.sheetEligible,
@@ -298,23 +300,53 @@ func OpenLeft(leftPath string, options Options) (*Session, error) {
 }
 
 func defaultOptions(options Options) Options {
+	locale := localization.Normalize(options.Locale)
 	if options.LeftLabel == "" {
-		options.LeftLabel = "本地（可编辑）"
+		switch locale {
+		case localization.SimplifiedChinese:
+			options.LeftLabel = "本地（可编辑）"
+		case localization.Japanese:
+			options.LeftLabel = "ローカル（編集可能）"
+		default:
+			options.LeftLabel = "Local (editable)"
+		}
 	}
 	if options.RightLabel == "" {
-		options.RightLabel = "对比来源（只读）"
+		switch locale {
+		case localization.SimplifiedChinese:
+			options.RightLabel = "对比来源（只读）"
+		case localization.Japanese:
+			options.RightLabel = "比較元（読み取り専用）"
+		default:
+			options.RightLabel = "Comparison source (read-only)"
+		}
 	}
 	return options
 }
 
-func alignmentWarning(moved int) string {
+func alignmentWarning(locale string, moved int) string {
 	if moved == 0 {
 		return ""
 	}
-	return fmt.Sprintf(
-		"检测到 %d 条同 ID 记录位于不同物理行，已按唯一 ID 对齐显示，避免把插入/删除放大为连续修改。",
-		moved,
-	)
+	switch localization.Normalize(locale) {
+	case localization.SimplifiedChinese:
+		return fmt.Sprintf("检测到 %d 条同 ID 记录位于不同物理行。已按唯一 ID 对齐，避免将插入或删除显示为连续修改。", moved)
+	case localization.Japanese:
+		return fmt.Sprintf("同じ ID のレコード %d 件が異なる物理行にあります。挿入や削除を連続した変更として扱わないよう、一意の ID で揃えて表示しています。", moved)
+	default:
+		return fmt.Sprintf("%d records with the same ID are on different physical rows. They are aligned by unique ID so an insertion or deletion does not appear as a series of changes.", moved)
+	}
+}
+
+func sessionText(locale, english, chinese, japanese string) string {
+	switch localization.Normalize(locale) {
+	case localization.SimplifiedChinese:
+		return chinese
+	case localization.Japanese:
+		return japanese
+	default:
+		return english
+	}
 }
 
 // ReplaceRight changes only the read-only comparison source. In-memory edits,
@@ -337,7 +369,7 @@ func (s *Session) ReplaceRight(rightPath, rightLabel string) error {
 	s.leftRows = alignment.leftSources
 	s.rightRows = alignment.rowSources
 	s.alignedSheets = alignment.alignedSheets
-	s.alignmentNotice = alignmentWarning(alignment.moved)
+	s.alignmentNotice = alignmentWarning(s.options.Locale, alignment.moved)
 	s.alignmentMoved = alignment.moved
 	s.alignmentAvailable = alignment.available
 	s.alignmentSheetMoved = alignment.sheetMoved
@@ -442,7 +474,7 @@ func (s *Session) ReloadLeft() error {
 			return baseErr
 		}
 		_ = baseFile.Close()
-		mergeNotice = mergeSemanticNotice(base, left, s.rightSource)
+		mergeNotice = mergeSemanticNotice(base, left, s.rightSource, s.options.Locale)
 	}
 	old := s.leftFile
 	s.leftFile = leftFile
@@ -457,7 +489,7 @@ func (s *Session) ReloadLeft() error {
 	s.history.Clear()
 	s.dirty = false
 	s.warnings = nil
-	s.alignmentNotice = alignmentWarning(alignment.moved)
+	s.alignmentNotice = alignmentWarning(s.options.Locale, alignment.moved)
 	s.alignmentMoved = alignment.moved
 	s.alignmentAvailable = alignment.available
 	s.alignmentSheetMoved = alignment.sheetMoved
@@ -477,8 +509,9 @@ func (s *Session) ReloadLeft() error {
 func (s *Session) ReloadRight() error {
 	s.mu.RLock()
 	if s.rightSource == nil {
+		locale := s.options.Locale
 		s.mu.RUnlock()
-		return errors.New("当前没有可重载的右侧工作簿")
+		return errors.New(sessionText(locale, "There is no workbook to reload on the right.", "当前没有可重新载入的右侧工作簿。", "右側に再読み込みできるブックがありません。"))
 	}
 	path, label := s.rightSource.Path, s.options.RightLabel
 	s.mu.RUnlock()
@@ -574,15 +607,15 @@ func rowAlignmentApplied(sheets map[string]bool) bool {
 
 func (s *Session) SetRowAlignment(mode RowAlignmentMode) error {
 	if mode != RowAlignmentAuto && mode != RowAlignmentPosition {
-		return fmt.Errorf("未知的行对齐方式: %s", mode)
+		return fmt.Errorf("%s: %s", sessionText(s.options.Locale, "Unknown row alignment mode", "未知的行对齐方式", "不明な行の比較方法"), mode)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.options.GitMerge {
-		return errors.New("Git 合并会话固定使用 ID 对齐")
+		return errors.New(sessionText(s.options.Locale, "Git merge sessions always use ID alignment.", "Git 合并会话固定使用 ID 对齐。", "Git マージセッションでは常に ID で揃えて比較します。"))
 	}
 	if s.history.Len() > 0 {
-		return errors.New("已有编辑或合并操作，撤销历史存在时不能切换行对齐方式")
+		return errors.New(sessionText(s.options.Locale, "Undo all edits and merge actions before changing row alignment.", "请先撤销所有编辑和合并操作，再切换行对齐方式。", "行の比較方法を変える前に、編集と反映操作をすべて元に戻してください。"))
 	}
 	if s.alignmentMode == mode {
 		return nil
@@ -611,7 +644,7 @@ func (s *Session) SetKeyColumn(sheet string, column int) error {
 		return fmt.Errorf("invalid key column %d for worksheet %q", column, sheet)
 	}
 	if s.history.Len() > 0 {
-		return errors.New("已有编辑或合并操作，撤销历史存在时不能更改主键列")
+		return errors.New(sessionText(s.options.Locale, "Undo all edits and merge actions before changing the key column.", "请先撤销所有编辑和合并操作，再更改主键列。", "キー列を変える前に、編集と反映操作をすべて元に戻してください。"))
 	}
 	if s.keyColumns == nil {
 		s.keyColumns = make(map[string]int)
@@ -954,10 +987,10 @@ func (s *Session) copyRightToLeftManyLocked(
 	kind string,
 ) error {
 	if s.options.ReadonlyLeft {
-		return fmt.Errorf("left workbook is read-only")
+		return fmt.Errorf("%s", sessionText(s.options.Locale, "The workbook on the left is read-only.", "左侧工作簿为只读，无法修改。", "左側のブックは読み取り専用のため編集できません。"))
 	}
 	if s.right == nil || s.rightFile == nil {
-		return fmt.Errorf("当前没有可用于合并的右侧工作簿")
+		return fmt.Errorf("%s", sessionText(s.options.Locale, "There is no workbook on the right to copy from.", "当前没有可供复制的右侧工作簿。", "右側に反映元となるブックがありません。"))
 	}
 	if s.right.ByName[sheet] == nil || s.left.ByName[sheet] == nil {
 		return fmt.Errorf("worksheet %q must exist on both sides", sheet)
@@ -1076,7 +1109,7 @@ func (s *Session) CopyRowsRightToLeft(sheet string, rows []int) error {
 		return errors.New("no rows selected")
 	}
 	if s.right == nil || s.rightFile == nil {
-		return errors.New("当前没有可用于合并的右侧工作簿")
+		return errors.New(sessionText(s.options.Locale, "There is no workbook on the right to copy from.", "当前没有可供复制的右侧工作簿。", "右側に反映元となるブックがありません。"))
 	}
 	leftSheet, rightSheet := s.left.ByName[sheet], s.right.ByName[sheet]
 	if leftSheet == nil || rightSheet == nil {
@@ -1107,10 +1140,10 @@ func (s *Session) AppendRowsRightToLeft(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.options.ReadonlyLeft {
-		return nil, errors.New("left workbook is read-only")
+		return nil, errors.New(sessionText(s.options.Locale, "The workbook on the left is read-only.", "左侧工作簿为只读，无法修改。", "左側のブックは読み取り専用のため編集できません。"))
 	}
 	if s.right == nil || s.rightFile == nil {
-		return nil, errors.New("当前没有可用于合并的右侧工作簿")
+		return nil, errors.New(sessionText(s.options.Locale, "There is no workbook on the right to append from.", "当前没有可供追加的右侧工作簿。", "右側に追加元となるブックがありません。"))
 	}
 	leftSheet, rightSheet := s.left.ByName[sheet], s.right.ByName[sheet]
 	if leftSheet == nil || rightSheet == nil {
@@ -1121,12 +1154,12 @@ func (s *Session) AppendRowsRightToLeft(
 		return nil, err
 	}
 	if len(requestedIDs) != 0 && len(requestedIDs) != len(unique) {
-		return nil, errors.New("指定 ID 数量必须与所选行数一致")
+		return nil, errors.New(sessionText(s.options.Locale, "Provide one ID for each selected row.", "每个选中行都需要指定一个 ID。", "選択した各行に 1 つずつ ID を指定してください。"))
 	}
 	sheetDiff := s.sheetDiffLocked(sheet)
 	for _, row := range unique {
 		if s.rowStatusLocked(sheet, row) != diff.RowConflict {
-			return nil, fmt.Errorf("右侧第 %d 行不是冲突行，不能新增到左侧", row)
+			return nil, fmt.Errorf(sessionText(s.options.Locale, "Row %d on the right is not a conflict and cannot be appended.", "右侧第 %d 行不是冲突行，不能追加到左侧。", "右側の %d 行目は競合行ではないため追加できません。"), row)
 		}
 	}
 	idColumn := 0
@@ -1134,7 +1167,7 @@ func (s *Session) AppendRowsRightToLeft(
 		idColumn = sheetDiff.IDColumn
 	}
 	if idColumn == 0 && len(requestedIDs) != 0 {
-		return nil, errors.New("当前工作表没有可用的整数 id 列，不能指定 ID")
+		return nil, errors.New(sessionText(s.options.Locale, "This sheet has no integer ID column for assigned IDs.", "当前工作表没有可用的整数 ID 列，无法指定 ID。", "このシートには整数の ID 列がないため、ID を指定できません。"))
 	}
 	maxCol := max(leftSheet.MaxCol, rightSheet.MaxCol)
 	if len(unique)*maxCol > 10000 {
@@ -1152,7 +1185,7 @@ func (s *Session) AppendRowsRightToLeft(
 		assigned = make([]string, len(unique))
 		if len(requestedIDs) == 0 {
 			if sheetDiff.NextID <= 0 {
-				return nil, errors.New("无法从左侧 id 列计算下一个整数 ID")
+				return nil, errors.New(sessionText(s.options.Locale, "The next integer ID could not be calculated from the left ID column.", "无法根据左侧 ID 列计算下一个整数 ID。", "左側の ID 列から次の整数 ID を計算できません。"))
 			}
 			for index := range assigned {
 				assigned[index] = strconv.FormatInt(sheetDiff.NextID+int64(index), 10)
@@ -1161,13 +1194,13 @@ func (s *Session) AppendRowsRightToLeft(
 			for index, id := range requestedIDs {
 				assigned[index] = strings.TrimSpace(id)
 				if assigned[index] == "" {
-					return nil, fmt.Errorf("第 %d 行的指定 ID 不能为空", index+1)
+					return nil, fmt.Errorf(sessionText(s.options.Locale, "The ID for selected row %d cannot be empty.", "第 %d 个选中行的指定 ID 不能为空。", "選択行 %d の ID は空にできません。"), index+1)
 				}
 			}
 		}
 		for _, id := range assigned {
 			if _, exists := existingIDs[id]; exists {
-				return nil, fmt.Errorf("左侧已存在 ID %s", id)
+				return nil, fmt.Errorf(sessionText(s.options.Locale, "ID %s already exists on the left.", "左侧已存在 ID %s。", "左側には ID %s がすでに存在します。"), id)
 			}
 			existingIDs[id] = struct{}{}
 		}
@@ -1184,7 +1217,7 @@ func (s *Session) AppendRowsRightToLeft(
 			}
 		}
 		if !hasSource {
-			return nil, fmt.Errorf("右侧第 %d 行没有可新增的数据", sourceRow)
+			return nil, fmt.Errorf(sessionText(s.options.Locale, "Row %d on the right has no data to append.", "右侧第 %d 行没有可追加的数据。", "右側の %d 行目には追加できるデータがありません。"), sourceRow)
 		}
 		targetRow := targetStart + index
 		for col := 1; col <= maxCol; col++ {
@@ -1257,7 +1290,7 @@ func (s *Session) rollbackCopiesLocked(operations []merge.Operation) {
 	for index := len(operations) - 1; index >= 0; index-- {
 		operation := operations[index]
 		if _, err := merge.Apply(s.leftFile, operation.Ref, operation.Before); err != nil {
-			s.warnings = append(s.warnings, fmt.Sprintf("回滚 %s 失败: %v", operation.Ref.Axis(), err))
+			s.warnings = append(s.warnings, fmt.Sprintf(sessionText(s.options.Locale, "Could not roll back %s: %v", "回滚 %s 失败：%v", "%s を元に戻せませんでした：%v"), operation.Ref.Axis(), err))
 			continue
 		}
 		if restored, err := merge.Capture(s.leftFile, operation.Ref); err == nil {
@@ -1443,7 +1476,7 @@ func (s *Session) restoreUndoneLocked(operations []merge.Operation) {
 	for index := len(operations) - 1; index >= 0; index-- {
 		operation := operations[index]
 		if _, err := merge.Apply(s.leftFile, operation.Ref, operation.After); err != nil {
-			s.warnings = append(s.warnings, fmt.Sprintf("恢复 %s 失败: %v", operation.Ref.Axis(), err))
+			s.warnings = append(s.warnings, fmt.Sprintf(sessionText(s.options.Locale, "Could not restore %s: %v", "恢复 %s 失败：%v", "%s を復元できませんでした：%v"), operation.Ref.Axis(), err))
 			continue
 		}
 		if restored, err := merge.Capture(s.leftFile, operation.Ref); err == nil {
@@ -1491,10 +1524,10 @@ func (s *Session) Export(target string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.options.ReadonlyLeft {
-		return fmt.Errorf("left workbook is read-only")
+		return fmt.Errorf("%s", sessionText(s.options.Locale, "The workbook on the left is read-only.", "左侧工作簿为只读，无法修改。", "左側のブックは読み取り専用のため編集できません。"))
 	}
 	if strings.TrimSpace(target) == "" {
-		return errors.New("导出路径不能为空")
+		return errors.New(sessionText(s.options.Locale, "Choose a destination for the exported copy.", "请选择导出副本的保存位置。", "書き出すコピーの保存先を選択してください。"))
 	}
 	abs, err := filepath.Abs(target)
 	if err != nil {
@@ -1502,7 +1535,7 @@ func (s *Session) Export(target string) error {
 	}
 	leftAbs, _ := filepath.Abs(s.left.Path)
 	if filepath.Clean(abs) == filepath.Clean(leftAbs) {
-		return errors.New("导出路径与当前工作区文件相同，请使用保存到当前工作区")
+		return errors.New(sessionText(s.options.Locale, "The export destination is the current worktree file. Use Save to worktree instead.", "导出位置就是当前工作区文件，请改用“保存到工作区”。", "書き出し先が現在のワークツリーファイルと同じです。「ワークツリーに保存」を使用してください。"))
 	}
 	_, err = (storage.SafeWriter{}).Save(s.leftFile, abs, nil)
 	return err
@@ -1643,7 +1676,7 @@ func (s *Session) rebuildComparisonLocked() {
 	s.alignedSheets = alignment.alignedSheets
 	s.currentDiff = diff.CompareWithKeyColumns(alignment.left, alignment.right, alignment.keyColumns)
 	annotateDiffRowSources(s.currentDiff, alignment.leftSources, alignment.rowSources)
-	s.alignmentNotice = alignmentWarning(alignment.moved)
+	s.alignmentNotice = alignmentWarning(s.options.Locale, alignment.moved)
 	s.alignmentMoved = alignment.moved
 	s.alignmentAvailable = alignment.available
 	s.alignmentSheetMoved = alignment.sheetMoved

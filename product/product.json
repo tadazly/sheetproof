@@ -1,121 +1,30 @@
 {
   "product": {
     "name": "SheetProof",
-    "nameZh": "表鉴",
     "legacyName": "ugxlsx",
-    "slogan": "Review XLSX changes in Git.",
-    "taglineZh": "Git 工作流中的 XLSX 差异审阅工具。",
-    "description": "SheetProof compares .xlsx files in a Git worktree with validated Git refs, aligns records by key, and writes approved changes to the editable left workbook.",
-    "descriptionZh": "SheetProof 比较 Git 工作区中的 .xlsx 与经过校验的本地引用，按主键对齐记录，并将确认的单元格或整行写入左侧文件。",
     "version": "0.3.0",
-    "channel": "预览版",
+    "channel": "preview",
     "formats": [".xlsx"],
-    "platforms": ["Windows", "macOS"],
+    "platforms": ["windows-amd64", "macos-universal"],
     "repository": "https://github.com/tadazly/sheetproof",
     "issues": "https://github.com/tadazly/sheetproof/issues",
-    "license": "MIT"
+    "website": "https://sheetproof.luyilabs.com",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 tadazly",
+    "signed": false,
+    "macosNotarized": false
   },
   "downloads": {
     "releases": "https://github.com/tadazly/sheetproof/releases",
-    "windows": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-windows-amd64.exe",
-    "macos": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-macos-universal.zip",
+    "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-windows-amd64.exe",
+    "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-macos-universal.zip",
     "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SHA256SUMS.txt",
-    "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.3.0.zip",
-    "status": "Windows and macOS preview downloads are available from GitHub Releases. The desktop artifacts are unsigned, and the macOS build is not notarized."
+    "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.3.0.zip"
   },
-  "features": [
-    {
-      "title": "Workbook-aware comparison",
-      "titleZh": "理解工作簿语义的对比",
-      "summary": "Compares sheets, values, formulas, explicit blanks, and types; detected or user-selected key columns align records in place and can fall back to physical rows.",
-      "summaryZh": "比较工作表、值、公式、显式空值和类型；自动识别或右键指定主键列后，单侧记录会保留在原邻近位置，也可切换回物理行号。"
-    },
-    {
-      "title": "Side-by-side review",
-      "titleZh": "双栏差异审阅",
-      "summary": "Uses synchronized, virtualized grids with focused navigation, scrollbar position markers, and Git-style added, removed, modified, and conflict states.",
-      "summaryZh": "左右表格同步滚动，横向和纵向滚动条按既有颜色标出差异位置，可以直接跳到需要核对的位置。"
-    },
-    {
-      "title": "Current-sheet row filters",
-      "titleZh": "只看当前工作表需要核对的行",
-      "summary": "Shows row counts for the selected worksheet and lets you combine added, removed, modified, and conflict filters with keys 1–5; every new session starts unfiltered and filter changes keep your source-row position.",
-      "summaryZh": "当前工作表可以组合筛选新增、删除、修改和冲突行。快捷键 1–4 切换分类，5 在全部差异行和完整表格之间切换。"
-    },
-    {
-      "title": "Controlled merge and undo",
-      "titleZh": "可控合并与撤销",
-      "summary": "Copies selected cells or rows into the writable left workbook, supports select-all and keyboard clearing, and keeps every edit undoable.",
-      "summaryZh": "只把确认过的单元格或整行写入左侧；支持全选单元格和键盘清空。编辑和合并都会进入撤销记录，保存前可以随时回退。"
-    },
-    {
-      "title": "Hold to compare before and after",
-      "titleZh": "按住就能回看修改前",
-      "summary": "Hold the before-and-after control, or hold Tab while either grid is focused, to peek at the left workbook exactly as it was opened.",
-      "summaryZh": "按住左侧的“前后对比”，或在表格内按住 Tab，可以临时查看刚打开文件时的内容；松开后回到当前结果。"
-    },
-    {
-      "title": "Git repository mode",
-      "titleZh": "本地 Git 仓库模式",
-      "summary": "Opens a local repository by folder picker or drag and drop, then reads the real worktree against a validated Git ref without mutating branches.",
-      "summaryZh": "可以手动选择或拖入本地仓库；导入过程会显示加载与错误。左侧读取真实工作区，右侧读取已有 Git 引用，不会 checkout、fetch 或切换分支。"
-    },
-    {
-      "title": "Safe local save",
-      "titleZh": "安全的本地保存",
-      "summary": "Proactively detects external changes, reloads read-only sources, prompts before replacing editable state, and saves atomically.",
-      "summaryZh": "主动检测其他程序对工作簿的修改：只读侧提示后自动重载，可编辑侧先询问是否载入磁盘最新版；保存仍经过重开校验和原子替换。"
-    }
-  ],
-  "useCases": [
-    {
-      "title": "Review configuration workbooks",
-      "titleZh": "审阅配置表变更",
-      "summaryZh": "在提交或发版前核对数值、公式、类型和整行变化。"
-    },
-    {
-      "title": "Resolve XLSX changes in Git",
-      "titleZh": "处理 Git 中的 XLSX 变化",
-      "summaryZh": "比较工作区与本地分支或远端跟踪引用，不打断当前分支上的工作。"
-    },
-    {
-      "title": "Merge selected corrections",
-      "titleZh": "选择性合并修正",
-      "summaryZh": "只接收确认过的单元格或整行，保存前仍可撤销。"
-    }
-  ],
-  "screenshots": [
-    {
-      "id": "direct-compare",
-      "src": "/screenshots/sheetproof-key-alignment-v030.png",
-      "width": 1424,
-      "height": 861,
-      "alt": "SheetProof 对比游戏项目的角色成长配置表",
-      "caption": "按 id 对齐后，中间新增角色不会使后续共同记录错位；当前工作表保留 16 处真实差异。"
-    },
-    {
-      "id": "row-number-comparison",
-      "src": "/screenshots/sheetproof-row-number-comparison.png",
-      "width": 1424,
-      "height": 861,
-      "alt": "SheetProof 按行号比较同一组角色配置表",
-      "caption": "未设置主键时，同一条中间新增记录会使后续记录按物理行错位，并产生 90 处差异。"
-    },
-    {
-      "id": "review-difference",
-      "src": "/screenshots/sheetproof-review-difference-v030.png",
-      "width": 1204,
-      "height": 650,
-      "alt": "SheetProof 聚焦显示角色名称和数值差异",
-      "caption": "角色名称、生命和攻击调整按左右差异色显示，新增角色单独标出。"
-    },
-    {
-      "id": "merge-applied",
-      "src": "/screenshots/sheetproof-merge-result-v030.png",
-      "width": 1204,
-      "height": 650,
-      "alt": "SheetProof 将角色生命值合并到左侧后的界面",
-      "caption": "把右侧生命值合并到左侧后，该单元格恢复一致，其他差异保持不变。"
-    }
-  ]
+  "screenshots": {
+    "keyAlignment": { "file": "key-alignment.png", "width": 1424, "height": 861 },
+    "physicalRows": { "file": "physical-rows.png", "width": 1424, "height": 861 },
+    "focusedDifference": { "file": "focused-difference.png", "width": 1204, "height": 650 },
+    "mergeResult": { "file": "merge-result.png", "width": 1204, "height": 650 }
+  }
 }

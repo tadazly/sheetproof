@@ -59,6 +59,7 @@ export interface SheetDiff {
 
 export interface Summary {
   options: {
+    locale?: string;
     title: string;
     leftLabel: string;
     rightLabel: string;

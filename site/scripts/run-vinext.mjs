@@ -23,4 +23,9 @@ if (result.error) {
   console.error(result.error.message);
   process.exit(1);
 }
+if (result.status === 0 && command === "build") {
+  const postprocess = spawnSync(process.execPath, [resolve("scripts/postprocess-static-locales.mjs")], { stdio: "inherit" });
+  if (postprocess.error) console.error(postprocess.error.message);
+  if (postprocess.status !== 0) process.exit(postprocess.status ?? 1);
+}
 process.exit(result.status ?? 1);

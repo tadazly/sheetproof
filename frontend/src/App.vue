@@ -7,6 +7,8 @@ import { backend } from "./backend";
 import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
 import { scrollMarkerGradient, type ScrollMarker } from "./scrollMarkers";
+import { initializeLocale, useI18n, type LocalePreference } from "./i18n";
+import { localizeBackendError } from "./i18n/errors";
 import type {
   CellDiff,
   ExternalFileChange,
@@ -38,6 +40,7 @@ const LEGACY_REPOSITORY_SEARCH_HISTORY_PREFIX = "ugxlsx:repository-search-histor
 const SHEET_LAYOUT_PREFIX = "sheetproof:sheet-layout:v1:";
 const LEGACY_SHEET_LAYOUT_PREFIX = "ugxlsx.sheet-layout.v1:";
 const DIFF_FILTER_TABS: DiffFilter[] = ["added", "deleted", "modified", "conflict"];
+const { locale, preference, t, setLocalePreference } = useI18n();
 
 const summary = ref<Summary | null>(null);
 const repository = ref<RepositoryView | null>(null);
@@ -193,9 +196,9 @@ function sourcePathLabel(path: string, snapshot: boolean): string {
   if (!snapshot) return path;
   const filename = path.split(/[\\/]/).filter(Boolean).at(-1);
   if (filename === "missing-left.xlsx" || filename === "missing-right.xlsx") {
-    return "Git 快照 · 该版本不存在";
+    return t("source.gitVersionMissing");
   }
-  return filename ? `Git 快照 · ${filename}` : "Git 差异快照";
+  return filename ? t("source.gitSnapshotFile", { filename }) : t("source.gitSnapshot");
 }
 const rowHeight = computed(() => Math.round(BASE_ROW_HEIGHT * zoom.value));
 const rowHeaderWidth = computed(() => Math.round(BASE_ROW_HEADER_WIDTH * zoom.value));
@@ -280,15 +283,15 @@ const resultMetrics = computed(() => {
 });
 const currentSheetDifferenceCount = computed(() => activeSheet.value?.differenceCount ?? 0);
 const rowFilterSummary = computed(() => {
-  if (!rowFilterActive.value) return "全部数据";
-  if (selectedRowFilters.value.length === DIFF_FILTER_TABS.length) return "全部差异行";
-  return selectedRowFilters.value.map((status) => `${rowStatusLabel(status)}行`).join("、");
+  if (!rowFilterActive.value) return t("diff.allData");
+  if (selectedRowFilters.value.length === DIFF_FILTER_TABS.length) return t("diff.allDifferenceRows");
+  return t("diff.filteredRows", { categories: selectedRowFilters.value.map(rowStatusLabel).join(locale.value === "en" ? ", " : "、") });
 });
 const currentTaskName = computed(() => {
   const selectedFile = repository.value?.selectedFile;
   if (selectedFile) return selectedFile.split("/").at(-1) ?? selectedFile;
   if (summary.value?.options.title) return summary.value.options.title;
-  return "表格对比与合并";
+  return t("app.title");
 });
 const filteredDiffPosition = computed(() =>
   filteredDiffEntries.value.findIndex(({ index }) => index === diffIndex.value)
@@ -371,10 +374,10 @@ const contextIsActionable = computed(() =>
   contextActionableRows.value.length > 0 && !contextHasConflict.value
 );
 const contextStatusLabel = computed(() => {
-  if (contextHasMixedConflict.value) return "包含冲突";
+  if (contextHasMixedConflict.value) return t("diff.includesConflict");
   const statuses = [...new Set(contextActionableStatuses.value)];
-  if (statuses.length === 0) return "无差异";
-  if (statuses.length > 1) return "混合差异";
+  if (statuses.length === 0) return t("common.noDifferences");
+  if (statuses.length > 1) return t("diff.mixed");
   return rowStatusLabel(statuses[0]);
 });
 const contextActionDisabled = computed(() =>
@@ -430,12 +433,12 @@ const repositoryRows = computed<RepositoryTreeRow[]>(() => {
   return rows;
 });
 const statusText = computed(() => {
-  if (!summary.value) return repository.value ? "请选择仓库中的 XLSX 表格" : "尚未打开工作簿";
+  if (!summary.value) return repository.value ? t("status.selectRepositoryWorkbook") : t("status.noWorkbook");
   const axis = activeCell.value ? cellAxis(activeCell.value, "left") : "—";
-  const selectedText = selectionSize.value > 1 ? ` · 已选 ${selectionSize.value} 格` : "";
+  const selectedText = selectionSize.value > 1 ? ` · ${t("diff.selectedCells", { count: selectionSize.value })}` : "";
   const filterText = rowFilterActive.value ? ` · ${rowFilterSummary.value}` : "";
-  return `${axis}${selectedText}${filterText} · ${summary.value.diff.differenceCount} 处差异 · ${
-    summary.value.dirty ? "有未保存修改" : "已保存"
+  return `${axis}${selectedText}${filterText} · ${t("diff.count", { count: summary.value.diff.differenceCount })} · ${
+    summary.value.dirty ? t("status.unsaved") : t("status.saved")
   }`;
 });
 
@@ -446,7 +449,7 @@ async function guard<T>(action: () => Promise<T>): Promise<T | undefined> {
   try {
     return await action();
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : String(reason);
+    error.value = localizeBackendError(reason);
   } finally {
     pendingActions = Math.max(0, pendingActions - 1);
     busy.value = pendingActions > 0;
@@ -609,6 +612,28 @@ function clearWorkbook() {
   stopOriginalPreview();
 }
 
+async function changeLanguage(event: Event) {
+  const next = (event.target as HTMLSelectElement).value as LocalePreference;
+  setLocalePreference(next);
+  try {
+    await backend.setRuntimeLocale(locale.value);
+    await backend.setLanguagePreference(next);
+  } catch (reason) {
+    error.value = localizeBackendError(reason);
+  }
+}
+
+async function initializeApplication() {
+  try {
+    initializeLocale(await backend.languagePreference());
+    await backend.setRuntimeLocale(locale.value);
+  } catch {
+    initializeLocale("system");
+    try { await backend.setRuntimeLocale(locale.value); } catch { /* older backend compatibility */ }
+  }
+  await initialLoad();
+}
+
 async function chooseRepository() {
   window.clearTimeout(differenceIndexTimer);
   beginRepositoryOpen();
@@ -756,8 +781,8 @@ function toggleDirectory(path: string) {
 function repositoryStateMessage(side: "left" | "right") {
   if (!repository.value) return "";
   const state = side === "left" ? repository.value.leftState : repository.value.rightState;
-  if (state === "loading") return "正在加载表格……";
-  if (state === "comparing") return "正在对比表格……";
+  if (state === "loading") return t("repository.stateLoading");
+  if (state === "comparing") return t("repository.stateComparing");
   return side === "left" ? repository.value.leftMessage : repository.value.rightMessage;
 }
 
@@ -803,7 +828,7 @@ function deferExternalReload() {
   const dialog = externalChangeDialog.value;
   if (!dialog.change) return;
   deferredExternalChange.value = { side: dialog.side, change: dialog.change };
-  externalNotice.value = "左侧可编辑表格已在外部修改；当前仍显示 SheetProof 中的版本，保存前请重载最新文件。";
+  externalNotice.value = t("externalChange.leftNotice");
   externalChangeDialog.value = { visible: false, side: "left", change: null };
 }
 
@@ -1385,11 +1410,11 @@ function inlineEditing(cell: RegionCell) {
 }
 
 function displayDifferenceValue(cell: RegionCell | null, side: "left" | "right") {
-  if (!cell) return "请选择一个单元格";
+  if (!cell) return t("grid.noCell");
   const value = displayedCellValue(cell, side);
-  if (!value.present) return "（不存在）";
+  if (!value.present) return t("grid.missingValue");
   if (value.formula) return `=${value.formula}`;
-  if (value.raw === "") return '""（空字符串）';
+  if (value.raw === "") return t("grid.emptyString");
   return value.display || value.raw;
 }
 
@@ -1636,13 +1661,13 @@ function rowStatus(row: number): RowStatus {
   return cells.some((item) => item.status !== "unchanged") ? "modified" : "unchanged";
 }
 
-function rowStatusLabel(status: RowStatus) {
+function rowStatusLabel(status: RowStatus | string) {
   switch (status) {
-  case "added": return "增加";
-  case "deleted": return "删除";
-  case "modified": return "修改";
-  case "conflict": return "冲突";
-  default: return "无差异";
+  case "added": return t("diff.added");
+  case "deleted": return t("diff.deleted");
+  case "modified": return t("diff.modified");
+  case "conflict": return t("diff.conflict");
+  default: return t("common.noDifferences");
   }
 }
 
@@ -1669,15 +1694,15 @@ function rowResolution(
 function resolutionLabel(item: RowResolution) {
   switch (item.kind) {
   case "overwrite-row":
-    return "已覆盖整行到左侧";
+    return t("resolution.rowOverwritten");
   case "overwrite-cells":
-    return `已覆盖 ${item.cellCount || 1} 个单元格`;
+    return t("resolution.cellsOverwritten", { count: item.cellCount || 1 });
   case "append-auto":
-    return `已自动新增为 ID ${item.targetId}`;
+    return t("resolution.appendedAuto", { id: item.targetId });
   case "append-specified":
-    return `已新增为指定 ID ${item.targetId}`;
+    return t("resolution.appendedSpecified", { id: item.targetId });
   case "append-row":
-    return "已新增到左侧末尾";
+    return t("resolution.appendedEnd");
   }
 }
 
@@ -2019,7 +2044,7 @@ onMounted(() => {
       stopDropResultListener();
     };
   }
-  void initialLoad();
+  void initializeApplication();
 });
 
 onBeforeUnmount(() => {
@@ -2049,95 +2074,104 @@ onBeforeUnmount(() => {
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="/appicon.svg" alt="" /></span>
         <span class="brand-copy">
-          <strong>SheetProof <span class="product-name-zh">表鉴</span></strong>
+          <strong>SheetProof</strong>
           <small :title="currentTaskName">{{ currentTaskName }}</small>
         </span>
       </div>
 
-      <div class="toolbar-group file-actions" aria-label="打开来源">
+      <div class="toolbar-group file-actions" :aria-label="t('toolbar.sources')">
         <button class="secondary" :disabled="busy" @click="showRepositoryOpenDialog">
           <AppIcon name="repository" />
-          <span class="button-label">打开本地仓库</span>
+          <span class="button-label">{{ t("toolbar.openRepository") }}</span>
         </button>
         <button class="ghost" :disabled="busy" @click="chooseFiles">
           <AppIcon name="files" />
-          <span class="button-label">打开左右文件</span>
+          <span class="button-label">{{ t("toolbar.openFiles") }}</span>
         </button>
       </div>
 
-      <div class="toolbar-group diff-navigation" aria-label="差异导航">
+      <div class="toolbar-group diff-navigation" :aria-label="t('toolbar.differenceNavigation')">
         <button
           class="icon-button"
           :disabled="!filteredDiffEntries.length || busy || !comparisonActive"
-          title="上一处差异"
-          aria-label="上一处差异"
+          :title="t('toolbar.previousDifference')"
+          :aria-label="t('toolbar.previousDifference')"
           @click="navigate(-1)"
-        ><AppIcon name="chevron-left" /><span class="button-label">上一处</span></button>
+        ><AppIcon name="chevron-left" /><span class="button-label">{{ t("toolbar.previous") }}</span></button>
         <span class="counter" aria-live="polite">
           {{ filteredDiffPosition >= 0 ? filteredDiffPosition + 1 : 0 }} / {{ filteredDiffEntries.length }}
         </span>
         <button
           class="icon-button"
           :disabled="!filteredDiffEntries.length || busy || !comparisonActive"
-          title="下一处差异"
-          aria-label="下一处差异"
+          :title="t('toolbar.nextDifference')"
+          :aria-label="t('toolbar.nextDifference')"
           @click="navigate(1)"
-        ><span class="button-label">下一处</span><AppIcon name="chevron-right" /></button>
+        ><span class="button-label">{{ t("toolbar.next") }}</span><AppIcon name="chevron-right" /></button>
       </div>
 
       <span class="grow"></span>
 
-      <div class="toolbar-group edit-actions" aria-label="编辑与合并">
+      <div class="toolbar-group edit-actions" :aria-label="t('toolbar.editAndMerge')">
         <button
           :disabled="!copyTargets.length || busy || summary?.options.readonlyLeft || !comparisonActive"
           class="primary merge-action"
           @click="copySelection"
         >
           <AppIcon name="merge" />
-          <span>复制{{ copyTargets.length > 1 ? ` ${copyTargets.length} 格` : "" }}到左侧</span>
+          <span>{{ t("toolbar.copyCellsToLeft", { count: copyTargets.length }) }}</span>
         </button>
         <button
           class="icon-button"
           :disabled="!summary?.undoCount || busy"
-          title="撤销（Ctrl/Command + Z）"
-          aria-label="撤销"
+          :title="t('toolbar.undoShortcut')"
+          :aria-label="t('toolbar.undo')"
           @click="undo"
-        ><AppIcon name="undo" /><span class="button-label">撤销</span></button>
+        ><AppIcon name="undo" /><span class="button-label">{{ t("toolbar.undo") }}</span></button>
         <button
           class="zoom-button ghost"
-          :title="`当前表格缩放为 ${Math.round(zoom * 100)}%；按住 Ctrl/Command 并滚动鼠标滚轮调整，点击恢复为 100%`"
+          :title="t('toolbar.zoomHelp', { percent: Math.round(zoom * 100) })"
           @click="resetZoom"
-        ><AppIcon name="zoom" />缩放 {{ Math.round(zoom * 100) }}%</button>
+        ><AppIcon name="zoom" />{{ t("toolbar.zoom", { percent: Math.round(zoom * 100) }) }}</button>
       </div>
 
-      <div class="toolbar-group save-actions" aria-label="保存结果">
+      <div class="toolbar-group save-actions" :aria-label="t('toolbar.saveResults')">
         <button
           class="icon-button ghost"
           :disabled="!summary || busy || summary.options.readonlyLeft"
-          :title="repository ? '导出副本（Ctrl/Command + Shift + S）' : '另存为（Ctrl/Command + Shift + S）'"
-          aria-label="另存为"
+          :title="repository ? t('toolbar.exportCopyShortcut') : t('toolbar.saveAsShortcut')"
+          :aria-label="t('toolbar.saveAs')"
           @click="save(true)"
-        ><AppIcon name="save-as" /><span class="button-label">{{ repository ? "导出副本" : "另存为" }}</span></button>
+        ><AppIcon name="save-as" /><span class="button-label">{{ repository ? t("toolbar.exportCopy") : t("toolbar.saveAs") }}</span></button>
         <button
           :disabled="!summary?.dirty || busy || summary.options.readonlyLeft"
           class="save"
           @click="save(false)"
         >
           <AppIcon name="save" />
-          <span>{{ repository || summary?.options.ugitWorktree ? "保存到当前工作区" : "保存左侧" }}</span>
+          <span>{{ repository || summary?.options.ugitWorktree ? t("toolbar.saveWorktree") : t("toolbar.saveLeft") }}</span>
         </button>
       </div>
-      <div class="toolbar-group integration-actions" aria-label="外部工具配置">
+      <div class="toolbar-group integration-actions" :aria-label="t('toolbar.integration')">
         <button
           class="icon-button ghost"
           :disabled="busy"
-          title="将当前应用配置为 UGit 的 *.xlsx 差异与合并工具"
-          aria-label="配置 UGit"
+          :title="t('toolbar.configureUGitHelp')"
+          :aria-label="t('toolbar.configureUGit')"
           @click="configureUGit"
         >
           <AppIcon name="settings" />
-          <span class="button-label">配置 UGit</span>
+          <span class="button-label">{{ t("toolbar.configureUGit") }}</span>
         </button>
+        <label class="language-select" :title="t('language.label')">
+          <span class="sr-only">{{ t("language.label") }}</span>
+          <select :value="preference" :aria-label="t('language.label')" @change="changeLanguage">
+            <option value="system">{{ t("language.followSystem") }}</option>
+            <option value="en">English</option>
+            <option value="zh-CN">简体中文</option>
+            <option value="ja">日本語</option>
+          </select>
+        </label>
       </div>
       <div v-if="busy" class="toolbar-progress" aria-hidden="true"></div>
     </header>
@@ -2145,7 +2179,7 @@ onBeforeUnmount(() => {
     <div v-if="error" class="error-banner" role="alert">
       <AppIcon name="alert" />
       <span>{{ error }}</span>
-      <button class="icon-button" title="关闭错误提示" aria-label="关闭错误提示" @click="error = ''">
+      <button class="icon-button" :title="t('common.closeError')" :aria-label="t('common.closeError')" @click="error = ''">
         <AppIcon name="x" />
       </button>
     </div>
@@ -2154,8 +2188,8 @@ onBeforeUnmount(() => {
       <span>{{ integrationNotice }}</span>
       <button
         class="icon-button"
-        title="关闭配置提示"
-        aria-label="关闭配置提示"
+        :title="t('common.closeNotice')"
+        :aria-label="t('common.closeNotice')"
         @click="integrationNotice = ''"
       >
         <AppIcon name="x" />
@@ -2174,12 +2208,12 @@ onBeforeUnmount(() => {
         class="compact-button"
         :disabled="busy"
         @click="reloadExternal(deferredExternalChange.side)"
-      >重载最新版本</button>
+      >{{ t("externalChange.reload") }}</button>
       <button
         v-else
         class="icon-button"
-        title="关闭重载提示"
-        aria-label="关闭重载提示"
+        :title="t('common.closeNotice')"
+        :aria-label="t('common.closeNotice')"
         @click="externalNotice = ''"
       ><AppIcon name="x" /></button>
     </div>
@@ -2190,12 +2224,12 @@ onBeforeUnmount(() => {
       </div>
       <span class="branch-status" :class="{ warning: repository.detached }">
         <AppIcon name="branch" :size="13" />
-        {{ repository.detached ? `Detached HEAD · ${repository.currentBranch}` : `当前分支 · ${repository.currentBranch}` }}
+        {{ repository.detached ? t("repository.detachedHead", { branch: repository.currentBranch }) : t("repository.currentBranch", { branch: repository.currentBranch }) }}
       </span>
-      <span v-if="repository.workspaceDirty" class="working-status"><span class="status-dot"></span>工作区有未提交修改</span>
-      <span v-if="repository.operation" class="operation-status"><span class="status-dot"></span>正在进行 {{ repository.operation }}</span>
+      <span v-if="repository.workspaceDirty" class="working-status"><span class="status-dot"></span>{{ t("repository.uncommittedChanges") }}</span>
+      <span v-if="repository.operation" class="operation-status"><span class="status-dot"></span>{{ t("repository.operation", { operation: repository.operation }) }}</span>
       <span class="grow"></span>
-      <button class="ghost compact-button" :disabled="busy" @click="showRepositorySwitcher">切换仓库</button>
+      <button class="ghost compact-button" :disabled="busy" @click="showRepositorySwitcher">{{ t("repository.switch") }}</button>
     </div>
     <div v-if="repository?.notice" class="notice-banner"><AppIcon name="info" />{{ repository.notice }}</div>
 
@@ -2206,20 +2240,20 @@ onBeforeUnmount(() => {
       :style="repository ? { gridTemplateColumns: `${repository.sidebarWidth}px 1fr` } : undefined"
     >
       <aside v-if="repository" ref="repoSidebar" class="repository-sidebar">
-        <div class="repository-sidebar-tabs" role="tablist" aria-label="仓库侧边栏">
+        <div class="repository-sidebar-tabs" role="tablist" :aria-label="t('repository.sidebar')">
           <button
             role="tab"
             :aria-selected="repositorySidebarTab === 'files'"
             :class="{ active: repositorySidebarTab === 'files' }"
             @click="repositorySidebarTab = 'files'"
-          ><AppIcon name="folder" :size="14" />仓库文件</button>
+          ><AppIcon name="folder" :size="14" />{{ t("repository.files") }}</button>
           <button
             role="tab"
             :aria-selected="repositorySidebarTab === 'differences'"
             :class="{ active: repositorySidebarTab === 'differences' }"
             @click="repositorySidebarTab = 'differences'"
           >
-            <AppIcon name="files" :size="14" />差异表
+            <AppIcon name="files" :size="14" />{{ t("repository.differingWorkbooks") }}
             <span class="sidebar-tab-count">
               {{ repository.differenceIndexing ? "…" : repository.differenceFiles.length }}
             </span>
@@ -2230,18 +2264,18 @@ onBeforeUnmount(() => {
             :class="{ active: repositorySidebarTab === 'sheets' }"
             @click="repositorySidebarTab = 'sheets'"
           >
-            <AppIcon name="selection" :size="14" />工作表/差异
+            <AppIcon name="selection" :size="14" />{{ t("repository.sheetsAndDifferences") }}
             <span v-if="summary" class="sidebar-tab-count">{{ summary.diff.differenceCount }}</span>
           </button>
         </div>
 
         <div v-if="repositorySidebarTab !== 'sheets'" class="repository-files-pane" role="tabpanel">
           <div class="repository-tree-header">
-            <strong>{{ repositorySidebarTab === "differences" ? "差异表" : "仓库文件" }}</strong>
+            <strong>{{ repositorySidebarTab === "differences" ? t("repository.differingWorkbooks") : t("repository.files") }}</strong>
             <button
               class="icon-button ghost"
-              title="刷新目录树与分支"
-              aria-label="刷新目录树与分支"
+              :title="t('repository.refresh')"
+              :aria-label="t('repository.refresh')"
               :disabled="busy"
               @click="refreshRepository"
             ><AppIcon name="refresh" /></button>
@@ -2254,8 +2288,8 @@ onBeforeUnmount(() => {
                 v-model="repositorySearch"
                 type="text"
                 autocomplete="off"
-                :placeholder="repositorySidebarTab === 'differences' ? '筛选差异表或目录' : '筛选文件或目录'"
-                :aria-label="repositorySidebarTab === 'differences' ? '筛选差异表或目录' : '筛选仓库文件或目录'"
+                :placeholder="repositorySidebarTab === 'differences' ? t('repository.searchDifferences') : t('repository.searchFiles')"
+                :aria-label="repositorySidebarTab === 'differences' ? t('repository.searchDifferences') : t('repository.searchFilesAria')"
                 @focus="repositorySearchFocused = true"
                 @blur="finishRepositorySearch"
                 @keydown.enter.prevent="endRepositorySearch"
@@ -2265,8 +2299,8 @@ onBeforeUnmount(() => {
                 v-if="repositorySearch"
                 type="button"
                 class="repository-search-clear"
-                title="清空搜索"
-                aria-label="清空搜索"
+                :title="t('repository.clearSearch')"
+                :aria-label="t('repository.clearSearch')"
                 @mousedown.prevent
                 @click="clearRepositorySearch"
               ><AppIcon name="x" :size="15" /></button>
@@ -2275,20 +2309,20 @@ onBeforeUnmount(() => {
               v-if="repositorySearchFocused"
               class="repository-search-history"
               role="listbox"
-              aria-label="最近搜索"
+              :aria-label="t('repository.recentSearches')"
             >
-              <div class="repository-search-history-title">最近搜索</div>
+              <div class="repository-search-history-title">{{ t("repository.recentSearches") }}</div>
               <button
                 v-for="query in repositorySearchHistory"
                 :key="query"
                 type="button"
                 role="option"
-                :aria-label="`搜索 ${query}`"
+                :aria-label="t('common.search', { query })"
                 @mousedown.prevent
                 @click="applyRepositorySearchHistory(query)"
               ><AppIcon name="search" :size="12" /><span>{{ query }}</span></button>
               <div v-if="!repositorySearchHistory.length" class="repository-search-history-empty">
-                暂无搜索记录
+                {{ t("repository.noRecentSearches") }}
               </div>
             </div>
           </div>
@@ -2298,16 +2332,16 @@ onBeforeUnmount(() => {
           >
             {{
               repository.differenceIndexing
-                ? "正在后台建立差异表索引……"
+                ? t("repository.indexing")
                 : repository.selectedRef
-                  ? "当前工作区与所选分支没有差异表格"
-                  : "请选择一个用于对比的分支"
+                  ? t("repository.noDifferentWorkbooks")
+                  : t("repository.selectReference")
             }}
           </div>
           <div v-else-if="repositorySidebarTab === 'files' && !repository.files.length" class="tree-empty">
-            仓库中没有 XLSX 文件
+            {{ t("repository.noXlsx") }}
           </div>
-          <div v-else-if="!repositoryRows.length" class="tree-empty">没有匹配的文件或目录</div>
+          <div v-else-if="!repositoryRows.length" class="tree-empty">{{ t("repository.noMatchingFiles") }}</div>
           <div v-else class="repository-tree" role="tree">
             <button
               v-for="row in repositoryRows"
@@ -2333,7 +2367,7 @@ onBeforeUnmount(() => {
 
         <div v-else class="repository-sheet-pane" role="tabpanel">
           <template v-if="summary">
-            <div class="side-title">工作表</div>
+            <div class="side-title">{{ t("repository.sheetsAndDifferences") }}</div>
             <button
               v-for="item in summary.diff.sheets"
               :key="item.name"
@@ -2344,16 +2378,16 @@ onBeforeUnmount(() => {
               <span class="sheet-name">{{ item.name }}</span>
               <span class="badge" :class="item.status">{{ item.differenceCount }}</span>
               <small class="sheet-status-line">
-                <span v-if="item.addedRowCount" class="row-status-chip added">增加 {{ item.addedRowCount }}</span>
-                <span v-if="item.deletedRowCount" class="row-status-chip deleted">删除 {{ item.deletedRowCount }}</span>
-                <span v-if="item.modifiedRowCount" class="row-status-chip modified">修改 {{ item.modifiedRowCount }}</span>
-                <span v-if="item.conflictRowCount" class="row-status-chip conflict">冲突 {{ item.conflictRowCount }}</span>
-                <span v-if="item.orderDifferent">顺序不同</span>
-                <span v-if="!item.differenceCount">无差异</span>
+                <span v-if="item.addedRowCount" class="row-status-chip added">{{ t("diff.rowCount", { category: t("diff.added"), count: item.addedRowCount }) }}</span>
+                <span v-if="item.deletedRowCount" class="row-status-chip deleted">{{ t("diff.rowCount", { category: t("diff.deleted"), count: item.deletedRowCount }) }}</span>
+                <span v-if="item.modifiedRowCount" class="row-status-chip modified">{{ t("diff.rowCount", { category: t("diff.modified"), count: item.modifiedRowCount }) }}</span>
+                <span v-if="item.conflictRowCount" class="row-status-chip conflict">{{ t("diff.rowCount", { category: t("diff.conflict"), count: item.conflictRowCount }) }}</span>
+                <span v-if="item.orderDifferent">{{ t("diff.orderDifferent") }}</span>
+                <span v-if="!item.differenceCount">{{ t("common.noDifferences") }}</span>
               </small>
             </button>
-            <div class="diff-index-title">差异索引</div>
-            <div class="diff-filter-tabs" role="tablist" aria-label="差异索引分类">
+            <div class="diff-index-title">{{ t("diff.index") }}</div>
+            <div class="diff-filter-tabs" role="tablist" :aria-label="t('diff.indexCategories')">
               <button
                 v-for="status in DIFF_FILTER_TABS"
                 :key="status"
@@ -2378,20 +2412,20 @@ onBeforeUnmount(() => {
                 <span class="diff-row-status" :class="item.rowStatus || 'modified'">
                   {{ rowStatusLabel(item.rowStatus || "modified") }}
                 </span>
-                {{ item.ref.row }}:{{ columnName(item.ref.col) }} · {{ item.status }}
+                {{ item.ref.row }}:{{ columnName(item.ref.col) }} · {{ rowStatusLabel(item.status) }}
               </button>
               <div v-if="!filteredDiffEntries.length" class="diff-list-empty">
-                当前工作表没有“{{ rowStatusLabel(diffFilter) }}”差异
+                {{ t("diff.noneInCategory", { category: rowStatusLabel(diffFilter) }) }}
               </div>
             </div>
           </template>
-          <div v-else class="tree-empty">请先在“仓库文件”中选择一个 XLSX 表格</div>
+          <div v-else class="tree-empty">{{ t("repository.selectWorkbookFirst") }}</div>
         </div>
         <div class="repository-resizer" @pointerdown="beginRepositoryResize"></div>
       </aside>
 
       <aside v-else class="sidebar">
-        <div class="side-title">工作表</div>
+        <div class="side-title">{{ t("repository.sheetsAndDifferences") }}</div>
         <button
           v-for="item in summary?.diff.sheets ?? []"
           :key="item.name"
@@ -2402,16 +2436,16 @@ onBeforeUnmount(() => {
           <span class="sheet-name">{{ item.name }}</span>
           <span class="badge" :class="item.status">{{ item.differenceCount }}</span>
           <small class="sheet-status-line">
-            <span v-if="item.addedRowCount" class="row-status-chip added">增加 {{ item.addedRowCount }}</span>
-            <span v-if="item.deletedRowCount" class="row-status-chip deleted">删除 {{ item.deletedRowCount }}</span>
-            <span v-if="item.modifiedRowCount" class="row-status-chip modified">修改 {{ item.modifiedRowCount }}</span>
-            <span v-if="item.conflictRowCount" class="row-status-chip conflict">冲突 {{ item.conflictRowCount }}</span>
-            <span v-if="item.orderDifferent">顺序不同</span>
-            <span v-if="!item.differenceCount">无差异</span>
+            <span v-if="item.addedRowCount" class="row-status-chip added">{{ t("diff.rowCount", { category: t("diff.added"), count: item.addedRowCount }) }}</span>
+            <span v-if="item.deletedRowCount" class="row-status-chip deleted">{{ t("diff.rowCount", { category: t("diff.deleted"), count: item.deletedRowCount }) }}</span>
+            <span v-if="item.modifiedRowCount" class="row-status-chip modified">{{ t("diff.rowCount", { category: t("diff.modified"), count: item.modifiedRowCount }) }}</span>
+            <span v-if="item.conflictRowCount" class="row-status-chip conflict">{{ t("diff.rowCount", { category: t("diff.conflict"), count: item.conflictRowCount }) }}</span>
+            <span v-if="item.orderDifferent">{{ t("diff.orderDifferent") }}</span>
+            <span v-if="!item.differenceCount">{{ t("common.noDifferences") }}</span>
           </small>
         </button>
-        <div class="diff-index-title">差异索引</div>
-        <div class="diff-filter-tabs" role="tablist" aria-label="差异索引分类">
+        <div class="diff-index-title">{{ t("diff.index") }}</div>
+        <div class="diff-filter-tabs" role="tablist" :aria-label="t('diff.indexCategories')">
           <button
             v-for="status in DIFF_FILTER_TABS"
             :key="status"
@@ -2436,10 +2470,10 @@ onBeforeUnmount(() => {
             <span class="diff-row-status" :class="item.rowStatus || 'modified'">
               {{ rowStatusLabel(item.rowStatus || "modified") }}
             </span>
-            {{ item.ref.row }}:{{ columnName(item.ref.col) }} · {{ item.status }}
+            {{ item.ref.row }}:{{ columnName(item.ref.col) }} · {{ rowStatusLabel(item.status) }}
           </button>
           <div v-if="!filteredDiffEntries.length" class="diff-list-empty">
-            当前工作表没有“{{ rowStatusLabel(diffFilter) }}”差异
+            {{ t("diff.noneInCategory", { category: rowStatusLabel(diffFilter) }) }}
           </div>
         </div>
       </aside>
@@ -2450,48 +2484,48 @@ onBeforeUnmount(() => {
             <div class="source-card-heading">
               <span class="source-icon"><AppIcon name="edit" /></span>
               <span>
-                <small>原始表格 · 可编辑</small>
-                <strong>{{ repository.detached ? "当前工作区 · Detached HEAD" : repository.currentBranch }}</strong>
+                <small>{{ t("source.originalEditable") }}</small>
+                <strong>{{ repository.detached ? t("repository.detachedHead", { branch: repository.currentBranch }) : repository.currentBranch }}</strong>
               </span>
               <span class="source-state" :class="{ warning: repository.fileModified || summary?.dirty }">
                 <AppIcon
                   :name="!repository.selectedFile ? 'info' : repository.fileModified || summary?.dirty ? 'alert' : 'check'"
                   :size="12"
                 />
-                {{ !repository.selectedFile ? "待选择" : repository.fileModified || summary?.dirty ? "有修改" : "已就绪" }}
+                {{ !repository.selectedFile ? t("common.select") : repository.fileModified || summary?.dirty ? t("status.unsaved") : t("common.ready") }}
               </span>
             </div>
-            <span class="source-path" :title="repository.selectedFile">{{ repository.selectedFile || "尚未选择表格" }}</span>
-            <small v-if="repository.fileModified">Git：该文件有未提交修改</small>
-            <small v-if="summary?.dirty">工具内：有尚未保存的编辑</small>
+            <span class="source-path" :title="repository.selectedFile">{{ repository.selectedFile || t("repository.selectWorkbook") }}</span>
+            <small v-if="repository.fileModified">{{ t("repository.gitFileModified") }}</small>
+            <small v-if="summary?.dirty">{{ t("repository.sessionModified") }}</small>
           </div>
           <div class="source-card readonly-source reference-header">
             <div class="source-card-heading">
               <span class="source-icon"><AppIcon name="branch" /></span>
               <span>
-                <small>目标表格 · 只读</small>
-                <strong>对比分支</strong>
+                <small>{{ t("source.targetReadOnly") }}</small>
+                <strong>{{ t("repository.comparisonWorkbook") }}</strong>
               </span>
               <span class="source-state">
                 <AppIcon name="check" :size="12" />
-                {{ comparisonActive ? "已就绪" : "待选择" }}
+                {{ comparisonActive ? t("common.ready") : t("common.select") }}
               </span>
             </div>
             <select
               :value="repository.selectedRef"
               :disabled="busy || !repository.branches.length"
-              aria-label="选择对比分支"
+              :aria-label="t('repository.chooseReference')"
               @change="selectRepositoryRef(($event.target as HTMLSelectElement).value)"
             >
-              <option value="" disabled>请选择一个用于对比的分支</option>
-              <optgroup label="本地分支">
+              <option value="" disabled>{{ t("repository.selectReference") }}</option>
+              <optgroup :label="t('repository.localBranches')">
                 <option
                   v-for="branch in repository.branches.filter((item) => item.kind === 'local')"
                   :key="branch.fullName"
                   :value="branch.fullName"
                 >{{ branch.name }}</option>
               </optgroup>
-              <optgroup label="远端分支">
+              <optgroup :label="t('repository.remoteBranches')">
                 <option
                   v-for="branch in repository.branches.filter((item) => item.kind === 'remote')"
                   :key="branch.fullName"
@@ -2499,7 +2533,7 @@ onBeforeUnmount(() => {
                 >{{ branch.name }}</option>
               </optgroup>
             </select>
-            <span class="source-path" :title="repository.selectedFile">{{ repository.selectedFile || "尚未选择表格" }}</span>
+            <span class="source-path" :title="repository.selectedFile">{{ repository.selectedFile || t("repository.selectWorkbook") }}</span>
           </div>
         </div>
         <div v-else-if="summary" class="file-strip">
@@ -2507,34 +2541,34 @@ onBeforeUnmount(() => {
             <div class="source-card-heading">
               <span class="source-icon"><AppIcon :name="leftReadonly ? 'files' : 'edit'" /></span>
               <span>
-                <small>{{ summary.options.ugitWorktree ? "当前工作区 · 可编辑" : summary.options.gitDiff ? "Git 差异快照 · 只读" : summary.options.gitMerge ? "Git 合并来源 · 可编辑" : leftReadonly ? "原始表格 · 只读" : "原始表格 · 可编辑" }}</small>
+                <small>{{ summary.options.ugitWorktree ? t("source.originalEditable") : summary.options.gitDiff ? t("source.gitDiffReadOnly") : summary.options.gitMerge ? t("source.gitMergeEditable") : leftReadonly ? t("source.originalReadOnly") : t("source.originalEditable") }}</small>
                 <strong>{{ summary.options.leftLabel }}</strong>
               </span>
-              <span class="source-state"><AppIcon name="check" :size="12" />{{ leftReadonly ? "只读" : "已解析" }}</span>
+              <span class="source-state"><AppIcon name="check" :size="12" />{{ leftReadonly ? t("common.readOnly") : t("source.parsed") }}</span>
             </div>
-            <span class="source-path" :title="summary.options.gitDiff ? '由 Git 提供的临时只读快照' : summary.diff.leftFile">
+            <span class="source-path" :title="summary.options.gitDiff ? t('source.gitTemporary') : summary.diff.leftFile">
               {{ sourcePathLabel(summary.diff.leftFile, summary.options.gitDiff) }}
             </span>
           </div>
           <div class="source-card readonly-source">
             <div class="source-card-heading">
               <span class="source-icon"><AppIcon name="files" /></span>
-              <span><small>{{ summary.options.ugitWorktree ? "Git 版本快照 · 只读" : summary.options.gitDiff ? "Git 差异快照 · 只读" : summary.options.gitMerge ? "Git 合并来源 · 只读" : "目标表格 · 只读" }}</small><strong>{{ summary.options.rightLabel }}</strong></span>
-              <span class="source-state"><AppIcon name="check" :size="12" />只读</span>
+              <span><small>{{ summary.options.ugitWorktree ? t("source.gitVersionReadOnly") : summary.options.gitDiff ? t("source.gitDiffReadOnly") : summary.options.gitMerge ? t("source.gitMergeReadOnly") : t("source.targetReadOnly") }}</small><strong>{{ summary.options.rightLabel }}</strong></span>
+              <span class="source-state"><AppIcon name="check" :size="12" />{{ t("common.readOnly") }}</span>
             </div>
-            <span class="source-path" :title="summary.options.gitDiff || summary.options.ugitWorktree ? '由 Git 提供的临时只读快照' : summary.diff.rightFile">
+            <span class="source-path" :title="summary.options.gitDiff || summary.options.ugitWorktree ? t('source.gitTemporary') : summary.diff.rightFile">
               {{ sourcePathLabel(summary.diff.rightFile, summary.options.gitDiff || summary.options.ugitWorktree) }}
             </span>
           </div>
         </div>
 
         <div v-if="summary" class="comparison-summary-stack">
-          <div class="result-summary" aria-label="对比结果摘要">
+          <div class="result-summary" :aria-label="t('diff.summary')">
             <div class="result-summary-title">
               <AppIcon :name="currentSheetDifferenceCount === 0 ? 'check' : 'selection'" />
               <span>
-                <small>对比结果</small>
-                <strong>{{ currentSheetDifferenceCount === 0 ? "当前工作表内容一致" : `${currentSheetDifferenceCount} 处差异` }}</strong>
+                <small>{{ t("diff.summary") }}</small>
+                <strong>{{ currentSheetDifferenceCount === 0 ? t("diff.currentSheetEqual") : t("diff.count", { count: currentSheetDifferenceCount }) }}</strong>
               </span>
             </div>
             <button
@@ -2544,12 +2578,12 @@ onBeforeUnmount(() => {
               class="summary-metric"
               :class="[status, { active: selectedRowFilterSet.has(status) }]"
               :aria-pressed="selectedRowFilterSet.has(status)"
-              :title="`${selectedRowFilterSet.has(status) ? '关闭' : '开启'}${status === 'added' ? '新增' : rowStatusLabel(status)}行筛选（快捷键 ${index + 1}）`"
+              :title="t('diff.toggleFilter', { action: selectedRowFilterSet.has(status) ? t('diff.disable') : t('diff.enable'), category: rowStatusLabel(status), shortcut: index + 1 })"
               @click="toggleRowFilter(status)"
-            ><i></i>{{ status === "added" ? "新增" : rowStatusLabel(status) }}行 <strong>{{ resultMetrics[status] }}</strong><kbd>{{ index + 1 }}</kbd></button>
+            ><i></i>{{ rowStatusLabel(status) }} <strong>{{ resultMetrics[status] }}</strong><kbd>{{ index + 1 }}</kbd></button>
             <span class="summary-context">
-              行筛选：{{ rowFilterSummary }} <kbd>5</kbd>
-              <template v-if="selectionSize > 0"> · 已选择 {{ selectionSize }} 格</template>
+              {{ t("diff.rowFilter", { filter: rowFilterSummary }) }} <kbd>5</kbd>
+              <template v-if="selectionSize > 0"> · {{ t("diff.selectedCells", { count: selectionSize }) }}</template>
             </span>
             <button
               v-if="activeRowAlignment?.available && !summary.options.gitMerge"
@@ -2559,12 +2593,12 @@ onBeforeUnmount(() => {
               :aria-pressed="summary.rowAlignment.mode === 'auto'"
               :disabled="summary.undoCount > 0"
               :title="summary.undoCount > 0
-                ? '已有编辑或合并操作，撤销历史存在时不能切换行对齐方式'
+                ? t('alignment.locked')
                 : summary.rowAlignment.mode === 'auto'
-                  ? '当前按主键列对齐；点击改为严格按物理行号比较'
-                  : '当前按物理行号比较；点击恢复主键列对齐'"
+                  ? t('alignment.usePhysical')
+                  : t('alignment.useKey')"
               @click="toggleRowAlignment"
-            >{{ summary.rowAlignment.mode === "auto" ? `主键对齐${activeRowAlignment.moved > 0 ? ` ${activeRowAlignment.moved}` : ""}` : "按行号" }}</button>
+            >{{ summary.rowAlignment.mode === "auto" ? t("alignment.key", { count: activeRowAlignment.moved > 0 ? ` ${activeRowAlignment.moved}` : "" }) : t("alignment.physicalRows") }}</button>
           </div>
 
           <div
@@ -2583,27 +2617,27 @@ onBeforeUnmount(() => {
             <div class="panel-heading">
               <strong>
                 <span class="panel-indicator" :class="leftReadonly ? 'readonly' : 'editable'"></span>
-                {{ repository || summary?.options.ugitWorktree ? "当前工作区中的表格" : summary?.options.gitDiff ? "原始快照" : "原始表格" }}
+                {{ repository || summary?.options.ugitWorktree ? t("repository.worktreeWorkbook") : summary?.options.gitDiff ? t("source.originalSnapshot") : t("source.originalEditable") }}
               </strong>
               <span class="panel-permission" :class="leftReadonly ? 'readonly' : 'editable'">
-                <AppIcon :name="leftReadonly ? 'files' : 'edit'" :size="12" />{{ leftReadonly ? "只读" : "可编辑" }}
+                <AppIcon :name="leftReadonly ? 'files' : 'edit'" :size="12" />{{ leftReadonly ? t("common.readOnly") : t("common.editable") }}
               </span>
-              <small v-if="previewOriginal" class="grid-edit-hint">正在看打开时的状态</small>
-              <small v-else-if="summary?.options.gitDiff" class="grid-edit-hint">由 Git 提供，不能编辑或保存</small>
-              <small v-else-if="summary && !summary.options.readonlyLeft" class="grid-edit-hint">双击单元格编辑</small>
+              <small v-if="previewOriginal" class="grid-edit-hint">{{ t("grid.previewing") }}</small>
+              <small v-else-if="summary?.options.gitDiff" class="grid-edit-hint">{{ t("grid.gitReadOnlyHint") }}</small>
+              <small v-else-if="summary && !summary.options.readonlyLeft" class="grid-edit-hint">{{ t("grid.editHint") }}</small>
               <button
                 v-if="!leftReadonly"
                 class="original-preview-button"
                 :class="{ active: previewOriginal }"
                 :disabled="!canPreviewOriginal"
                 :aria-pressed="previewOriginal"
-                :title="canPreviewOriginal ? '按住查看打开表格时的状态；表格聚焦时也可按住 Tab' : '修改左侧表格后即可回看打开时的状态'"
+                :title="canPreviewOriginal ? t('grid.previewHelp') : t('grid.previewUnavailable')"
                 @pointerdown="startOriginalPreviewFromPointer"
                 @keydown.space.prevent="startOriginalPreviewFromKeyboardButton"
                 @keyup.space.prevent="stopOriginalPreviewFromPointer"
                 @keydown.enter.prevent="startOriginalPreviewFromKeyboardButton"
                 @keyup.enter.prevent="stopOriginalPreviewFromPointer"
-              ><AppIcon name="undo" :size="12" />{{ previewOriginal ? "松开看最新" : "前后对比 · 按住" }}<kbd>Tab</kbd></button>
+              ><AppIcon name="undo" :size="12" />{{ previewOriginal ? t("grid.previewLatest") : t("grid.previewBeforeAfter") }}<kbd>Tab</kbd></button>
             </div>
             <div v-if="repository && repository.leftState !== 'ready'" class="panel-empty">
               <template v-if="repository.leftState === 'loading' || repository.leftState === 'comparing'">
@@ -2614,7 +2648,7 @@ onBeforeUnmount(() => {
                 v-else
                 icon="file"
                 :title="repositoryStateMessage('left')"
-                description="从左侧目录树选择一个 XLSX 表格开始对比。"
+                :description="t('grid.selectWorkbookHelp')"
               />
             </div>
             <div v-else ref="leftScroll" class="grid-scroll" :style="scrollbarMarkerStyle" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('left')" @wheel="onGridWheel">
@@ -2635,7 +2669,7 @@ onBeforeUnmount(() => {
                       }"
                       @contextmenu="openColumnMenu($event, col, 'left')"
                     >
-                      {{ columnName(col) }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">主键</span>
+                      {{ columnName(col) }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">{{ t("alignment.keyColumn") }}</span>
                       <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
                     </div>
                   </div>
@@ -2661,7 +2695,7 @@ onBeforeUnmount(() => {
                   <div
                     v-if="rowFilterActive && !totalRows"
                     class="filtered-grid-empty"
-                  >当前筛选没有差异行</div>
+                  >{{ t("diff.emptyFilter") }}</div>
                   <div
                     v-for="cell in visibleCells"
                     :key="`l${cell.row}:${cell.col}`"
@@ -2683,7 +2717,7 @@ onBeforeUnmount(() => {
                       v-if="inlineEditing(cell)"
                       v-model="inlineEdit!.value"
                       class="inline-cell-editor"
-                      aria-label="编辑左侧单元格"
+                      :aria-label="t('grid.editLeftCell')"
                       @pointerdown.stop
                       @dblclick.stop
                       @keydown.enter.prevent.stop="commitInlineEdit"
@@ -2699,8 +2733,8 @@ onBeforeUnmount(() => {
 
           <section class="grid-panel">
             <div class="panel-heading">
-              <strong><span class="panel-indicator readonly"></span>{{ repository ? "对比分支中的表格" : "目标表格" }}</strong>
-              <span class="panel-permission readonly"><AppIcon name="branch" :size="12" />只读</span>
+              <strong><span class="panel-indicator readonly"></span>{{ repository ? t("repository.comparisonWorkbook") : t("source.targetReadOnly") }}</strong>
+              <span class="panel-permission readonly"><AppIcon name="branch" :size="12" />{{ t("common.readOnly") }}</span>
             </div>
             <div v-if="repository && repository.rightState !== 'ready'" class="panel-empty">
               <template v-if="repository.rightState === 'loading' || repository.rightState === 'comparing'">
@@ -2711,7 +2745,7 @@ onBeforeUnmount(() => {
                 v-else
                 :icon="repository.rightState === 'missing' ? 'alert' : 'branch'"
                 :title="repositoryStateMessage('right')"
-                description="选择可用分支后，将通过 Git 对象只读加载同路径表格。"
+                :description="t('repository.loadReferenceHelp')"
               />
             </div>
             <div v-else ref="rightScroll" class="grid-scroll" :style="scrollbarMarkerStyle" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('right')" @wheel="onGridWheel">
@@ -2732,7 +2766,7 @@ onBeforeUnmount(() => {
                       }"
                       @contextmenu="openColumnMenu($event, col, 'right')"
                     >
-                      {{ columnName(col) }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">主键</span>
+                      {{ columnName(col) }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">{{ t("alignment.keyColumn") }}</span>
                       <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
                     </div>
                   </div>
@@ -2764,7 +2798,7 @@ onBeforeUnmount(() => {
                   <div
                     v-if="rowFilterActive && !totalRows"
                     class="filtered-grid-empty"
-                  >当前筛选没有差异行</div>
+                  >{{ t("diff.emptyFilter") }}</div>
                   <div
                     v-for="cell in visibleCells"
                     :key="`r${cell.row}:${cell.col}`"
@@ -2789,7 +2823,7 @@ onBeforeUnmount(() => {
 
         <div v-if="summary && activeCell && selectionSize === 1" class="difference-inspector">
           <div class="difference-line left">
-            <span class="difference-side">{{ previewOriginal ? "打开时状态" : "当前工作区" }}</span>
+            <span class="difference-side">{{ previewOriginal ? t("grid.beforeState") : t("grid.currentWorktree") }}</span>
             <strong>{{ cellAxis(activeCell, "left") }}</strong>
             <span class="difference-value" :title="displayedCellValue(activeCell, 'left').raw">
               {{ displayDifferenceValue(activeCell, "left") }}
@@ -2797,19 +2831,19 @@ onBeforeUnmount(() => {
             <span class="difference-type">{{ displayedCellValue(activeCell, "left").type || "unset" }}</span>
           </div>
           <div class="difference-line right">
-            <span class="difference-side">对比来源</span>
+            <span class="difference-side">{{ t("grid.comparisonSource") }}</span>
             <strong>{{ cellAxis(activeCell, "right") }}</strong>
             <span class="difference-value" :title="activeCell.right.raw">
               {{ displayDifferenceValue(activeCell, "right") }}
             </span>
             <span class="difference-type">{{ activeCell.right.type || "unset" }}</span>
             <span class="difference-status" :class="{ changed: activeCell.status !== 'unchanged' }">
-              {{ activeCell.status }}
+              {{ rowStatusLabel(activeCell.status) }}
             </span>
           </div>
         </div>
         <div v-else class="difference-inspector empty">
-          {{ selectionSize > 1 ? `已选 ${selectionSize} 个单元格；请选择单格查看左右差异` : "选择一个单元格查看两侧内容；双击左侧单元格可直接编辑" }}
+          {{ selectionSize > 1 ? t("grid.multiSelectionHelp", { count: selectionSize }) : t("grid.selectionHelp") }}
         </div>
       </section>
     </main>
@@ -2820,31 +2854,31 @@ onBeforeUnmount(() => {
           <div class="logo"><img src="/appicon.svg" alt="" /></div>
           <div>
             <span class="welcome-kicker">SHEETPROOF DESKTOP</span>
-            <strong>表格对比与合并</strong>
+            <strong>{{ t("app.title") }}</strong>
           </div>
         </div>
-        <h1>打开本地 Git 仓库</h1>
-        <p>从工作区选择原始表格，与任一本地或远端跟踪分支进行安全对比。</p>
+        <h1>{{ t("welcome.title") }}</h1>
+        <p>{{ t("welcome.description") }}</p>
 
-        <div class="workflow-steps" aria-label="工作流程">
-          <span><i>1</i>导入文件</span>
-          <span><i>2</i>检查差异</span>
-          <span><i>3</i>应用修改</span>
-          <span><i>4</i>保存结果</span>
+        <div class="workflow-steps" :aria-label="t('welcome.workflow')">
+          <span><i>1</i>{{ t("welcome.stepImport") }}</span>
+          <span><i>2</i>{{ t("welcome.stepReview") }}</span>
+          <span><i>3</i>{{ t("welcome.stepApply") }}</span>
+          <span><i>4</i>{{ t("welcome.stepSave") }}</span>
         </div>
 
         <button class="primary large" :disabled="busy" @click="chooseRepository">
-          <AppIcon name="repository" />打开本地仓库
+          <AppIcon name="repository" />{{ t("toolbar.openRepository") }}
         </button>
         <div class="drop-hint">
           <AppIcon name="folder" />
-          <span><strong>也可以拖入仓库目录</strong><small>支持子目录，将自动定位 Git 根目录</small></span>
+          <span><strong>{{ t("welcome.drop") }}</strong><small>{{ t("welcome.dropDetail") }}</small></span>
         </div>
-        <div class="welcome-divider"><span>直接文件模式</span></div>
+        <div class="welcome-divider"><span>{{ t("welcome.directMode") }}</span></div>
         <button class="secondary-entry" :disabled="busy" @click="chooseFiles">
-          <AppIcon name="files" />选择两个表格进行对比
+          <AppIcon name="files" />{{ t("welcome.compareFiles") }}
         </button>
-        <small>左侧为可编辑原始表格，右侧为只读目标表格；仅支持 .xlsx。</small>
+        <small>{{ t("welcome.boundary") }}</small>
       </div>
     </main>
     <div
@@ -2857,69 +2891,69 @@ onBeforeUnmount(() => {
         <button
           :disabled="busy || Boolean(summary?.options.gitMerge) || Boolean(summary?.undoCount)"
           @click="setContextKeyColumn"
-        >{{ activeSheet?.idColumn === contextMenu.col ? "取消主键列" : `将 ${columnName(contextMenu.col)} 列设为主键` }}</button>
-        <span v-if="summary?.undoCount" class="context-menu-warning">存在撤销历史时不能切换主键列</span>
-        <span v-else>按主键值匹配记录；空值或重复值仍保守按物理行处理</span>
+        >{{ activeSheet?.idColumn === contextMenu.col ? t("alignment.clearKey") : t("alignment.setKey", { column: columnName(contextMenu.col) }) }}</button>
+        <span v-if="summary?.undoCount" class="context-menu-warning">{{ t("alignment.historyLocked") }}</span>
+        <span v-else>{{ t("alignment.help") }}</span>
       </template>
       <template v-else-if="contextHasMixedConflict">
-        <span class="context-menu-warning">选中的内容中包含冲突，请单独处理冲突部分</span>
+        <span class="context-menu-warning">{{ t("context.mixedConflict") }}</span>
       </template>
       <template v-else-if="contextIsConflict">
         <button
           v-if="contextMenu.kind === 'cell'"
           :disabled="!copyTargets.length || copyTargets.length > 10000 || contextActionDisabled"
           @click="copyContextCells"
-        >覆盖单元格到左侧</button>
-        <button :disabled="contextActionDisabled" @click="copyContextRows">覆盖整行到左侧</button>
+        >{{ t("context.overwriteCells") }}</button>
+        <button :disabled="contextActionDisabled" @click="copyContextRows">{{ t("context.overwriteRows") }}</button>
         <button
           v-if="automaticIDLabel"
           :disabled="contextActionDisabled"
           @click="appendContextRowsAutomatically"
-        >将整行新增为 {{ automaticIDLabel }} 到左侧</button>
+        >{{ t("context.appendAuto", { range: automaticIDLabel }) }}</button>
         <button
           v-if="!contextHasNumericIDColumn && contextAppendableRows.length"
           :disabled="contextActionDisabled"
           @click="appendContextRowsWithoutNumericID"
-        >将整行新增到左侧</button>
+        >{{ t("context.appendRow") }}</button>
         <button
           v-if="contextHasNumericIDColumn"
           :disabled="contextActionDisabled"
           @click="openSpecifiedIDDialog"
-        >将整行新增到指定 id 到左侧</button>
+        >{{ t("context.appendSpecified") }}</button>
       </template>
       <template v-else-if="contextIsActionable">
         <button
           v-if="contextMenu.kind === 'cell'"
           :disabled="!copyTargets.length || copyTargets.length > 10000 || contextActionDisabled"
           @click="copyContextCells"
-        >复制单元格到左侧</button>
-        <button :disabled="contextActionDisabled" @click="copyContextRows">复制整行到左侧</button>
+        >{{ t("context.copyCells") }}</button>
+        <button :disabled="contextActionDisabled" @click="copyContextRows">{{ t("context.copyRows") }}</button>
       </template>
       <span v-if="contextMenu.kind !== 'column'">
-        {{ contextRows.length > 1 ? `已选 ${contextRows.length} 行` : `第 ${contextMenu.row} 行` }}
+        {{ t("context.selectedRows", { count: contextRows.length, row: contextMenu.row }) }}
         · {{ contextStatusLabel }}
       </span>
     </div>
     <div v-if="idDialog.visible" class="id-dialog-overlay" @pointerdown.self="idDialog.visible = false">
       <form class="id-dialog" @submit.prevent="confirmSpecifiedIDs">
-        <strong>为新增行指定 ID</strong>
-        <span>每个来源行需要一个在左侧尚未使用的 ID。</span>
+        <strong>{{ t("dialog.idsTitle") }}</strong>
+        <span>{{ t("dialog.idsDescription") }}</span>
         <label v-for="(row, index) in idDialog.rows" :key="row">
-          <span>右侧第 {{ row }} 行</span>
+          <span>{{ t("dialog.rightRow", { row }) }}</span>
           <input
             v-model="idDialog.values[index]"
-            :aria-label="`右侧第 ${row} 行的指定 ID`"
-            placeholder="输入 ID"
+            :aria-label="t('dialog.rightRowId', { row })"
+            :placeholder="t('dialog.idPlaceholder')"
             autocomplete="off"
           />
         </label>
         <div class="id-dialog-actions">
-          <button type="button" @click="idDialog.visible = false">取消</button>
+          <button type="button" @click="idDialog.visible = false">{{ t("common.cancel") }}</button>
           <button
             type="submit"
             class="primary"
             :disabled="busy || idDialog.values.some((value) => !value.trim())"
-          >新增到左侧</button>
+          >{{ t("dialog.appendLeft") }}</button>
         </div>
       </form>
     </div>
@@ -2931,13 +2965,13 @@ onBeforeUnmount(() => {
       <section class="repository-switch-dialog" role="dialog" aria-modal="true" aria-labelledby="repository-switch-title">
         <div class="repository-switch-header">
           <div>
-            <strong id="repository-switch-title">切换仓库</strong>
-            <span>最近打开的仓库，最多显示 10 个。</span>
+            <strong id="repository-switch-title">{{ t("repository.switch") }}</strong>
+            <span>{{ t("repository.recentLimit") }}</span>
           </div>
           <button
             class="icon-button"
-            title="关闭"
-            aria-label="关闭切换仓库弹窗"
+            :title="t('common.close')"
+            :aria-label="t('common.close')"
             @click="repositorySwitchDialog.visible = false"
           ><AppIcon name="x" /></button>
         </div>
@@ -2952,21 +2986,21 @@ onBeforeUnmount(() => {
           >
             <AppIcon name="repository" />
             <span><strong>{{ item.name }}</strong><small>{{ item.path }}</small></span>
-            <em v-if="item.path === repository?.path">当前仓库</em>
-            <em v-else-if="!item.available" class="unavailable">路径不可用</em>
+            <em v-if="item.path === repository?.path">{{ t("repository.currentRepository") }}</em>
+            <em v-else-if="!item.available" class="unavailable">{{ t("repository.pathUnavailable") }}</em>
           </button>
         </div>
         <EmptyState
           v-else
           icon="repository"
-          title="暂无最近仓库"
-          description="可选择其他本地 Git 仓库。"
+          :title="t('repository.noRecentRepositories')"
+          :description="t('repository.chooseAnother')"
           compact
         />
         <div class="repository-switch-actions">
-          <button @click="repositorySwitchDialog.visible = false">取消</button>
+          <button @click="repositorySwitchDialog.visible = false">{{ t("common.cancel") }}</button>
           <button class="primary" :disabled="busy" @click="chooseOtherRepository">
-            <AppIcon name="folder" />选择其他仓库
+            <AppIcon name="folder" />{{ t("repository.chooseAnother") }}
           </button>
         </div>
       </section>
@@ -2979,13 +3013,13 @@ onBeforeUnmount(() => {
       <section class="repository-open-dialog" role="dialog" aria-modal="true" aria-labelledby="repository-open-title">
         <div class="repository-switch-header">
           <div>
-            <strong id="repository-open-title">打开本地仓库</strong>
-            <span>选择一种方式导入包含 XLSX 表格的本地 Git 仓库。</span>
+            <strong id="repository-open-title">{{ t("repository.openTitle") }}</strong>
+            <span>{{ t("repository.openDescription") }}</span>
           </div>
           <button
             class="icon-button"
-            title="关闭"
-            aria-label="关闭打开仓库弹窗"
+            :title="t('common.close')"
+            :aria-label="t('common.close')"
             :disabled="repositoryOpening"
             @click="closeRepositoryOpenDialog"
           ><AppIcon name="x" /></button>
@@ -2997,22 +3031,22 @@ onBeforeUnmount(() => {
         <div class="repository-open-dropzone" :class="{ loading: repositoryOpening }">
           <template v-if="repositoryOpening">
             <span class="loading-spinner small" aria-hidden="true"></span>
-            <strong>正在打开仓库…</strong>
-            <span>正在检查 Git 信息和 XLSX 表格。仓库较大时可能需要一些时间，请稍候。</span>
+            <strong>{{ t("repository.opening") }}</strong>
+            <span>{{ t("repository.openingDetail") }}</span>
           </template>
           <template v-else>
             <AppIcon name="folder" :size="30" />
-            <strong>将仓库文件夹拖到这里</strong>
-            <span>支持拖入仓库子目录，SheetProof 会自动定位 Git 根目录。</span>
+            <strong>{{ t("repository.dropHere") }}</strong>
+            <span>{{ t("repository.dropDetail") }}</span>
           </template>
         </div>
-        <div class="repository-open-divider"><span>或者</span></div>
+        <div class="repository-open-divider"><span>{{ t("repository.or") }}</span></div>
         <div class="repository-switch-actions">
-          <button :disabled="repositoryOpening" @click="closeRepositoryOpenDialog">取消</button>
+          <button :disabled="repositoryOpening" @click="closeRepositoryOpenDialog">{{ t("common.cancel") }}</button>
           <button class="primary" :disabled="busy || repositoryOpening" @click="chooseRepository">
             <span v-if="repositoryOpening" class="mini-spinner" aria-hidden="true"></span>
             <AppIcon v-else name="folder" />
-            {{ repositoryOpening ? "正在打开…" : "手动选择文件夹" }}
+            {{ repositoryOpening ? t("repository.openingShort") : t("repository.chooseFolder") }}
           </button>
         </div>
       </section>
@@ -3022,33 +3056,33 @@ onBeforeUnmount(() => {
         <div class="external-change-heading">
           <span class="external-change-icon"><AppIcon name="alert" :size="20" /></span>
           <div>
-            <strong id="external-change-title">左侧表格已在外部修改</strong>
+            <strong id="external-change-title">{{ t("externalChange.title") }}</strong>
             <span :title="externalChangeDialog.change?.path">{{ externalChangeDialog.change?.path }}</span>
           </div>
         </div>
         <p v-if="summary?.dirty">
-          其他程序已经保存了这份表格。重载会显示磁盘上的最新版本，并放弃 SheetProof 中尚未保存的修改。
+          {{ t("externalChange.dirty") }}
         </p>
         <p v-else>
-          其他程序已经保存了这份表格。是否立即重载磁盘上的最新版本？
+          {{ t("externalChange.clean") }}
         </p>
         <div class="external-change-actions">
-          <button :disabled="busy" @click="deferExternalReload">暂不重载</button>
-          <button class="primary" :disabled="busy" @click="reloadExternal('left')">重载最新版本</button>
+          <button :disabled="busy" @click="deferExternalReload">{{ t("externalChange.defer") }}</button>
+          <button class="primary" :disabled="busy" @click="reloadExternal('left')">{{ t("externalChange.reload") }}</button>
         </div>
       </section>
     </div>
     <div v-if="startupLoading" class="loading-overlay" role="status" aria-live="polite">
       <div class="loading-dialog">
         <div class="loading-spinner" aria-hidden="true"></div>
-        <strong>{{ repository ? "正在加载仓库与表格" : "正在加载并比较工作簿" }}</strong>
-        <span>正在读取数据并建立差异索引，请稍候…</span>
+        <strong>{{ repository ? t("startup.repository") : t("startup.workbooks") }}</strong>
+        <span>{{ t("startup.detail") }}</span>
         <div class="loading-track" aria-hidden="true"><i></i></div>
       </div>
     </div>
     <footer class="statusbar">
       <span class="status-primary"><span class="status-dot" :class="{ busy }"></span>{{ statusText }}</span>
-      <span v-if="busy" class="status-busy"><span class="mini-spinner"></span>处理中…</span>
+      <span v-if="busy" class="status-busy"><span class="mini-spinner"></span>{{ t("common.loading") }}</span>
       <span v-if="summary?.warnings?.length" class="status-warning"><AppIcon name="alert" :size="13" />{{ summary.warnings.at(-1) }}</span>
     </footer>
   </div>

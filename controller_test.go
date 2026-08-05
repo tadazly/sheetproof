@@ -93,7 +93,7 @@ func TestControllerChecksAndReloadsExternalWorkbookChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Notice, "自动重载") {
+	if !strings.Contains(result.Notice, "reloaded") {
 		t.Fatalf("reload notice = %q", result.Notice)
 	}
 	region, err := controller.Region("数据 表", 1, 1, 1, 1)
@@ -402,7 +402,7 @@ func TestControllerRestoresLastRepositoryAndFallsBackWhenItMoves(t *testing.T) {
 	unavailable.startup(context.Background())
 	waitForBootstrap(t, unavailable)
 	state = unavailable.Bootstrap()
-	if state.Repository != nil || state.HasSession || !strings.Contains(state.Error, "最近打开的仓库不可用") {
+	if state.Repository != nil || state.HasSession || !strings.Contains(state.Error, "most recently opened repository is unavailable") {
 		t.Fatalf("unavailable recent repository bootstrap = %+v", state)
 	}
 }
@@ -454,7 +454,7 @@ func TestControllerUnsavedRepositorySwitchOffersCancelSaveAndDiscard(t *testing.
 		t.Fatal(err)
 	}
 	controller.switchPrompt = func() (string, error) { return "取消", nil }
-	if _, err := controller.OpenRepository(root); err == nil || !strings.Contains(err.Error(), "已取消切换") {
+	if _, err := controller.OpenRepository(root); err == nil || !strings.Contains(err.Error(), "Switch was cancelled") {
 		t.Fatalf("cancel switch error = %v", err)
 	}
 	result, err := controller.Repository()
@@ -493,9 +493,9 @@ func TestControllerUnsavedCloseOffersSaveDiscardAndCancel(t *testing.T) {
 		wantBlocked bool
 		wantSaved   bool
 	}{
-		{name: "save", answer: "保存并继续", wantSaved: true},
-		{name: "discard", answer: "不保存并继续"},
-		{name: "cancel", answer: "取消", wantBlocked: true},
+		{name: "save", answer: "Save and continue", wantSaved: true},
+		{name: "discard", answer: "Continue without saving"},
+		{name: "cancel", answer: "Cancel", wantBlocked: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -509,7 +509,7 @@ func TestControllerUnsavedCloseOffersSaveDiscardAndCancel(t *testing.T) {
 				t.Fatal(err)
 			}
 			controller.dialog = func(_ context.Context, options runtime.MessageDialogOptions) (string, error) {
-				want := []string{"保存并继续", "不保存并继续", "取消"}
+				want := []string{"Save and continue", "Continue without saving", "Cancel"}
 				if len(options.Buttons) != len(want) {
 					t.Fatalf("buttons = %v", options.Buttons)
 				}
@@ -543,7 +543,7 @@ func TestControllerDirectoryDropUsesFirstItemAndRejectsFiles(t *testing.T) {
 	controller.handleFileDrop(0, 0, []string{filepath.Join(root, "config"), t.TempDir()})
 	controller.wg.Wait()
 	state := controller.Bootstrap()
-	if state.Repository == nil || !strings.Contains(state.Repository.Notice, "其余拖入项已忽略") {
+	if state.Repository == nil || !strings.Contains(state.Repository.Notice, "other dropped items were ignored") {
 		t.Fatalf("multi-directory drop state = %+v", state)
 	}
 	controller.shutdown(context.Background())
