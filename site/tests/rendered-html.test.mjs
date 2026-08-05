@@ -14,11 +14,17 @@ async function render(path = "/") {
 
 test("exports localized home pages with independent product copy", async () => {
   const [en, zh, ja] = await Promise.all([render(), render("/zh-CN"), render("/ja")]);
-  assert.match(en, /Review XLSX changes in Git/);
+  assert.match(en, /Review XLSX changes/);
+  assert.match(en, /in Git—then apply/);
+  assert.equal([...en.matchAll(/class="hero-title-line"/g)].length, 3);
   assert.match(en, /Key: Map ID/);
-  assert.match(zh, /审阅 Git 中的 XLSX/);
+  assert.match(zh, /审阅 Git 中的 XLSX，/);
+  assert.match(zh, /只应用确认过的修改。/);
+  assert.equal([...zh.matchAll(/class="hero-title-line"/g)].length, 2);
   assert.match(zh, /主键：地图 ID/);
-  assert.match(ja, /Git 上の XLSX 変更を確認/);
+  assert.match(ja, /Git 上の XLSX 変更を確認。/);
+  assert.match(ja, /承認した変更だけを反映。/);
+  assert.equal([...ja.matchAll(/class="hero-title-line"/g)].length, 2);
   assert.match(ja, /キー：マップ ID/);
   assert.doesNotMatch(`${en}\n${ja}`, /让 Git 中的 XLSX|主键：地图ID/);
 });

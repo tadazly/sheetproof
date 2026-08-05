@@ -18,7 +18,7 @@ export default function HomePage({ locale = "en" }: { locale?: Locale }) {
         <section className="hero page-width">
           <div className="hero-copy">
             <p className="eyebrow">{copy.brand}</p>
-            <h1 aria-label={copy.hero.join(locale === "en" ? " " : "")}>{copy.hero.map((line) => <span className="hero-title-line" aria-hidden="true" key={line}>{line}</span>)}</h1>
+            <h1 aria-label={copy.hero.join(locale === "en" ? " " : "")}>{copy.hero.map((line, index) => <span className="hero-title-line" aria-hidden="true" key={line}>{line}{locale === "en" && index < copy.hero.length - 1 ? " " : null}</span>)}</h1>
             <p className="hero-description">{copy.description}</p>
             <HeroMessageCarousel locale={locale} />
             <div className="hero-actions">

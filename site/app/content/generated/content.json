@@ -454,7 +454,8 @@
           "repositoryStartup",
           "mobileNavigation",
           "screenshotViewer",
-          "heroCarousel"
+          "heroCarousel",
+          "heroTypography"
         ]
       },
       {
@@ -515,7 +516,8 @@
             "repositoryStartup": "Repository mode now stays in its startup loading state until a preselected XLSX file and revision are fully open, so the comparison cannot be replaced by an empty workspace.",
             "mobileNavigation": "The mobile site navigation uses native browser disclosure, so it remains available before scripts start.",
             "screenshotViewer": "Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.",
-            "heroCarousel": "The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference."
+            "heroCarousel": "The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference.",
+            "heroTypography": "The home-page title now uses language-specific line breaks, spacing, and type rhythm across desktop, tablet, and mobile layouts."
           }
         },
         "0.3.0": {
@@ -572,7 +574,8 @@
             "repositoryStartup": "仓库模式会保持启动加载状态，直到预选的 XLSX 文件和引用完全打开，避免真实对比被空白工作区覆盖。",
             "mobileNavigation": "移动端导航改用浏览器原生展开结构，即使页面脚本尚未启动也能打开。",
             "screenshotViewer": "官网产品图可在独立查看器中打开，支持桌面滚轮缩放与手机双指缩放、拖动，并修复关闭、滚动恢复和手势锁定问题。",
-            "heroCarousel": "无论浏览器是否开启减少动态效果，官网首页的使用说明都会继续轮换，并保留原有的轻量过渡。"
+            "heroCarousel": "无论浏览器是否开启减少动态效果，官网首页的使用说明都会继续轮换，并保留原有的轻量过渡。",
+            "heroTypography": "官网首页标题现在按英文、简体中文和日文分别设置断行、间距与字形节奏，在桌面、平板和手机上均保持清晰均衡。"
           }
         },
         "0.3.0": {
@@ -629,7 +632,8 @@
             "repositoryStartup": "リポジトリモードでは、指定済みの XLSX ファイルと参照を開き終えるまで起動中の状態を保ち、比較画面が空のワークスペースに置き換わらないようにしました。",
             "mobileNavigation": "モバイルナビゲーションをブラウザー標準の開閉要素に変更し、スクリプト起動前でも利用できるようにしました。",
             "screenshotViewer": "製品画像を専用ビューアーで開き、デスクトップのホイール拡大とモバイルのピンチ・ドラッグに対応しました。閉じる操作、スクロール復元、ジェスチャー固定も修正しました。",
-            "heroCarousel": "ブラウザーの視差効果を減らす設定にかかわらず、トップページの利用例は元の軽いトランジションを保ったまま切り替わります。"
+            "heroCarousel": "ブラウザーの視差効果を減らす設定にかかわらず、トップページの利用例は元の軽いトランジションを保ったまま切り替わります。",
+            "heroTypography": "公式サイトのトップ見出しは、英語・簡体字中国語・日本語ごとに改行、間隔、文字組みを調整し、デスクトップ、タブレット、モバイルで読みやすく整えました。"
           }
         },
         "0.3.0": {

@@ -42,7 +42,7 @@ export function SiteShell({ children, locale = "en", semanticPath = "/" }: { chi
     }
   };
 
-  return <div className="site-shell">
+  return <div className="site-shell" lang={locale}>
     {locale === "en" ? <LanguageRedirect semanticPath={semanticPath} /> : null}
     <header className="site-header">
       <div className="page-width nav-wrap">

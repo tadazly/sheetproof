@@ -21,6 +21,7 @@ The desktop app, CLI, documentation, and website now share a complete three-lang
 - The mobile site navigation uses native browser disclosure, so it remains available before scripts start.
 - Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.
 - The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference.
+- The home-page title now uses language-specific line breaks, spacing, and type rhythm across desktop, tablet, and mobile layouts.
 
 ## 0.3.0 — 2026-08-04
 
