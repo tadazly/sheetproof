@@ -6,6 +6,7 @@ import type {
   Region,
   RecentRepository,
   RepositoryResult,
+  SearchSummary,
   Summary,
   UGitConfigurationResult
 } from "./types";
@@ -59,6 +60,22 @@ export const backend = {
     col: number,
     cols: number
   ): Promise<Region> => controller().FilteredRegion(sheet, statuses, row, rows, col, cols),
+  find: (
+    sheet: string,
+    side: "left" | "right",
+    query: string,
+    caseSensitive: boolean,
+    wholeWord: boolean,
+    regex: boolean,
+    statuses: string[],
+    anchorRow: number,
+    anchorCol: number
+  ): Promise<SearchSummary> => controller().Find(
+    sheet, side, query, caseSensitive, wholeWord, regex, statuses, anchorRow, anchorCol
+  ),
+  navigateFind: (side: "left" | "right", direction: 1 | -1): Promise<SearchSummary> =>
+    controller().NavigateFind(side, direction),
+  clearFind: (side: "left" | "right"): Promise<void> => controller().ClearFind(side),
   differences: (sheet: string, offset: number, limit: number): Promise<CellDiff[]> =>
     controller().Differences(sheet, offset, limit),
   copy: (sheet: string, row: number, col: number): Promise<Summary> =>

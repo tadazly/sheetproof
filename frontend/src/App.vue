@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import AppIcon from "./components/AppIcon.vue";
 import EmptyState from "./components/EmptyState.vue";
+import FindWidget from "./components/FindWidget.vue";
 import { backend } from "./backend";
 import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
@@ -19,6 +20,7 @@ import type {
   RepositoryView,
   RowResolution,
   RowStatus,
+  SearchRef,
   Summary
 } from "./types";
 
@@ -101,6 +103,37 @@ const repositorySearchFocused = ref(false);
 const repositorySearchInput = ref<HTMLInputElement | null>(null);
 const repositorySidebarTab = ref<"files" | "differences" | "sheets">("files");
 const inlineEdit = ref<{ row: number; col: number; value: string; original: RegionCell } | null>(null);
+interface FindState {
+  open: boolean;
+  query: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  regex: boolean;
+  count: number;
+  currentIndex: number;
+  currentRef?: SearchRef;
+  searching: boolean;
+  error: string;
+  invalidRegex: boolean;
+  request: number;
+}
+const makeFindState = (): FindState => ({
+  open: false,
+  query: "",
+  caseSensitive: false,
+  wholeWord: false,
+  regex: false,
+  count: 0,
+  currentIndex: 0,
+  searching: false,
+  error: "",
+  invalidRegex: false,
+  request: 0
+});
+const leftFind = ref<FindState>(makeFindState());
+const rightFind = ref<FindState>(makeFindState());
+const leftFindWidget = ref<InstanceType<typeof FindWidget> | null>(null);
+const rightFindWidget = ref<InstanceType<typeof FindWidget> | null>(null);
 const previewOriginal = ref(false);
 const repoSidebar = ref<HTMLElement | null>(null);
 let loadingTimer = 0;
@@ -126,6 +159,8 @@ let previewFromKeyboard = false;
 let previewFromPointer = false;
 let checkingExternalChanges = false;
 let externalCheckFailures = 0;
+let lastFindSide: "left" | "right" = "left";
+const findTimers: Record<"left" | "right", number> = { left: 0, right: 0 };
 
 interface RepositoryTreeRow {
   kind: "directory" | "file";
@@ -592,6 +627,7 @@ async function acceptRepositoryResult(result: RepositoryResult) {
 function clearWorkbook() {
   sheetRequest++;
   regionRequest++;
+  invalidateFindResults();
   summary.value = null;
   region.value = null;
   sheet.value = "";
@@ -863,6 +899,7 @@ async function acceptSummary(data: Summary, preferredSheet = sheet.value, resetS
     deferredExternalChange.value = null;
     externalNotice.value = "";
   }
+  invalidateFindResults();
   summary.value = data;
   const fallback = data.diff.sheets[0]?.name ?? "";
   const preferred = data.diff.sheets.find((item) => item.name === preferredSheet);
@@ -941,6 +978,7 @@ async function loadSheet(name: string, resetSelection = true) {
   stopOriginalPreview();
   const request = ++sheetRequest;
   const changed = sheet.value !== name;
+  if (changed) invalidateFindResults();
   sheet.value = name;
   if (changed || resetSelection) {
     loadLayout(name);
@@ -955,6 +993,7 @@ async function loadSheet(name: string, resetSelection = true) {
   const list = await guard(() => backend.differences(name, 0, 10000));
   if (request !== sheetRequest || sheet.value !== name) return;
   diffs.value = list ?? [];
+  refreshOpenFinds();
   const persistedNavigation = DIFF_FILTER_TABS.find((status) =>
     selectedRowFilterSet.value.has(status) && diffs.value.some((item) => item.rowStatus === status)
   ) ?? selectedRowFilters.value[0];
@@ -1238,6 +1277,7 @@ function displayRowForAnchor(sourceRow: number): number {
 
 async function applyRowFilters(focusStatus?: DiffFilter, anchor?: RowViewportAnchor) {
   regionRequest++;
+  invalidateFindResults();
   activePoint.value = null;
   selectionAnchor.value = null;
   selection.value = null;
@@ -1267,6 +1307,7 @@ async function applyRowFilters(focusStatus?: DiffFilter, anchor?: RowViewportAnc
     columnAtOffset(viewportLeft.value)
   );
   await loadRegion(target.row, target.col);
+  refreshOpenFinds();
 }
 
 async function toggleRowFilter(status: DiffFilter) {
@@ -1545,6 +1586,205 @@ function focusGrid(event: PointerEvent) {
   (event.currentTarget as HTMLElement).focus({ preventScroll: true });
 }
 
+function findState(side: "left" | "right") {
+  return side === "left" ? leftFind.value : rightFind.value;
+}
+
+function findWidget(side: "left" | "right") {
+  return side === "left" ? leftFindWidget.value : rightFindWidget.value;
+}
+
+function findSideForTarget(target: EventTarget | null): "left" | "right" | null {
+  if (!(target instanceof Element)) return null;
+  const widget = target.closest<HTMLElement>(".find-widget");
+  return widget?.dataset.side === "right" ? "right" : widget ? "left" : null;
+}
+
+function invalidateFindResults() {
+  for (const side of ["left", "right"] as const) {
+    const state = findState(side);
+    state.request++;
+    window.clearTimeout(findTimers[side]);
+    findTimers[side] = 0;
+    state.count = 0;
+    state.currentIndex = 0;
+    state.currentRef = undefined;
+    state.searching = false;
+    state.error = "";
+    state.invalidRegex = false;
+  }
+}
+
+function openFind(side: "left" | "right") {
+  const state = findState(side);
+  state.open = true;
+  lastFindSide = side;
+  nextTick(() => findWidget(side)?.focus());
+  if (state.query) scheduleFind(side, true);
+}
+
+function focusFindSide(side: "left" | "right") {
+  lastFindSide = side;
+}
+
+async function closeFind(side: "left" | "right") {
+  const state = findState(side);
+  state.open = false;
+  state.request++;
+  window.clearTimeout(findTimers[side]);
+  findTimers[side] = 0;
+  state.count = 0;
+  state.currentIndex = 0;
+  state.currentRef = undefined;
+  state.searching = false;
+  state.error = "";
+  state.invalidRegex = false;
+  try {
+    await backend.clearFind(side);
+  } catch (reason) {
+    if (state.open) state.error = localizeBackendError(reason);
+  }
+  await reloadVisibleRegion();
+}
+
+function updateFindQuery(side: "left" | "right", value: string) {
+  findState(side).query = value;
+  scheduleFind(side);
+}
+
+function toggleFindOption(side: "left" | "right", option: "caseSensitive" | "wholeWord" | "regex") {
+  const state = findState(side);
+  state[option] = !state[option];
+  lastFindSide = side;
+  scheduleFind(side);
+}
+
+function scheduleFind(side: "left" | "right", immediate = false) {
+  const state = findState(side);
+  state.request++;
+  const request = state.request;
+  window.clearTimeout(findTimers[side]);
+  findTimers[side] = 0;
+  state.error = "";
+  state.invalidRegex = false;
+  state.count = 0;
+  state.currentIndex = 0;
+  state.currentRef = undefined;
+  if (!state.open || !summary.value || !sheet.value) {
+    state.searching = false;
+    return;
+  }
+  if (!state.query) {
+    state.searching = false;
+    void clearEmptyFind(side, request);
+    return;
+  }
+  state.searching = true;
+  findTimers[side] = window.setTimeout(
+    () => void executeFind(side, request),
+    immediate ? 0 : 150
+  );
+}
+
+async function clearEmptyFind(side: "left" | "right", request: number) {
+  try {
+    await backend.clearFind(side);
+    if (request !== findState(side).request) return;
+    await reloadVisibleRegion();
+  } catch (reason) {
+    const state = findState(side);
+    if (request === state.request) {
+      state.error = localizeBackendError(reason);
+      state.invalidRegex = false;
+    }
+  }
+}
+
+async function executeFind(side: "left" | "right", request: number) {
+  const state = findState(side);
+  const requestedSheet = sheet.value;
+  const requestedFilters = selectedRowFilters.value.join(",");
+  try {
+    const result = await backend.find(
+      requestedSheet,
+      side,
+      state.query,
+      state.caseSensitive,
+      state.wholeWord,
+      state.regex,
+      [...selectedRowFilters.value],
+      activePoint.value?.row ?? 1,
+      activePoint.value?.col ?? 1
+    );
+    if (
+      request !== state.request || !state.open || requestedSheet !== sheet.value ||
+      requestedFilters !== selectedRowFilters.value.join(",")
+    ) return;
+    applyFindSummary(state, result);
+    if (result.currentRef && !result.error) {
+      await scrollTo(result.currentRef.sourceRow, result.currentRef.col);
+    } else {
+      await reloadVisibleRegion();
+    }
+  } catch (reason) {
+    if (request === state.request && state.open) {
+      state.error = localizeBackendError(reason);
+      state.invalidRegex = false;
+      state.searching = false;
+    }
+  }
+}
+
+function applyFindSummary(state: FindState, result: { count: number; currentIndex: number; currentRef?: SearchRef; error?: string }) {
+  state.count = result.count;
+  state.currentIndex = result.currentIndex;
+  state.currentRef = result.currentRef;
+  state.error = result.error ?? "";
+  state.invalidRegex = Boolean(result.error);
+  state.searching = false;
+}
+
+async function navigateFind(side: "left" | "right", direction: 1 | -1) {
+  const state = findState(side);
+  if (!state.open || !state.query || !summary.value) return;
+  lastFindSide = side;
+  window.clearTimeout(findTimers[side]);
+  findTimers[side] = 0;
+  if (state.searching) {
+    state.request++;
+    await executeFind(side, state.request);
+    return;
+  }
+  const request = ++state.request;
+  state.searching = true;
+  try {
+    const result = await backend.navigateFind(side, direction);
+    if (request !== state.request || !state.open) return;
+    applyFindSummary(state, result);
+    if (result.currentRef) await scrollTo(result.currentRef.sourceRow, result.currentRef.col);
+    else await reloadVisibleRegion();
+  } catch (reason) {
+    if (request === state.request) {
+      state.error = localizeBackendError(reason);
+      state.invalidRegex = false;
+      state.searching = false;
+    }
+  }
+}
+
+function refreshOpenFinds() {
+  for (const side of ["left", "right"] as const) {
+    if (findState(side).open) scheduleFind(side);
+  }
+}
+
+async function reloadVisibleRegion() {
+  if (!sheet.value || !summary.value) return;
+  const source = leftScroll.value ?? rightScroll.value;
+  const target = viewportRegionTarget(source);
+  await loadRegion(target.row, target.col);
+}
+
 function gridOwnsKeyboardFocus(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest(".grid-scroll")) &&
     !target.matches("input, textarea, [contenteditable='true']");
@@ -1630,16 +1870,40 @@ function onWindowKeyDown(event: KeyboardEvent) {
     repositorySwitchDialog.value.visible = false;
     return;
   }
-  if (event.key === "Tab" && gridOwnsKeyboardFocus(event.target) && canPreviewOriginal.value) {
+  const keyboardTarget = event.target === window ? document.activeElement : event.target;
+  const focusedFindSide = findSideForTarget(keyboardTarget);
+  if (event.key === "Escape" && focusedFindSide && findState(focusedFindSide).open) {
+    event.preventDefault();
+    void closeFind(focusedFindSide);
+    return;
+  }
+  const key = event.key.toLowerCase();
+  if (!event.altKey && (event.ctrlKey || event.metaKey) && key === "f") {
+    event.preventDefault();
+    openFind(gridKeyboardSide(keyboardTarget) ?? focusedFindSide ?? "left");
+    return;
+  }
+  if (event.key === "F3" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    const side = gridKeyboardSide(keyboardTarget) ?? focusedFindSide ?? lastFindSide;
+    const state = findState(side);
+    if (!state.open) state.open = true;
+    if (!state.query) {
+      openFind(side);
+      return;
+    }
+    void navigateFind(side, event.shiftKey ? -1 : 1);
+    return;
+  }
+  if (event.key === "Tab" && gridOwnsKeyboardFocus(keyboardTarget) && canPreviewOriginal.value) {
     event.preventDefault();
     previewFromKeyboard = true;
     syncOriginalPreview();
     return;
   }
-  const target = event.target;
+  const target = keyboardTarget;
   const editing = target instanceof Element && target.matches("input, textarea, select, [contenteditable='true']");
   const gridSide = gridKeyboardSide(target);
-  const key = event.key.toLowerCase();
   if (
     summary.value && gridSide && !editing && !event.altKey && !event.shiftKey &&
     (event.ctrlKey || event.metaKey) && key === "a"
@@ -1796,6 +2060,13 @@ function cellClass(cell: RegionCell, side: "left" | "right") {
     };
   }
   const rowState = cell.rowStatus || rowStatus(cell.row);
+  const searchState = findState(side);
+  const findMatch = side === "left" ? cell.leftMatch : cell.rightMatch;
+  const findCurrent = Boolean(
+    findMatch && searchState.currentRef &&
+    searchState.currentRef.sourceRow === cellSourceRow(cell) &&
+    searchState.currentRef.col === cell.col
+  );
   const appendedTarget = side === "left" ? rowResolution(cell.row, "left") : null;
   let changeState: Exclude<RowStatus, "unchanged" | "conflict"> | "" = "";
   if (appendedTarget && cell.left.present) {
@@ -1821,6 +2092,8 @@ function cellClass(cell: RegionCell, side: "left" | "right") {
     [`cell-${changeState}`]: Boolean(changeState) && (rowState !== "conflict" || Boolean(appendedTarget)),
     "row-conflict": rowState === "conflict" && !appendedTarget,
     "resolution-added": Boolean(appendedTarget),
+    "find-match": Boolean(findMatch),
+    "find-current-match": findCurrent,
     selected: containsCell(selection.value, cell.row, cell.col),
     active: activePoint.value?.row === cell.row && activePoint.value?.col === cell.col,
     missing: cell.status !== "unchanged" && !cell[side].present
@@ -2131,6 +2404,8 @@ onBeforeUnmount(() => {
   window.clearTimeout(differenceIndexTimer);
   window.clearTimeout(externalFocusTimer);
   window.clearInterval(externalCheckTimer);
+  window.clearTimeout(findTimers.left);
+  window.clearTimeout(findTimers.right);
   window.cancelAnimationFrame(wheelFrame);
   window.removeEventListener("pointermove", resizeColumn);
   window.removeEventListener("pointermove", resizeRepositorySidebar);
@@ -2703,6 +2978,26 @@ onBeforeUnmount(() => {
                 @keyup.enter.prevent="stopOriginalPreviewFromPointer"
               ><AppIcon name="undo" :size="12" />{{ previewOriginal ? t("grid.previewLatest") : t("grid.previewBeforeAfter") }}<kbd>Tab</kbd></button>
             </div>
+            <FindWidget
+              v-if="leftFind.open"
+              ref="leftFindWidget"
+              side="left"
+              :query="leftFind.query"
+              :case-sensitive="leftFind.caseSensitive"
+              :whole-word="leftFind.wholeWord"
+              :regex="leftFind.regex"
+              :count="leftFind.count"
+              :current-index="leftFind.currentIndex"
+              :searching="leftFind.searching"
+              :error="leftFind.error"
+              :invalid-regex="leftFind.invalidRegex"
+              @update:query="updateFindQuery('left', $event)"
+              @toggle="toggleFindOption('left', $event)"
+              @next="navigateFind('left', 1)"
+              @previous="navigateFind('left', -1)"
+              @close="closeFind('left')"
+              @focus="focusFindSide('left')"
+            />
             <div v-if="repository && repository.leftState !== 'ready'" class="panel-empty">
               <template v-if="repository.leftState === 'loading' || repository.leftState === 'comparing'">
                 <div class="loading-spinner small"></div>
@@ -2800,6 +3095,26 @@ onBeforeUnmount(() => {
               <strong><span class="panel-indicator readonly"></span>{{ repository ? t("repository.comparisonWorkbook") : t("source.targetReadOnly") }}</strong>
               <span class="panel-permission readonly"><AppIcon name="branch" :size="12" />{{ t("common.readOnly") }}</span>
             </div>
+            <FindWidget
+              v-if="rightFind.open"
+              ref="rightFindWidget"
+              side="right"
+              :query="rightFind.query"
+              :case-sensitive="rightFind.caseSensitive"
+              :whole-word="rightFind.wholeWord"
+              :regex="rightFind.regex"
+              :count="rightFind.count"
+              :current-index="rightFind.currentIndex"
+              :searching="rightFind.searching"
+              :error="rightFind.error"
+              :invalid-regex="rightFind.invalidRegex"
+              @update:query="updateFindQuery('right', $event)"
+              @toggle="toggleFindOption('right', $event)"
+              @next="navigateFind('right', 1)"
+              @previous="navigateFind('right', -1)"
+              @close="closeFind('right')"
+              @focus="focusFindSide('right')"
+            />
             <div v-if="repository && repository.rightState !== 'ready'" class="panel-empty">
               <template v-if="repository.rightState === 'loading' || repository.rightState === 'comparing'">
                 <div class="loading-spinner small"></div>

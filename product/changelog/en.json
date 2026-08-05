@@ -1,4 +1,11 @@
 {
+  "0.5.0": {
+    "title": "Find in the current worksheet",
+    "summary": "Each comparison grid can search its current worksheet independently without loading the workbook into the WebView.",
+    "changes": {
+      "currentSheetFind": "Open Find for the focused left or right grid, combine case, Unicode whole-word, and RE2 regular-expression options, navigate cyclically with synchronized grids, and keep searches scoped to the current row filters. Keyboard focus remains clear without drawing stacked blue frames around the Find input."
+    }
+  },
   "0.4.1": {
     "title": "Cleaner edits and more precise copying",
     "summary": "Unchanged cell edits no longer create unsaved state, and Copy to left handles only real differences.",

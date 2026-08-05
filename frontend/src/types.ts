@@ -113,6 +113,8 @@ export interface RegionCell {
   right: CellValue;
   status: string;
   rowStatus: RowStatus;
+  leftMatch?: boolean;
+  rightMatch?: boolean;
 }
 
 export interface Region {
@@ -124,6 +126,20 @@ export interface Region {
   filtered?: boolean;
   totalRows?: number;
   cells: RegionCell[];
+}
+
+export interface SearchRef {
+  row: number;
+  sourceRow: number;
+  col: number;
+  axis: string;
+}
+
+export interface SearchSummary {
+  count: number;
+  currentIndex: number;
+  currentRef?: SearchRef;
+  error?: string;
 }
 
 export interface RepositoryBranch {

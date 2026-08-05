@@ -110,10 +110,12 @@ function renderReadme(locale) {
 
 function renderChangelog(locale) {
   const intro = { en: "User-visible SheetProof changes.", "zh-CN": "SheetProof 的用户可见变化记录。", ja: "SheetProof のユーザー向け変更履歴です。" }[locale];
+  const unreleased = { en: "Unreleased", "zh-CN": "未发布", ja: "未リリース" }[locale];
   const sections = releases.releases.map((release) => {
     const text = changelogContent[locale][release.version];
     const changes = release.changes.map((id) => `- ${text.changes[id]}`).join("\n");
-    return `## ${release.version} — ${release.date}\n\n_${localeContent[locale].product.channel} · ${text.title}_\n\n${text.summary}\n\n${changes}`;
+    const heading = release.version === "unreleased" ? unreleased : `${release.version} — ${release.date}`;
+    return `## ${heading}\n\n_${localeContent[locale].product.channel} · ${text.title}_\n\n${text.summary}\n\n${changes}`;
   }).join("\n\n");
   return `<!-- ${generatedNotice} -->\n\n${languageNav(locale, "CHANGELOG")}\n\n# Changelog\n\n${intro}\n\n${sections}\n`;
 }

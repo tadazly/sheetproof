@@ -1,5 +1,6 @@
 {
   "releases": [
+    { "version": "0.5.0", "date": "2026-08-05", "channel": "preview", "changes": ["currentSheetFind"] },
     { "version": "0.4.1", "date": "2026-08-05", "channel": "preview", "changes": ["noOpEditing", "differenceOnlyCopy"] },
     { "version": "0.4.0", "date": "2026-08-05", "channel": "preview", "changes": ["localizedDesktop", "localizedCli", "localizedWebsite", "languagePersistence", "settingsAndData", "repositoryStartup", "mobileNavigation", "screenshotViewer", "heroCarousel"] },
     { "version": "0.3.0", "date": "2026-08-04", "channel": "preview", "changes": ["scrollbarMarkers", "viewportPerformance", "keyAlignment", "neighborPlacement"] },

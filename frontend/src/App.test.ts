@@ -61,6 +61,43 @@ const repositoryView: RepositoryView = {
   comparisonActive: false
 };
 
+function findSummaryFixture(): Summary {
+  const loaded = structuredClone(emptySummary);
+  loaded.diff.sheetCount = 1;
+  loaded.diff.differentSheetCount = 1;
+  loaded.diff.differenceCount = 2;
+  loaded.diff.sheets = [{
+    name: "配置", status: "modified", orderDifferent: false,
+    differenceCount: 2, maxRow: 4, maxCol: 2, idColumn: 1, nextId: 0,
+    addedRowCount: 1, deletedRowCount: 0, modifiedRowCount: 1, conflictRowCount: 0,
+    rows: [
+      { row: 2, leftRow: 2, rightRow: 2, status: "modified" },
+      { row: 3, leftRow: 0, rightRow: 3, status: "added" }
+    ]
+  }];
+  loaded.selectedSheet = "配置";
+  return loaded;
+}
+
+function findRegionFixture(filtered = false): Region {
+  const cells = [1, 2, 3, 4].flatMap((row) => [1, 2].map((col) => ({
+    row,
+    sourceRow: row,
+    leftRow: row,
+    rightRow: row,
+    col,
+    axis: `${col === 1 ? "A" : "B"}${row}`,
+    status: row === 2 && col === 2 ? "modified" : "unchanged",
+    rowStatus: row === 2 ? "modified" as const : "unchanged" as const,
+    left: { present: true, raw: `left ${row}-${col}`, display: `left ${row}-${col}`, type: "string" },
+    right: { present: true, raw: `right ${row}-${col}`, display: `right ${row}-${col}`, type: "string" }
+  })));
+  return {
+    sheet: "配置", fromRow: 1, toRow: 4, fromCol: 1, toCol: 2,
+    filtered, totalRows: filtered ? 2 : undefined, cells
+  };
+}
+
 enableAutoUnmount(afterEach);
 afterEach(() => vi.useRealTimers());
 
@@ -296,6 +333,316 @@ describe("App", () => {
 
     expect(setKeyColumn).toHaveBeenLastCalledWith("配置", 0);
     expect(wrapper.findAll(".col-header.key-column")).toHaveLength(0);
+  });
+
+  it("opens independent Find widgets by grid focus and navigates without advancing the other side", async () => {
+    vi.useFakeTimers();
+    const loaded = findSummaryFixture();
+    const find = vi.fn(async (
+      _sheet: string,
+      side: "left" | "right",
+      query: string,
+      _caseSensitive: boolean,
+      _wholeWord: boolean,
+      regex: boolean
+    ) => {
+      if (regex && query === "[") return { count: 0, currentIndex: 0, error: "error parsing regexp" };
+      return side === "left"
+        ? { count: 2, currentIndex: 1, currentRef: { row: 2, sourceRow: 2, col: 2, axis: "B2" } }
+        : { count: 3, currentIndex: 1, currentRef: { row: 3, sourceRow: 3, col: 1, axis: "A3" } };
+    });
+    const indexes = { left: 1, right: 1 };
+    const navigateFind = vi.fn(async (side: "left" | "right", direction: 1 | -1) => {
+      const count = side === "left" ? 2 : 3;
+      indexes[side] = ((indexes[side] - 1 + direction + count) % count) + 1;
+      return {
+        count,
+        currentIndex: indexes[side],
+        currentRef: side === "left"
+          ? { row: 2, sourceRow: 2, col: 2, axis: "B2" }
+          : { row: 20, sourceRow: 20, col: 4, axis: "D20" }
+      };
+    });
+    const region = vi.fn(async () => {
+      const value = findRegionFixture();
+      value.cells = value.cells.map((cell) => ({
+        ...cell,
+        leftMatch: cell.sourceRow === 2 && cell.col === 2,
+        rightMatch: cell.sourceRow === 3 && cell.col === 1
+      }));
+      return value;
+    });
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: region,
+          FilteredRegion: async () => findRegionFixture(true),
+          Find: find,
+          NavigateFind: navigateFind,
+          ClearFind: async () => undefined
+        }
+      }
+    };
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+
+    const grids = wrapper.findAll(".grid-scroll");
+    (grids[0].element as HTMLElement).focus();
+    grids[0].element.dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
+    await flushPromises();
+    expect(wrapper.findAll(".find-widget")).toHaveLength(1);
+    const leftWidget = wrapper.get('.find-widget[data-side="left"]');
+    const leftInput = leftWidget.get("input");
+    expect(document.activeElement).toBe(leftInput.element);
+    await leftInput.setValue("left-key");
+    expect(leftWidget.text()).toContain("搜索中");
+    await vi.advanceTimersByTimeAsync(160);
+    await flushPromises();
+    expect(find).toHaveBeenCalledWith("配置", "left", "left-key", false, false, false, [], 1, 1);
+    expect(leftWidget.text()).toContain("1 / 2");
+
+    (grids[1].element as HTMLElement).focus();
+    grids[1].element.dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
+    await flushPromises();
+    const rightWidget = wrapper.get('.find-widget[data-side="right"]');
+    await rightWidget.get("input").setValue("right-key");
+    await vi.advanceTimersByTimeAsync(160);
+    await flushPromises();
+    expect(wrapper.findAll(".find-widget")).toHaveLength(2);
+    expect((leftInput.element as HTMLInputElement).value).toBe("left-key");
+    expect((rightWidget.get("input").element as HTMLInputElement).value).toBe("right-key");
+    expect(rightWidget.text()).toContain("1 / 3");
+
+    await leftInput.trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    expect(navigateFind).toHaveBeenLastCalledWith("left", 1);
+    expect(leftWidget.text()).toContain("2 / 2");
+    expect(rightWidget.text()).toContain("1 / 3");
+    await leftInput.trigger("keydown", { key: "Enter", shiftKey: true });
+    await flushPromises();
+    expect(navigateFind).toHaveBeenLastCalledWith("left", -1);
+
+    (grids[1].element as HTMLElement).focus();
+    grids[1].element.dispatchEvent(new KeyboardEvent("keydown", { key: "F3", bubbles: true }));
+    await flushPromises();
+    expect(navigateFind).toHaveBeenLastCalledWith("right", 1);
+    expect((grids[0].element as HTMLElement).scrollTop).toBeGreaterThan(0);
+    expect((grids[0].element as HTMLElement).scrollTop).toBe((grids[1].element as HTMLElement).scrollTop);
+    expect((grids[0].element as HTMLElement).scrollLeft).toBe((grids[1].element as HTMLElement).scrollLeft);
+    grids[1].element.dispatchEvent(new KeyboardEvent("keydown", { key: "F3", shiftKey: true, bubbles: true }));
+    await flushPromises();
+    expect(navigateFind).toHaveBeenLastCalledWith("right", -1);
+
+    expect(wrapper.find(".cell.find-match").exists()).toBe(true);
+    expect(wrapper.find(".cell.find-current-match").exists()).toBe(true);
+    await rightWidget.get("input").trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(wrapper.find('.find-widget[data-side="right"]').exists()).toBe(false);
+    expect(wrapper.find('.find-widget[data-side="left"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain("Replace All");
+    expect(wrapper.text()).not.toContain("全部替换");
+  });
+
+  it("keeps Find input shortcuts native, reports inline errors, and ignores stale query results", async () => {
+    vi.useFakeTimers();
+    const loaded = findSummaryFixture();
+    let resolveOld: ((value: unknown) => void) | undefined;
+    let resolveNew: ((value: unknown) => void) | undefined;
+    const find = vi.fn((_sheet: string, _side: string, query: string, _case: boolean, _word: boolean, regex: boolean) => {
+      if (regex && query === "[") {
+        return Promise.resolve({ count: 0, currentIndex: 0, error: "error parsing regexp: missing ]" });
+      }
+      return new Promise((resolve) => {
+        if (query === "old") resolveOld = resolve;
+        else resolveNew = resolve;
+      });
+    });
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: async () => findRegionFixture(),
+          FilteredRegion: async () => findRegionFixture(true),
+          Find: find,
+          NavigateFind: async () => ({ count: 0, currentIndex: 0 }),
+          ClearFind: async () => undefined
+        }
+      }
+    };
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    const leftGrid = wrapper.findAll(".grid-scroll")[0];
+    (leftGrid.element as HTMLElement).focus();
+    leftGrid.element.dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
+    await flushPromises();
+    const widget = wrapper.get('.find-widget[data-side="left"]');
+    const input = widget.get("input");
+
+    await input.setValue("old");
+    await vi.advanceTimersByTimeAsync(160);
+    await input.setValue("new");
+    await vi.advanceTimersByTimeAsync(160);
+    resolveNew?.({ count: 2, currentIndex: 2, currentRef: { row: 3, sourceRow: 3, col: 1, axis: "A3" } });
+    await flushPromises();
+    expect(widget.text()).toContain("2 / 2");
+    resolveOld?.({ count: 9, currentIndex: 9, currentRef: { row: 1, sourceRow: 1, col: 1, axis: "A1" } });
+    await flushPromises();
+    expect(widget.text()).toContain("2 / 2");
+    expect(widget.text()).not.toContain("9 / 9");
+
+    const filtersBefore = wrapper.findAll(".summary-metric.active").length;
+    await input.trigger("keydown", { key: "a", ctrlKey: true });
+    await input.trigger("keydown", { key: "1" });
+    await input.trigger("keydown", { key: "Tab" });
+    expect(wrapper.findAll(".summary-metric.active")).toHaveLength(filtersBefore);
+    expect(wrapper.find(".grid-panel.original-preview").exists()).toBe(false);
+
+    await widget.findAll(".find-option")[2].trigger("click");
+    await input.setValue("[");
+    await vi.advanceTimersByTimeAsync(160);
+    await flushPromises();
+    expect(widget.text()).toContain("正则表达式无效");
+    expect(wrapper.find(".find-error-detail").text()).toContain("missing ]");
+    expect(wrapper.find(".error-banner").exists()).toBe(false);
+
+    await input.trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(wrapper.find('.find-widget[data-side="left"]').exists()).toBe(false);
+  });
+
+  it("reruns an open Find for row filters and worksheet changes while preserving its query", async () => {
+    vi.useFakeTimers();
+    const loaded = findSummaryFixture();
+    loaded.diff.sheets.push({
+      ...structuredClone(loaded.diff.sheets[0]),
+      name: "Second",
+      differenceCount: 1
+    });
+    loaded.diff.sheetCount = 2;
+    const find = vi.fn(async (sheet: string) => ({
+      count: 1,
+      currentIndex: 1,
+      currentRef: { row: 1, sourceRow: 1, col: 1, axis: `${sheet}!A1` }
+    }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: async () => findRegionFixture(),
+          FilteredRegion: async () => findRegionFixture(true),
+          Find: find,
+          NavigateFind: async () => ({ count: 1, currentIndex: 1 }),
+          ClearFind: async () => undefined
+        }
+      }
+    };
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    const leftGrid = wrapper.findAll(".grid-scroll")[0];
+    leftGrid.element.dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
+    await flushPromises();
+    const input = wrapper.get('.find-widget[data-side="left"] input');
+    await input.setValue("needle");
+    await vi.advanceTimersByTimeAsync(160);
+    await flushPromises();
+    expect(find).toHaveBeenLastCalledWith("配置", "left", "needle", false, false, false, [], 1, 1);
+
+    await wrapper.get(".summary-metric.added").trigger("click");
+    await flushPromises();
+    expect(wrapper.get('.find-widget[data-side="left"]').text()).toContain("搜索中");
+    await vi.advanceTimersByTimeAsync(160);
+    await flushPromises();
+    expect(find).toHaveBeenLastCalledWith("配置", "left", "needle", false, false, false, ["added"], 1, 1);
+
+    await wrapper.findAll(".sheet-item")[1].trigger("click");
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(160);
+    await flushPromises();
+    expect(find).toHaveBeenLastCalledWith("Second", "left", "needle", false, false, false, ["added"], 1, 1);
+    expect((input.element as HTMLInputElement).value).toBe("needle");
+  });
+
+  it("reruns an open Find after repository file and reference switches", async () => {
+    vi.useFakeTimers();
+    const loaded = findSummaryFixture();
+    const activeRepository = {
+      ...structuredClone(repositoryView),
+      selectedFile: "config/activity/reward.xlsx",
+      selectedRef: "refs/heads/develop",
+      leftState: "ready",
+      rightState: "ready",
+      comparisonActive: true
+    };
+    const find = vi.fn(async () => ({
+      count: 1, currentIndex: 1,
+      currentRef: { row: 1, sourceRow: 1, col: 1, axis: "A1" }
+    }));
+    const result = (file: string, ref: string): RepositoryResult => ({
+      repository: { ...structuredClone(activeRepository), selectedFile: file, selectedRef: ref },
+      summary: {
+        ...structuredClone(loaded),
+        diff: {
+          ...structuredClone(loaded.diff),
+          leftFile: `/tmp/${file}`,
+          rightFile: `/tmp/${ref.replaceAll("/", "-")}.xlsx`
+        }
+      }
+    });
+    const selectFile = vi.fn(async (file: string) => result(file, activeRepository.selectedRef));
+    const selectRef = vi.fn(async (ref: string) => result("中文 目录/配置.xlsx", ref));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({
+            loading: false, hasSession: true, error: "", mode: "repository", repository: activeRepository
+          }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: async () => findRegionFixture(),
+          FilteredRegion: async () => findRegionFixture(true),
+          Find: find,
+          NavigateFind: async () => ({ count: 1, currentIndex: 1 }),
+          ClearFind: async () => undefined,
+          SelectRepositoryFile: selectFile,
+          SelectRepositoryRef: selectRef
+        }
+      }
+    };
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    const leftGrid = wrapper.findAll(".grid-scroll")[0];
+    leftGrid.element.dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
+    await flushPromises();
+    const input = wrapper.get('.find-widget[data-side="left"] input');
+    await input.setValue("repository needle");
+    await vi.advanceTimersByTimeAsync(160);
+    await flushPromises();
+    const initialSearches = find.mock.calls.length;
+
+    const fileRow = wrapper.findAll(".tree-row").find((row) => row.text().includes("配置.xlsx"));
+    expect(fileRow).toBeDefined();
+    await fileRow!.trigger("click");
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(160);
+    await flushPromises();
+    expect(selectFile).toHaveBeenCalledWith("中文 目录/配置.xlsx");
+    expect(find.mock.calls.length).toBeGreaterThan(initialSearches);
+
+    const afterFileSearches = find.mock.calls.length;
+    await wrapper.get(".reference-header select").setValue("refs/remotes/origin/main");
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(160);
+    await flushPromises();
+    expect(selectRef).toHaveBeenCalledWith("refs/remotes/origin/main");
+    expect(find.mock.calls.length).toBeGreaterThan(afterFileSearches);
+    expect((input.element as HTMLInputElement).value).toBe("repository needle");
   });
 
   it("renders a verified UGit worktree on the editable left and hides the snapshot directory", async () => {

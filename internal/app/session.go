@@ -120,6 +120,8 @@ type RegionCell struct {
 	Right        workbook.CellValue `json:"right"`
 	Status       diff.CellStatus    `json:"status"`
 	RowStatus    diff.RowStatus     `json:"rowStatus"`
+	LeftMatch    bool               `json:"leftMatch,omitempty"`
+	RightMatch   bool               `json:"rightMatch,omitempty"`
 }
 
 type Region struct {
@@ -147,6 +149,7 @@ type CellCoordinate struct {
 
 type Session struct {
 	mu                     sync.RWMutex
+	searchMu               sync.Mutex
 	leftFile               *excelize.File
 	rightFile              *excelize.File
 	left                   *workbook.WorkbookSnapshot
@@ -174,6 +177,8 @@ type Session struct {
 	savedState             uint64
 	nextState              uint64
 	resolutions            []RowResolution
+	dataGeneration         uint64
+	searches               map[SearchSide]*searchCache
 }
 
 func Open(leftPath, rightPath string, options Options) (*Session, error) {
@@ -239,6 +244,7 @@ func OpenContext(ctx context.Context, leftPath, rightPath string, options Option
 		alignmentSheetMoved: alignment.sheetMoved, alignmentSheetEligible: alignment.sheetEligible,
 		mergeNotice: mergeNotice,
 		options:     options, stateID: 1, savedState: 1, nextState: 2,
+		dataGeneration: 1, searches: make(map[SearchSide]*searchCache),
 	}, nil
 }
 
@@ -297,6 +303,7 @@ func OpenLeft(leftPath string, options Options) (*Session, error) {
 		leftRows: identityWorkbookRows(left), keyColumns: make(map[string]int),
 		alignmentMode: RowAlignmentAuto,
 		stateID:       1, savedState: 1, nextState: 2,
+		dataGeneration: 1, searches: make(map[SearchSide]*searchCache),
 	}, nil
 }
 
@@ -378,6 +385,7 @@ func (s *Session) ReplaceRight(rightPath, rightLabel string) error {
 	s.currentDiff = diff.CompareWithKeyColumns(alignment.left, alignment.right, alignment.keyColumns)
 	annotateDiffRowSources(s.currentDiff, alignment.leftSources, alignment.rowSources)
 	s.resolutions = nil
+	s.dataGeneration++
 	if rightLabel != "" {
 		s.options.RightLabel = rightLabel
 	}
@@ -500,6 +508,7 @@ func (s *Session) ReloadLeft() error {
 	s.savedState = 1
 	s.nextState = 2
 	s.resolutions = nil
+	s.dataGeneration++
 	s.mu.Unlock()
 	if old != nil {
 		return old.Close()
@@ -538,6 +547,7 @@ func (s *Session) DetachRight(rightLabel string) error {
 	s.alignmentSheetMoved = nil
 	s.alignmentSheetEligible = nil
 	s.resolutions = nil
+	s.dataGeneration++
 	if rightLabel != "" {
 		s.options.RightLabel = rightLabel
 	}
@@ -769,75 +779,25 @@ func (s *Session) FilteredRegion(
 	if fromRow < 1 || fromCol < 1 || rowCount < 1 || colCount < 1 || rowCount > 300 || colCount > 100 {
 		return Region{}, fmt.Errorf("invalid filtered region (maximum 300 rows by 100 columns)")
 	}
-	selected := make(map[diff.RowStatus]bool, len(statuses))
-	for _, status := range statuses {
-		switch status {
-		case diff.RowAdded, diff.RowDeleted, diff.RowModified, diff.RowConflict:
-			selected[status] = true
-		default:
-			return Region{}, fmt.Errorf("invalid row filter %q", status)
-		}
+	allRows, err := s.filteredRowsLocked(sheet, statuses)
+	if err != nil {
+		return Region{}, err
 	}
-	if len(selected) == 0 {
-		return Region{}, fmt.Errorf("at least one row filter is required")
-	}
-
-	var sheetDiff *diff.SheetDiff
-	if s.currentDiff != nil {
-		for _, candidate := range s.currentDiff.Sheets {
-			if candidate.Name == sheet {
-				sheetDiff = candidate
-				break
-			}
-		}
-	}
-	if sheetDiff == nil {
-		if s.left.ByName[sheet] == nil && (s.right == nil || s.right.ByName[sheet] == nil) {
-			return Region{}, fmt.Errorf("worksheet %q not found", sheet)
-		}
-		return Region{
-			Sheet: sheet, FromRow: fromRow, ToRow: fromRow - 1,
-			FromCol: fromCol, ToCol: fromCol + colCount - 1,
-			Filtered: true, Cells: []RegionCell{},
-		}, nil
-	}
-
-	windowRows := make([]regionRow, 0, rowCount)
-	appendTargets := make(map[int]bool)
-	appendSources := make(map[int]int)
-	for _, resolution := range s.resolutions {
-		if resolution.Sheet == sheet && resolution.TargetRow > 0 && isAppendResolution(resolution.Kind) {
-			appendTargets[resolution.TargetSourceRow] = true
-			appendSources[resolution.SourceRow] = resolution.TargetRow
-		}
-	}
-	selectedCount := 0
 	windowStart := fromRow - 1
-	for _, rowDiff := range sheetDiff.Rows {
-		if appendTargets[rowDiff.Row] || !selected[rowDiff.Status] {
-			continue
-		}
-		mapping := regionRow{
-			source: rowDiff.Row, left: rowDiff.LeftRow, right: rowDiff.RightRow,
-		}
-		if targetRow := appendSources[rowDiff.Row]; targetRow > 0 {
-			mapping.left = targetRow
-		}
-		mapping.display = selectedCount + 1
-		if selectedCount >= windowStart && len(windowRows) < rowCount {
-			windowRows = append(windowRows, mapping)
-		}
-		selectedCount++
+	windowRows := make([]regionRow, 0, rowCount)
+	if windowStart < len(allRows) {
+		end := min(windowStart+rowCount, len(allRows))
+		windowRows = append(windowRows, allRows[windowStart:end]...)
 	}
 
-	region, err := s.regionForRowsLocked(sheet, windowRows, fromCol, colCount)
+	region, err := s.regionForRowsLocked(sheet, windowRows, fromCol, colCount, statuses)
 	if err != nil {
 		return Region{}, err
 	}
 	region.FromRow = fromRow
 	region.ToRow = fromRow + len(windowRows) - 1
 	region.Filtered = true
-	region.TotalRows = selectedCount
+	region.TotalRows = len(allRows)
 	return region, nil
 }
 
@@ -859,6 +819,7 @@ func (s *Session) regionForRowsLocked(
 	sheet string,
 	rows []regionRow,
 	fromCol, colCount int,
+	filters ...[]diff.RowStatus,
 ) (Region, error) {
 	leftSheet := s.left.ByName[sheet]
 	originalLeftSheet := s.originalLeft.ByName[sheet]
@@ -884,6 +845,12 @@ func (s *Session) regionForRowsLocked(
 		FromCol: fromCol, ToCol: fromCol + colCount - 1,
 		Cells: make([]RegionCell, 0, len(rows)*colCount),
 	}
+	var activeFilters []diff.RowStatus
+	if len(filters) > 0 {
+		activeFilters = filters[0]
+	}
+	leftMatches := s.searchMatchesLocked(SearchLeft, sheet, activeFilters)
+	rightMatches := s.searchMatchesLocked(SearchRight, sheet, activeFilters)
 	for _, row := range rows {
 		for col := region.FromCol; col <= region.ToCol; col++ {
 			ref := workbook.CellRef{Sheet: sheet, Row: row.source, Col: col}
@@ -896,13 +863,16 @@ func (s *Session) regionForRowsLocked(
 			if rowStatus == "" {
 				rowStatus = diff.RowUnchanged
 			}
-			region.Cells = append(region.Cells, RegionCell{
+			cell := RegionCell{
 				Row: row.display, SourceRow: row.source, LeftRow: row.left, RightRow: row.right,
 				Col: col, Axis: ref.Axis(),
 				Left: leftSheet.Cell(row.left, col), OriginalLeft: originalLeftSheet.Cell(row.left, col),
 				Right:  rightSheet.Cell(row.right, col),
 				Status: status, RowStatus: rowStatus,
-			})
+			}
+			cell.LeftMatch = searchMatchAt(leftMatches, row.source, col)
+			cell.RightMatch = searchMatchAt(rightMatches, row.source, col)
+			region.Cells = append(region.Cells, cell)
 		}
 	}
 	if len(rows) > 0 {
@@ -1673,6 +1643,7 @@ func (s *Session) reclassifyRowsLocked(name string) error {
 }
 
 func (s *Session) rebuildComparisonLocked() {
+	s.dataGeneration++
 	if s.rightSource == nil {
 		s.comparisonLeft = s.left
 		s.right = nil
@@ -1739,6 +1710,7 @@ func (s *Session) updateCellLocked(ref workbook.CellRef, state merge.CellState) 
 			recalculateSheetBounds(sheet)
 		}
 	}
+	s.dataGeneration++
 	if s.currentDiff == nil || s.right == nil {
 		return nil
 	}

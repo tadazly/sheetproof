@@ -4,7 +4,7 @@
     "product": {
       "name": "SheetProof",
       "legacyName": "ugxlsx",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "channel": "preview",
       "formats": [
         ".xlsx"
@@ -23,10 +23,10 @@
     },
     "downloads": {
       "releases": "https://github.com/tadazly/sheetproof/releases",
-      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SheetProof-windows-amd64.exe",
-      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SheetProof-macos-universal.zip",
-      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SHA256SUMS.txt",
-      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.4.1.zip"
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.5.0.zip"
     },
     "screenshots": {
       "keyAlignment": {
@@ -73,6 +73,10 @@
         "rowFilters": {
           "title": "Current-sheet row filters",
           "summary": "Combine added, deleted, modified, and conflict filters without losing the source row being reviewed."
+        },
+        "currentSheetFind": {
+          "title": "Find in the current worksheet",
+          "summary": "Search the left and right sides independently with case, Unicode whole-word, and RE2 regular-expression options, including within filtered rows."
         },
         "controlledMerge": {
           "title": "Controlled merge and undo",
@@ -146,7 +150,7 @@
         },
         "changelog": {
           "title": "Changelog",
-          "description": "User-visible changes in SheetProof 0.1.0 through 0.4.1."
+          "description": "User-visible changes in SheetProof 0.1.0 through 0.5.0."
         }
       }
     },
@@ -171,6 +175,10 @@
         "rowFilters": {
           "title": "当前工作表行筛选",
           "summary": "组合筛选新增、删除、修改和冲突，同时保留正在核对的来源行。"
+        },
+        "currentSheetFind": {
+          "title": "当前工作表查找",
+          "summary": "左右独立搜索，支持大小写、Unicode 全词和 RE2 正则选项，并可限定在当前差异行筛选范围内。"
         },
         "controlledMerge": {
           "title": "可控合并与撤销",
@@ -244,7 +252,7 @@
         },
         "changelog": {
           "title": "更新日志",
-          "description": "SheetProof 0.1.0 至 0.4.1 的用户可见变化。"
+          "description": "SheetProof 0.1.0 至 0.5.0 的用户可见变化。"
         }
       }
     },
@@ -269,6 +277,10 @@
         "rowFilters": {
           "title": "現在のシートの行絞り込み",
           "summary": "確認中の元行を保ったまま、追加・削除・変更・競合を組み合わせて絞り込めます。"
+        },
+        "currentSheetFind": {
+          "title": "現在のシート内を検索",
+          "summary": "左右を別々に検索し、大文字小文字、Unicode 単語全体、RE2 正規表現を組み合わせ、絞り込み行だけにも限定できます。"
         },
         "controlledMerge": {
           "title": "選んで反映・元に戻す",
@@ -342,7 +354,7 @@
         },
         "changelog": {
           "title": "変更履歴",
-          "description": "SheetProof 0.1.0 から 0.4.1 までのユーザー向け変更履歴。"
+          "description": "SheetProof 0.1.0 から 0.5.0 までのユーザー向け変更履歴。"
         }
       }
     }
@@ -442,6 +454,14 @@
   "changelog": {
     "releases": [
       {
+        "version": "0.5.0",
+        "date": "2026-08-05",
+        "channel": "preview",
+        "changes": [
+          "currentSheetFind"
+        ]
+      },
+      {
         "version": "0.4.1",
         "date": "2026-08-05",
         "channel": "preview",
@@ -512,6 +532,13 @@
     ],
     "locales": {
       "en": {
+        "0.5.0": {
+          "title": "Find in the current worksheet",
+          "summary": "Each comparison grid can search its current worksheet independently without loading the workbook into the WebView.",
+          "changes": {
+            "currentSheetFind": "Open Find for the focused left or right grid, combine case, Unicode whole-word, and RE2 regular-expression options, navigate cyclically with synchronized grids, and keep searches scoped to the current row filters. Keyboard focus remains clear without drawing stacked blue frames around the Find input."
+          }
+        },
         "0.4.1": {
           "title": "Cleaner edits and more precise copying",
           "summary": "Unchanged cell edits no longer create unsaved state, and Copy to left handles only real differences.",
@@ -577,6 +604,13 @@
         }
       },
       "zh-CN": {
+        "0.5.0": {
+          "title": "当前工作表查找",
+          "summary": "左右对比网格可独立搜索当前工作表，无需把整本工作簿加载到 WebView。",
+          "changes": {
+            "currentSheetFind": "可在当前聚焦的左右网格打开查找，组合大小写、Unicode 全词与 RE2 正则选项，在同步双栏中循环导航，并将范围限定为当前差异行筛选。键盘焦点保持清楚，但不会在查找输入区叠加蓝色矩形框。"
+          }
+        },
         "0.4.1": {
           "title": "编辑状态与差异复制更准确",
           "summary": "未改变内容的编辑不再产生未保存状态，复制到左侧只处理真实差异。",
@@ -642,6 +676,13 @@
         }
       },
       "ja": {
+        "0.5.0": {
+          "title": "現在のシート内を検索",
+          "summary": "ブック全体を WebView に読み込まず、左右の比較グリッドで現在のシートを別々に検索できます。",
+          "changes": {
+            "currentSheetFind": "フォーカス中の左右グリッドで検索を開き、大文字小文字、Unicode 単語全体、RE2 正規表現を組み合わせ、同期した 2 ペインを循環移動し、現在の行絞り込み内だけを対象にできます。キーボードフォーカスを判別できる状態を保ちながら、検索入力欄の周囲に青い枠が重なって表示されないようにしました。"
+          }
+        },
         "0.4.1": {
           "title": "編集状態と差分コピーをより正確に",
           "summary": "内容を変えない編集で未保存状態を作らず、左側へのコピーは実際の差分だけを処理します。",

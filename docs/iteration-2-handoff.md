@@ -1619,3 +1619,91 @@ cd frontend && npm run test && npm run typecheck
 - Cloudflare 公网 15 个三语产品路由均返回 200 且具有代理响应头；三语更新日志均显示
   `0.4.1` 和两项正确修复，英文页面不包含误归档的标题排版条目，下载页面已指向
   `v0.4.1`，实际 `/brand/favicon.ico` 返回 200 且非空。
+
+## 2026-08-05：当前工作表查找
+
+- 本轮从 clean 工作树开始，完整复核项目规则、技能、交接、README、架构和手工验收后实施；
+  没有 reset、checkout、覆盖已有成果、提交、推送、打标签或发布应用版本。功能严格限定为
+  Find，不包含 Replace、Replace All、跨工作表/工作簿搜索、历史或条件持久化。
+- `internal/app.Session` 新增左右独立的当前搜索缓存。缓存键包含工作表、侧别、查询、大小写、
+  Unicode 全词、Go RE2 正则、规范化行筛选和数据代次；结果只保存紧凑逻辑行列索引，Wails
+  `Find` / `NavigateFind` / `ClearFind` 只传回数量、当前序号和单个当前坐标。未筛选时扫描
+  对齐后的 `comparisonLeft` / `right` 稀疏实际单元格；筛选时复用 `FilteredRegion` 的同一
+  `SheetDiff.Rows` 与冲突追加映射，缺失侧不匹配。公式按 `=公式`、其他值按 raw 搜索，显式
+  空字符串可被有效正则命中，display 和差异相等语义均未改变。
+- Region 只给当前窗口单元格附加左右匹配布尔标记，不传完整匹配列表。编辑、复制、清空、
+  合并、撤销、左右重载、右侧替换/移除和主键/行号对齐变化递增会话数据代次；Save 不改变
+  内存内容。前端左右状态、150ms 防抖、请求序号、错误和当前索引完全独立；工作表、文件、
+  引用、筛选或对齐变化先使旧结果失效再重搜，旧异步结果不能安装或触发旧坐标跳转。
+- 每个网格右上角新增不占布局轨道的 VS Code 风格单行 Find，提供 Aa、ab、`.*`、计数、
+  上一处、下一处和关闭。`Ctrl/Command+F` 按网格焦点打开，Enter/Shift+Enter 与
+  F3/Shift+F3 循环导航；只推进操作侧索引，左右仍滚到同一逻辑坐标。输入控件保留原生
+  `Ctrl/Command+A`、数字键和 Tab。普通/当前匹配使用可叠加紫色内描边，不覆盖新增绿、
+  删除红、修改红/绿、冲突橙或蓝色选择框；三语 aria-label、title、焦点和 pressed 状态已补齐。
+  后续实机反馈发现全局输入焦点描边和 Find 的 `:focus-within` 会在 `Ctrl/Command+F` 后叠成
+  两层蓝色矩形框；现仅对 Find 输入覆盖原生蓝色 outline，外层改为单层中性边框，按钮的
+  Tab 焦点也改为中性边框与浅底色，保留键盘可辨识性而不再显示突兀蓝框。前端回归确认
+  `Ctrl/Command+F` 后真实 activeElement 仍为 Find 输入框；重新构建 Wails 后，以真实键盘
+  分别截取输入聚焦和 Tab 到 Aa 的状态，证据为 `17-en-find-input-neutral-focus.png` 与
+  `18-en-find-button-neutral-focus.png`（另有同名 `-crop` 局部图）。两种状态均无蓝色外框。
+- Go 回归覆盖左右独立、当前工作表、单类/多类筛选、缺失侧、主键逻辑坐标和中间独有/局部
+  歧义行、大小写/Unicode 全词/正则/非法正则、单格只计一次、公式/raw/显式空、超过 10,000
+  匹配、各类失效与并发 Region；前端回归覆盖焦点快捷键、双侧独立、Enter/F3 正反导航、
+  同步滚动、输入原生快捷键、内联状态、旧请求丢弃、筛选/工作表重搜、叠加高亮、单侧关闭和
+  不存在任何替换界面。`go test ./...`、`go vet ./...`、前端 lint/typecheck、73/73 测试、
+  production build、内容同步和 `git diff --check` 通过。`CGO_ENABLED=1 go test -race ./...`
+  已尝试，但本机缺少 `gcc`，停在 `runtime/cgo` 编译前，未记为通过。
+- 100,000 个有效单元格被稀疏分布到约 1,000,000 行 × 1,000 列后，Intel i7-14700、
+  Windows amd64、`-benchtime=5x` 的完整重新扫描结果为：默认普通查询 29.79ms/op，大小写
+  查询 6.64ms/op，正则查询 28.20ms/op；没有设置易受机器波动影响的测试阈值。缓存后导航
+  仍为 O(1)，匹配数量不受 Differences 的 10,000 上限约束。
+- 离线优先 `scripts/invoke-wails.ps1 build` 使用本地 Wails v2.10.2 完成绑定、前端和
+  Windows amd64 全量构建，产物为 `build/bin/SheetProof.exe`。该产物已通过真实键鼠与截图
+  验收：双侧不同查询、Aa/ab/正则、F3/Shift+F3 同步定位、主键对齐、Added 筛选缺失侧、
+  工作表重搜、无结果/非法正则、单侧关闭、Git difftool 双侧只读、English/简体中文/日本語、
+  1210×900/1440×900/1600×900，以及 104 行长表从约第 9 行连续滚到第 92 行。未观察到
+  白屏、明显卡顿、工具栏闪烁、Find 压缩网格或控件重叠/溢出；所有验收 PID 均精确退出。
+  证据位于忽略目录 `build/acceptance/current-sheet-find/`，关键截图包括
+  `04-en-f3-synced-navigation.png`、`05-en-options-combined.png`、
+  `06-en-no-result-invalid-regex.png`、`07-en-added-filter-missing-side.png`、
+  `08-en-sheet-switch-rerun.png`、`10-zh-both-1210.png`、`11-ja-both-1440.png`、
+  `13-en-git-difftool-readonly-1440.png`、`15-long-scroll-after.png` 和
+  `16-en-shift-f3-previous-1440.png`。
+- README、架构、手工验收、三语产品能力文案、未发布 changelog 与官网生成内容已同步；官网
+  lint 为 0 错误和 4 条既有 `<img>` warning，16 条静态路由构建与 10/10 渲染测试通过。
+  正式 Lightsail 部署未执行：当前运行环境拒绝从本机历史推断 SSH 目标，项目又要求执行者显式
+  提供 `-SshHost`。在维护者明确给出本机 SSH 目标并授权后，需运行
+  `scripts/deploy-site-lightsail.ps1`，再核对源站、Cloudflare 三语页面和同一 Caddy 实例既有站点。
+
+## 2026-08-05：v0.5.0 正式发布候选
+
+- 上一个已发布、非草稿版本为 Preview `v0.4.1`。本轮新增完整的当前工作表查找能力，属于向后兼容的
+  用户工作流扩展，因此按 SemVer 推导 Minor 版本 `v0.5.0`，继续标记为 Preview。
+- `product/product.json`、三语 changelog、README/CHANGELOG、CLI 版本、桌面与官网 package
+  清单及 lockfile、官网生成内容和预期下载 URL 已同步为 `0.5.0`。用户可见更新只表述为：左右
+  对比网格可独立搜索当前工作表，可组合大小写、Unicode 全词和 RE2 正则选项，在当前行筛选内
+  循环导航并保持双栏同步定位；没有把实现任务、测试步骤或发布过程写入公开更新日志。
+- 候选范围共 43 个 Git 状态路径，包括当前工作表查找的 Go/Wails/Vue 实现与回归测试、三语文案、
+  README/架构/手工验收/本交接文档、产品事实、官网生成内容、版本清单及前端生产产物；没有加入
+  忽略目录中的测试缓存、验收截图或本地发布产物。`git diff --check` 与内容同步检查通过。
+- `go test ./...` 与 `go vet ./...` 通过；`CGO_ENABLED=1 go test -race ./...` 已尝试，但本机缺少
+  `gcc`，停在 `runtime/cgo` 编译阶段，未记为通过。前端 lint、typecheck、7 个文件 73 项测试和
+  production build 通过；官网 lint 为 0 错误和 4 条既有 `<img>` warning，16 条静态路由构建与
+  10/10 渲染测试通过；桌面前端与官网的离线 production 依赖审计均为 0 个已知漏洞。
+- 离线优先脚本使用本地 Wails v2.10.2 和项目既有 Node 垫片完成未跳过前端的 Windows amd64
+  全量构建。`build/bin/SheetProof.exe version` 返回 `0.5.0`，候选为 17,459,712 字节，SHA-256
+  为 `AD00312578BFF146FAD5F668E52818CAEE0B759F6E1D02E9E374E0F0AECF152B`；Windows 产物未签名，
+  后续 GitHub workflow 的 macOS 产物也仍按未签名、未公证处理。
+- 当次 `0.5.0` EXE 已完成真实鼠标、键盘与截图验收：双栏独立查询、F3 同步定位、组合选项、无结果、
+  非法正则、Added 筛选缺失侧、工作表切换重搜和单侧关闭均符合预期。8 张当次证据位于忽略目录
+  `build/acceptance/current-sheet-find/02-en-left-role.png` 至 `09-en-close-right-only.png`；截图已
+  逐张目视核对，验收 PID 已精确退出。完整全量构建与验收构建的 EXE 哈希相同。
+- 对 43 个候选路径、`v0.4.1..HEAD` 相关历史、官网静态产物和最终 EXE 扫描了私钥、GitHub/云令牌、
+  认证 URL、Windows/macOS 私人用户路径、私网 IPv4 和敏感文件名，所有类别均为 0；未发现敏感
+  数据，不需要移除文件、轮换凭据或重写历史。
+- 远端只读核对确认 `origin/main` 与本地 `HEAD` 均为 `6bc6db42aeb854de1239b532a7e9d1c245ad3f90`，
+  远端最高标签仍为 `v0.4.1`，不存在 `v0.5.0`。当前停在两阶段正式发布的候选确认点：尚未暂存、
+  提交、推送、打标签、运行远程 Release workflow、发布 GitHub Release 或部署候选官网。维护者明确
+  确认后，计划以 `Release SheetProof v0.5.0` 提交并普通推送 `main`，先对提交运行双平台 workflow，
+  成功后创建 annotated `v0.5.0` 标签，核对 Draft Release 的 Windows/macOS 资产和校验和并发布
+  Preview Release，最后通过 Lightsail/Caddy 脚本原子部署官网并核对源站、Cloudflare 和同实例站点。

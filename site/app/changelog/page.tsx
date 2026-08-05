@@ -12,7 +12,7 @@ export default function ChangelogPage({ locale = "en" }: { locale?: Locale }) {
   return <SiteShell locale={locale} semanticPath="/changelog"><main>
     <PageIntro eyebrow={intro[0]} title={intro[1]} description={intro[2]} />
     <section className="section page-width changelog-list">
-      {generatedReleases.releases.map((release) => { const text = Object.entries(localized).find(([version]) => version === release.version)?.[1]; if (!text) throw new Error(`Missing ${locale} changelog for ${release.version}`); return <article key={release.version}><div className="release-meta"><strong>v{release.version}</strong><span>{release.date}</span><em>{localeContent(locale).product.channel}</em></div><div><p className="overline">{text.title}</p><h2>{text.summary}</h2><ul>{Object.entries(text.changes).map(([id, change]) => <li key={id}>{change}</li>)}</ul></div></article>; })}
+      {generatedReleases.releases.map((release) => { const text = Object.entries(localized).find(([version]) => version === release.version)?.[1]; if (!text) throw new Error(`Missing ${locale} changelog for ${release.version}`); const versionLabel = release.version === "unreleased" ? ({ en: "Unreleased", "zh-CN": "未发布", ja: "未リリース" }[locale]) : `v${release.version}`; return <article key={release.version}><div className="release-meta"><strong>{versionLabel}</strong>{release.date ? <span>{release.date}</span> : null}<em>{localeContent(locale).product.channel}</em></div><div><p className="overline">{text.title}</p><h2>{text.summary}</h2><ul>{Object.entries(text.changes).map(([id, change]) => <li key={id}>{change}</li>)}</ul></div></article>; })}
     </section>
   </main></SiteShell>;
 }

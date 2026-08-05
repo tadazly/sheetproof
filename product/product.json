@@ -2,7 +2,7 @@
   "product": {
     "name": "SheetProof",
     "legacyName": "ugxlsx",
-    "version": "0.4.1",
+    "version": "0.5.0",
     "channel": "preview",
     "formats": [".xlsx"],
     "platforms": ["windows-amd64", "macos-universal"],
@@ -16,10 +16,10 @@
   },
   "downloads": {
     "releases": "https://github.com/tadazly/sheetproof/releases",
-    "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SheetProof-windows-amd64.exe",
-    "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SheetProof-macos-universal.zip",
-    "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SHA256SUMS.txt",
-    "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.4.1.zip"
+    "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SheetProof-windows-amd64.exe",
+    "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SheetProof-macos-universal.zip",
+    "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SHA256SUMS.txt",
+    "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.5.0.zip"
   },
   "screenshots": {
     "keyAlignment": { "file": "key-alignment.png", "width": 1424, "height": 861 },

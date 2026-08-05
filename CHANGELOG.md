@@ -6,6 +6,14 @@ English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
 
 User-visible SheetProof changes.
 
+## 0.5.0 — 2026-08-05
+
+_Preview · Find in the current worksheet_
+
+Each comparison grid can search its current worksheet independently without loading the workbook into the WebView.
+
+- Open Find for the focused left or right grid, combine case, Unicode whole-word, and RE2 regular-expression options, navigate cyclically with synchronized grids, and keep searches scoped to the current row filters. Keyboard focus remains clear without drawing stacked blue frames around the Find input.
+
 ## 0.4.1 — 2026-08-05
 
 _Preview · Cleaner edits and more precise copying_

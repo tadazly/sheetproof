@@ -1246,6 +1246,43 @@ func (c *Controller) FilteredRegion(
 	return session.FilteredRegion(sheet, statuses, fromRow, rowCount, fromCol, colCount)
 }
 
+func (c *Controller) Find(
+	sheet, side, query string,
+	caseSensitive, wholeWord, useRegex bool,
+	statuses []diff.RowStatus,
+	anchorRow, anchorCol int,
+) (coreapp.SearchSummary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.SearchSummary{}, err
+	}
+	return session.Search(
+		sheet, coreapp.SearchSide(side), query,
+		caseSensitive, wholeWord, useRegex, statuses,
+		coreapp.CellCoordinate{Row: anchorRow, Col: anchorCol},
+	)
+}
+
+func (c *Controller) NavigateFind(side string, direction int) (coreapp.SearchSummary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.SearchSummary{}, err
+	}
+	return session.NavigateSearch(coreapp.SearchSide(side), direction)
+}
+
+func (c *Controller) ClearFind(side string) error {
+	if side != string(coreapp.SearchLeft) && side != string(coreapp.SearchRight) {
+		return fmt.Errorf("invalid search side %q", side)
+	}
+	session, err := c.getSession()
+	if err != nil {
+		return err
+	}
+	session.ClearSearch(coreapp.SearchSide(side))
+	return nil
+}
+
 func (c *Controller) Differences(sheet string, offset, limit int) (any, error) {
 	session, err := c.getSession()
 	if err != nil {
