@@ -1456,3 +1456,37 @@ cd frontend && npm run test && npm run typecheck
   快进合并并推送 `main`，先手动运行提交级 Release workflow，成功后创建并推送 annotated
   tag `v0.4.0`，等待标签 workflow 生成双平台产物与 Draft Release，核对校验和并发布，
   最后部署和核验 Lightsail/Caddy 正式官网。
+
+## 2026-08-05：v0.4.0 正式发布完成
+
+- 维护者明确确认正式发布后，26 个候选文件以 `Release SheetProof v0.4.0` 提交为
+  `9e5d09294752232068c04926d79c08bea1f0fec1`；`feat/i18n-en-zh-ja` 通过
+  `--ff-only` 合入 `main` 并推送到 `origin/main`。发布前后均未强推、未移动标签，也未
+  覆盖无关工作区修改。
+- 标签前手动触发的提交级 `Build desktop release` workflow #9
+  （run `30979987792`）通过源码验证、Windows amd64 和 macOS universal 构建；非标签运行的
+  Draft Release 作业按预期跳过。随后创建 annotated tag `v0.4.0`，并确认标签对象最终指向
+  上述发布提交。
+- 标签触发的 workflow #10（run `30980271706`）再次通过源码验证、两个平台构建和 Draft
+  Release 创建。实际草稿资产下载后与 `SHA256SUMS.txt` 逐项一致：
+  `SheetProof-windows-amd64.exe` 为 16,912,384 字节，SHA-256 为
+  `921C34002F2A33D8CF25BD6C3A14602F2A06D233045307C445727CC065F87E6F`；
+  `SheetProof-macos-universal.zip` 为 11,045,108 字节，SHA-256 为
+  `7FB722C38DE0372AF99F9F4ADE440674BA3276AE2DB5E60C2BB61D6FCE243916`。
+  macOS 压缩包包含完整 `SheetProof.app/Contents` 结构。Windows 产物仍未签名；发布说明和
+  官网继续明确 Preview、未签名及未公证限制。
+- 自动生成的 Release Notes 已替换为整理后的 `v0.4.0` 用户更新说明，GitHub Release
+  `https://github.com/tadazly/sheetproof/releases/tag/v0.4.0` 于 2026-08-05 14:15（UTC+8）
+  公开为 prerelease。三个公开下载链接均返回 200，实际长度分别与 EXE、ZIP 和 192 字节的
+  `SHA256SUMS.txt` 一致。
+- Release 公开后重新执行内容同步检查；官网 lint 为 0 错误、4 条既有 `<img>` 性能 warning，
+  16 条静态路由构建成功，10/10 渲染测试通过。沙箱内第一次静态构建因 Windows
+  `spawn EPERM` 停止，随后以完全相同命令在受控非沙箱环境重跑通过，未修改代码或依赖。
+- 已通过 `scripts/deploy-site-lightsail.ps1` 把该静态产物原子部署到
+  `https://sheetproof.luyilabs.com/`。源站 Caddy 配置有效且更新日志包含 `0.4.0`；解析 Caddy
+  实际 JSON 路由后，当前同实例 5 个站点全部健康。Cloudflare 公网英语、简体中文和日语的
+  首页/更新日志及主要功能、使用说明、下载页面均返回 200，favicon 和产品截图实际下载非空。
+- 最终隐私扫描覆盖 `v0.3.0..v0.4.0` 候选文件、提交历史、发布说明、公开三语截图，以及从
+  Draft Release 下载并展开的 Windows/macOS 实际资产。私钥标记、GitHub 令牌前缀、凭据
+  赋值、带认证 URL、维护者私人用户路径、当前工作区路径、Linux/macOS 用户目录、私网 IPv4
+  和可疑敏感文件名命中均为 0；未发现敏感数据，不需要移除、轮换凭据或重写历史。
