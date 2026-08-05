@@ -11,7 +11,7 @@
     "workbookComparison": { "title": "Workbook-aware comparison", "summary": "Compare worksheets, values, formulas, explicit blanks, and types. Display formatting does not determine whether cells are equal." },
     "sideBySideReview": { "title": "Side-by-side review", "summary": "Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data." },
     "rowFilters": { "title": "Current-sheet row filters", "summary": "Combine added, deleted, modified, and conflict filters without losing the source row being reviewed." },
-    "controlledMerge": { "title": "Controlled merge and undo", "summary": "Write only selected cells or rows to the left; edits and merge operations remain undoable." },
+    "controlledMerge": { "title": "Controlled merge and undo", "summary": "Write only selected differences to the left; unchanged edits create no unsaved state, while real edits and merges remain undoable." },
     "beforeAfter": { "title": "Hold to compare before and after", "summary": "Hold Before/After or Tab in a grid to see the left workbook exactly as it was opened." },
     "localizedExperience": { "title": "English, Chinese, and Japanese", "summary": "Use the desktop app, CLI, documentation, website, and localized demonstration workbooks in English, Simplified Chinese, or Japanese." },
     "repositoryMode": { "title": "Local Git repository mode", "summary": "Read the real worktree against a validated local or remote-tracking reference without checkout, fetch, or branch switching. A preselected workbook and revision finish loading before the workspace is shown." },
@@ -33,6 +33,6 @@
       "features": { "title": "Features", "description": "Workbook-aware Git comparison, key alignment, selective application, undo, and safe local saving." },
     "guide": { "title": "Guide", "description": "Open files or repositories, review differences, configure UGit, and save SheetProof results safely." },
     "download": { "title": "Download", "description": "Download the unsigned SheetProof preview for Windows amd64 or macOS universal and verify SHA-256." },
-    "changelog": { "title": "Changelog", "description": "User-visible changes in SheetProof 0.1.0 through 0.4.0." }
+    "changelog": { "title": "Changelog", "description": "User-visible changes in SheetProof 0.1.0 through 0.4.1." }
   }
 }

@@ -1,6 +1,7 @@
 {
   "releases": [
-    { "version": "0.4.0", "date": "2026-08-05", "channel": "preview", "changes": ["localizedDesktop", "localizedCli", "localizedWebsite", "languagePersistence", "settingsAndData", "repositoryStartup", "mobileNavigation", "screenshotViewer", "heroCarousel", "heroTypography"] },
+    { "version": "0.4.1", "date": "2026-08-05", "channel": "preview", "changes": ["noOpEditing", "differenceOnlyCopy"] },
+    { "version": "0.4.0", "date": "2026-08-05", "channel": "preview", "changes": ["localizedDesktop", "localizedCli", "localizedWebsite", "languagePersistence", "settingsAndData", "repositoryStartup", "mobileNavigation", "screenshotViewer", "heroCarousel"] },
     { "version": "0.3.0", "date": "2026-08-04", "channel": "preview", "changes": ["scrollbarMarkers", "viewportPerformance", "keyAlignment", "neighborPlacement"] },
     { "version": "0.2.0", "date": "2026-08-03", "channel": "preview", "changes": ["repositoryDrop", "repositoryLoading", "externalReload", "bulkClear"] },
     { "version": "0.1.0", "date": "2026-08-02", "channel": "preview", "changes": ["entryModes", "semanticDiff", "semanticIndex", "rowFilters", "mergeAlignment", "ugitWorktree", "conflictAppend", "beforeAfter", "windowsBackground", "undoAndSave", "mitMigration", "mobileSite", "filterShortcuts", "narrowViewport"] }

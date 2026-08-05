@@ -11,7 +11,7 @@
     "workbookComparison": { "title": "理解工作簿语义的对比", "summary": "比较工作表、值、公式、显式空值和类型；显示格式不参与相等判断。" },
     "sideBySideReview": { "title": "双栏差异审阅", "summary": "使用同步虚拟网格、差异导航和滚动条标记核对新增、删除、修改与冲突。" },
     "rowFilters": { "title": "当前工作表行筛选", "summary": "组合筛选新增、删除、修改和冲突，同时保留正在核对的来源行。" },
-    "controlledMerge": { "title": "可控合并与撤销", "summary": "只把选定单元格或整行写入左侧；编辑和合并均可撤销。" },
+    "controlledMerge": { "title": "可控合并与撤销", "summary": "只把选中的真实差异写入左侧；未改变内容的编辑不产生未保存状态，实际编辑和合并仍可撤销。" },
     "beforeAfter": { "title": "按住回看修改前", "summary": "按住“前后对比”或在表格内按住 Tab，可查看左侧工作簿刚打开时的状态。" },
     "localizedExperience": { "title": "英语、简体中文和日语", "summary": "桌面应用、CLI、文档、官网和本地化演示工作簿均可使用英语、简体中文或日语。" },
     "repositoryMode": { "title": "本地 Git 仓库模式", "summary": "比较真实工作区与经过校验的本地或远端跟踪引用，不 checkout、fetch 或切换分支；预选工作簿与引用加载完成后才显示工作区。" },
@@ -33,6 +33,6 @@
     "features": { "title": "功能", "description": "工作簿语义对比、主键记录对齐、选择性应用、撤销与安全本地保存。" },
     "guide": { "title": "使用说明", "description": "打开文件或仓库、核对差异、配置 UGit，并安全保存 SheetProof 结果。" },
     "download": { "title": "下载", "description": "下载未签名的 SheetProof Windows amd64 或 macOS universal 预览版并核对 SHA-256。" },
-    "changelog": { "title": "更新日志", "description": "SheetProof 0.1.0 至 0.4.0 的用户可见变化。" }
+    "changelog": { "title": "更新日志", "description": "SheetProof 0.1.0 至 0.4.1 的用户可见变化。" }
   }
 }

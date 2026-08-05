@@ -1127,6 +1127,146 @@ describe("App", () => {
     expect(wrapper.find(".editor").exists()).toBe(false);
   });
 
+  it("ends unchanged inline edits without calling the backend or reloading", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.sheetCount = 1;
+    loaded.diff.sheets = [{
+      name: "无变化编辑", status: "equal", orderDifferent: false,
+      differenceCount: 0, maxRow: 1, maxCol: 4, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 0,
+      rows: []
+    }];
+    loaded.selectedSheet = "无变化编辑";
+    const missing = { present: false, raw: "", display: "", type: "unset" };
+    const cells = [
+      { row: 1, col: 1, axis: "A1", status: "unchanged", rowStatus: "unchanged", left: { present: true, raw: "文本", display: "文本", type: "string" }, right: missing },
+      { row: 1, col: 2, axis: "B1", status: "unchanged", rowStatus: "unchanged", left: { present: true, raw: "42", display: "42", type: "number" }, right: missing },
+      { row: 1, col: 3, axis: "C1", status: "unchanged", rowStatus: "unchanged", left: { present: true, raw: "43", display: "43", formula: "SUM(B1,1)", type: "formula" }, right: missing },
+      { row: 1, col: 4, axis: "D1", status: "unchanged", rowStatus: "unchanged", left: { present: true, raw: "", display: "", type: "string" }, right: missing }
+    ] as Region["cells"];
+    const summary = vi.fn(async () => loaded);
+    const differences = vi.fn(async () => []);
+    const region = vi.fn(async () => ({
+      sheet: "无变化编辑", fromRow: 1, toRow: 1, fromCol: 1, toCol: 4, cells
+    }));
+    const editLeft = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: summary,
+          Differences: differences,
+          Region: region,
+          EditLeft: editLeft
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+    const baseline = {
+      summary: summary.mock.calls.length,
+      differences: differences.mock.calls.length,
+      region: region.mock.calls.length
+    };
+
+    let leftCells = wrapper.findAll(".grid-panel")[0].findAll(".cell");
+    await leftCells[0].trigger("dblclick");
+    await wrapper.get(".inline-cell-editor").trigger("keydown", { key: "Enter" });
+    expect(wrapper.find(".inline-cell-editor").exists()).toBe(false);
+
+    leftCells = wrapper.findAll(".grid-panel")[0].findAll(".cell");
+    await leftCells[1].trigger("dblclick");
+    await wrapper.get(".inline-cell-editor").trigger("blur");
+
+    leftCells = wrapper.findAll(".grid-panel")[0].findAll(".cell");
+    await leftCells[2].trigger("dblclick");
+    expect((wrapper.get(".inline-cell-editor").element as HTMLInputElement).value).toBe("=SUM(B1,1)");
+    await wrapper.get(".inline-cell-editor").trigger("keydown", { key: "Enter" });
+
+    leftCells = wrapper.findAll(".grid-panel")[0].findAll(".cell");
+    await leftCells[3].trigger("dblclick");
+    expect((wrapper.get(".inline-cell-editor").element as HTMLInputElement).value).toBe("");
+    await wrapper.get(".inline-cell-editor").trigger("blur");
+    await flushPromises();
+
+    expect(editLeft).not.toHaveBeenCalled();
+    expect(summary).toHaveBeenCalledTimes(baseline.summary);
+    expect(differences).toHaveBeenCalledTimes(baseline.differences);
+    expect(region).toHaveBeenCalledTimes(baseline.region);
+    expect(wrapper.text()).toContain("已保存");
+
+    leftCells = wrapper.findAll(".grid-panel")[0].findAll(".cell");
+    await leftCells[0].trigger("dblclick");
+    await wrapper.get(".inline-cell-editor").setValue("真正修改");
+    await wrapper.get(".inline-cell-editor").trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    expect(editLeft).toHaveBeenCalledWith("无变化编辑", 1, 1, "真正修改", "text");
+  });
+
+  for (const filtered of [false, true]) {
+    it(`counts only semantic differences in ${filtered ? "FilteredRegion" : "Region"} toolbar copy selections`, async () => {
+      const loaded = structuredClone(emptySummary);
+      loaded.diff.equal = false;
+      loaded.diff.sheetCount = 1;
+      loaded.diff.differentSheetCount = 1;
+      loaded.diff.differenceCount = 1;
+      loaded.diff.sheets = [{
+        name: "复制筛选", status: "modified", orderDifferent: false,
+        differenceCount: 1, maxRow: 1, maxCol: 2, idColumn: 0, nextId: 0,
+        addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 1, conflictRowCount: 0,
+        rows: [{ row: 1, id: "", status: "modified" }]
+      }];
+      loaded.selectedSheet = "复制筛选";
+      const value = (raw: string) => ({ present: true, raw, display: raw, type: "string" });
+      const cells = [
+        { row: 1, col: 1, axis: "A1", status: "unchanged", rowStatus: "modified", left: value("相同"), right: value("相同") },
+        { row: 1, col: 2, axis: "B1", status: "modified", rowStatus: "modified", left: value("旧"), right: value("新") }
+      ] as Region["cells"];
+      const copyMany = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
+      window.go = {
+        main: {
+          Controller: {
+            Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+            Summary: async () => loaded,
+            Differences: async () => [{
+              ref: { sheet: "复制筛选", row: 1, col: 2 },
+              status: "modified", rowStatus: "modified",
+              left: value("旧"), right: value("新")
+            }],
+            Region: async () => ({
+              sheet: "复制筛选", fromRow: 1, toRow: 1, fromCol: 1, toCol: 2, cells
+            }),
+            FilteredRegion: async () => ({
+              sheet: "复制筛选", fromRow: 1, toRow: 1, fromCol: 1, toCol: 2,
+              filtered: true, totalRows: 1,
+              cells: cells.map((cell) => ({ ...cell, sourceRow: 1, leftRow: 1, rightRow: 1 }))
+            }),
+            CopyRightToLeftMany: copyMany
+          }
+        }
+      };
+      const wrapper = mount(App);
+      await flushPromises();
+      if (filtered) {
+        await wrapper.findAll(".summary-metric")[2].trigger("click");
+        await flushPromises();
+      }
+
+      const rightCells = wrapper.findAll(".grid-panel")[1].findAll(".cell");
+      await rightCells[0].trigger("pointerdown", { button: 0 });
+      const copyButton = wrapper.get("button.merge-action");
+      expect(copyButton.text()).toContain("0");
+      expect(copyButton.attributes("disabled")).toBeDefined();
+
+      await rightCells[1].trigger("pointerenter");
+      expect(copyButton.text()).toContain("1");
+      expect(copyButton.attributes("disabled")).toBeUndefined();
+      await copyButton.trigger("click");
+      await flushPromises();
+      expect(copyMany).toHaveBeenCalledWith("复制筛选", [{ row: 1, col: 2 }]);
+    });
+  }
+
   it("shows the opening left state only while the preview button or grid-scoped Tab is held", async () => {
     const loaded = structuredClone(emptySummary);
     loaded.dirty = true;

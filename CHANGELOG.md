@@ -6,6 +6,15 @@ English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
 
 User-visible SheetProof changes.
 
+## 0.4.1 — 2026-08-05
+
+_Preview · Cleaner edits and more precise copying_
+
+Unchanged cell edits no longer create unsaved state, and Copy to left handles only real differences.
+
+- Leaving a cell edit without changing its content no longer creates an unsaved state or an extra undo step.
+- Copy to left now counts and applies only cells with actual semantic differences; equal selections remain available in place with a zero, disabled action.
+
 ## 0.4.0 — 2026-08-05
 
 _Preview · English, Simplified Chinese, and Japanese throughout_
@@ -21,7 +30,6 @@ The desktop app, CLI, documentation, and website now share a complete three-lang
 - The mobile site navigation uses native browser disclosure, so it remains available before scripts start.
 - Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.
 - The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference.
-- The home-page title now uses language-specific line breaks, spacing, and type rhythm across desktop, tablet, and mobile layouts.
 
 ## 0.3.0 — 2026-08-04
 

@@ -27,7 +27,7 @@ SheetProof 会识别双方共同的 `id` 表头，或唯一且无歧义的 `*ID`
 - **理解工作簿语义的对比**: 比较工作表、值、公式、显式空值和类型；显示格式不参与相等判断。
 - **双栏差异审阅**: 使用同步虚拟网格、差异导航和滚动条标记核对新增、删除、修改与冲突。
 - **当前工作表行筛选**: 组合筛选新增、删除、修改和冲突，同时保留正在核对的来源行。
-- **可控合并与撤销**: 只把选定单元格或整行写入左侧；编辑和合并均可撤销。
+- **可控合并与撤销**: 只把选中的真实差异写入左侧；未改变内容的编辑不产生未保存状态，实际编辑和合并仍可撤销。
 - **按住回看修改前**: 按住“前后对比”或在表格内按住 Tab，可查看左侧工作簿刚打开时的状态。
 - **英语、简体中文和日语**: 桌面应用、CLI、文档、官网和本地化演示工作簿均可使用英语、简体中文或日语。
 - **本地 Git 仓库模式**: 比较真实工作区与经过校验的本地或远端跟踪引用，不 checkout、fetch 或切换分支；预选工作簿与引用加载完成后才显示工作区。
@@ -35,12 +35,12 @@ SheetProof 会识别双方共同的 `id` 表头，或唯一且无歧义的 `*ID`
 
 ## 下载
 
-**0.4.0 预览版**
+**0.4.1 预览版**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.4.0.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.4.1.zip)
 
 当前 Windows 产物未签名；macOS 产物未签名且未公证。请只从 GitHub Releases 下载并核对 SHA-256。
 

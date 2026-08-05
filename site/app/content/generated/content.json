@@ -4,7 +4,7 @@
     "product": {
       "name": "SheetProof",
       "legacyName": "ugxlsx",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "channel": "preview",
       "formats": [
         ".xlsx"
@@ -23,10 +23,10 @@
     },
     "downloads": {
       "releases": "https://github.com/tadazly/sheetproof/releases",
-      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-windows-amd64.exe",
-      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-macos-universal.zip",
-      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SHA256SUMS.txt",
-      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.4.0.zip"
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.4.1/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.4.1.zip"
     },
     "screenshots": {
       "keyAlignment": {
@@ -76,7 +76,7 @@
         },
         "controlledMerge": {
           "title": "Controlled merge and undo",
-          "summary": "Write only selected cells or rows to the left; edits and merge operations remain undoable."
+          "summary": "Write only selected differences to the left; unchanged edits create no unsaved state, while real edits and merges remain undoable."
         },
         "beforeAfter": {
           "title": "Hold to compare before and after",
@@ -146,7 +146,7 @@
         },
         "changelog": {
           "title": "Changelog",
-          "description": "User-visible changes in SheetProof 0.1.0 through 0.4.0."
+          "description": "User-visible changes in SheetProof 0.1.0 through 0.4.1."
         }
       }
     },
@@ -174,7 +174,7 @@
         },
         "controlledMerge": {
           "title": "可控合并与撤销",
-          "summary": "只把选定单元格或整行写入左侧；编辑和合并均可撤销。"
+          "summary": "只把选中的真实差异写入左侧；未改变内容的编辑不产生未保存状态，实际编辑和合并仍可撤销。"
         },
         "beforeAfter": {
           "title": "按住回看修改前",
@@ -244,7 +244,7 @@
         },
         "changelog": {
           "title": "更新日志",
-          "description": "SheetProof 0.1.0 至 0.4.0 的用户可见变化。"
+          "description": "SheetProof 0.1.0 至 0.4.1 的用户可见变化。"
         }
       }
     },
@@ -272,7 +272,7 @@
         },
         "controlledMerge": {
           "title": "選んで反映・元に戻す",
-          "summary": "選択したセルまたは行だけを左側へ反映します。編集と反映操作は元に戻せます。"
+          "summary": "選択した実際の差分だけを左側へ反映します。内容を変えない編集は未保存状態を作らず、実際の編集と反映操作は元に戻せます。"
         },
         "beforeAfter": {
           "title": "押している間だけ変更前を確認",
@@ -342,7 +342,7 @@
         },
         "changelog": {
           "title": "変更履歴",
-          "description": "SheetProof 0.1.0 から 0.4.0 までのユーザー向け変更履歴。"
+          "description": "SheetProof 0.1.0 から 0.4.1 までのユーザー向け変更履歴。"
         }
       }
     }
@@ -442,6 +442,15 @@
   "changelog": {
     "releases": [
       {
+        "version": "0.4.1",
+        "date": "2026-08-05",
+        "channel": "preview",
+        "changes": [
+          "noOpEditing",
+          "differenceOnlyCopy"
+        ]
+      },
+      {
         "version": "0.4.0",
         "date": "2026-08-05",
         "channel": "preview",
@@ -454,8 +463,7 @@
           "repositoryStartup",
           "mobileNavigation",
           "screenshotViewer",
-          "heroCarousel",
-          "heroTypography"
+          "heroCarousel"
         ]
       },
       {
@@ -504,6 +512,14 @@
     ],
     "locales": {
       "en": {
+        "0.4.1": {
+          "title": "Cleaner edits and more precise copying",
+          "summary": "Unchanged cell edits no longer create unsaved state, and Copy to left handles only real differences.",
+          "changes": {
+            "noOpEditing": "Leaving a cell edit without changing its content no longer creates an unsaved state or an extra undo step.",
+            "differenceOnlyCopy": "Copy to left now counts and applies only cells with actual semantic differences; equal selections remain available in place with a zero, disabled action."
+          }
+        },
         "0.4.0": {
           "title": "English, Simplified Chinese, and Japanese throughout",
           "summary": "The desktop app, CLI, documentation, and website now share a complete three-language experience, with persistent language choice and localized product examples.",
@@ -516,8 +532,7 @@
             "repositoryStartup": "Repository mode now stays in its startup loading state until a preselected XLSX file and revision are fully open, so the comparison cannot be replaced by an empty workspace.",
             "mobileNavigation": "The mobile site navigation uses native browser disclosure, so it remains available before scripts start.",
             "screenshotViewer": "Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.",
-            "heroCarousel": "The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference.",
-            "heroTypography": "The home-page title now uses language-specific line breaks, spacing, and type rhythm across desktop, tablet, and mobile layouts."
+            "heroCarousel": "The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference."
           }
         },
         "0.3.0": {
@@ -562,6 +577,14 @@
         }
       },
       "zh-CN": {
+        "0.4.1": {
+          "title": "编辑状态与差异复制更准确",
+          "summary": "未改变内容的编辑不再产生未保存状态，复制到左侧只处理真实差异。",
+          "changes": {
+            "noOpEditing": "未实际改变单元格内容时，退出编辑不再产生未保存状态或额外撤销步骤。",
+            "differenceOnlyCopy": "复制到左侧只统计并应用真实语义差异；选中相等单元格时按钮保留原位、显示 0 并保持禁用。"
+          }
+        },
         "0.4.0": {
           "title": "桌面、命令行与官网完整支持中英日三语",
           "summary": "桌面应用、CLI、文档和官网现提供一致的英语、简体中文和日语体验，并支持语言持久化与本地化产品示例。",
@@ -574,8 +597,7 @@
             "repositoryStartup": "仓库模式会保持启动加载状态，直到预选的 XLSX 文件和引用完全打开，避免真实对比被空白工作区覆盖。",
             "mobileNavigation": "移动端导航改用浏览器原生展开结构，即使页面脚本尚未启动也能打开。",
             "screenshotViewer": "官网产品图可在独立查看器中打开，支持桌面滚轮缩放与手机双指缩放、拖动，并修复关闭、滚动恢复和手势锁定问题。",
-            "heroCarousel": "无论浏览器是否开启减少动态效果，官网首页的使用说明都会继续轮换，并保留原有的轻量过渡。",
-            "heroTypography": "官网首页标题现在按英文、简体中文和日文分别设置断行、间距与字形节奏，在桌面、平板和手机上均保持清晰均衡。"
+            "heroCarousel": "无论浏览器是否开启减少动态效果，官网首页的使用说明都会继续轮换，并保留原有的轻量过渡。"
           }
         },
         "0.3.0": {
@@ -620,6 +642,14 @@
         }
       },
       "ja": {
+        "0.4.1": {
+          "title": "編集状態と差分コピーをより正確に",
+          "summary": "内容を変えない編集で未保存状態を作らず、左側へのコピーは実際の差分だけを処理します。",
+          "changes": {
+            "noOpEditing": "セル内容を実際に変更せず編集を終えた場合、未保存状態や余分な取り消し履歴を作らないようにしました。",
+            "differenceOnlyCopy": "左側へのコピーは実際の意味上の差分セルだけを数えて反映します。同じセルだけを選んだ場合、ボタンは元の位置で 0 件のまま無効になります。"
+          }
+        },
         "0.4.0": {
           "title": "デスクトップ、CLI、Web サイトを英語・簡体字中国語・日本語に対応",
           "summary": "デスクトップアプリ、CLI、ドキュメント、Web サイトで一貫した 3 言語表示を提供し、言語設定の保存とローカライズ済みの製品例に対応しました。",
@@ -632,8 +662,7 @@
             "repositoryStartup": "リポジトリモードでは、指定済みの XLSX ファイルと参照を開き終えるまで起動中の状態を保ち、比較画面が空のワークスペースに置き換わらないようにしました。",
             "mobileNavigation": "モバイルナビゲーションをブラウザー標準の開閉要素に変更し、スクリプト起動前でも利用できるようにしました。",
             "screenshotViewer": "製品画像を専用ビューアーで開き、デスクトップのホイール拡大とモバイルのピンチ・ドラッグに対応しました。閉じる操作、スクロール復元、ジェスチャー固定も修正しました。",
-            "heroCarousel": "ブラウザーの視差効果を減らす設定にかかわらず、トップページの利用例は元の軽いトランジションを保ったまま切り替わります。",
-            "heroTypography": "公式サイトのトップ見出しは、英語・簡体字中国語・日本語ごとに改行、間隔、文字組みを調整し、デスクトップ、タブレット、モバイルで読みやすく整えました。"
+            "heroCarousel": "ブラウザーの視差効果を減らす設定にかかわらず、トップページの利用例は元の軽いトランジションを保ったまま切り替わります。"
           }
         },
         "0.3.0": {

@@ -313,21 +313,13 @@ const copyTargets = computed(() => {
         .filter((item) => item.display >= selection.value!.startRow && item.display <= selection.value!.endRow)
         .map((item) => item.source)
     );
-    const result = diffs.value
+    return diffs.value
       .filter((item) => sourceRows.has(item.ref.row) && item.ref.col >= selection.value!.startCol && item.ref.col <= selection.value!.endCol)
       .map((item) => ({ row: item.ref.row, col: item.ref.col }));
-    if (result.length === 0 && selectionSize.value === 1 && activeCell.value) {
-      result.push({ row: cellSourceRow(activeCell.value), col: activeCell.value.col });
-    }
-    return result;
   }
-  const result = diffs.value
+  return diffs.value
     .filter((item) => containsCell(selection.value, item.ref.row, item.ref.col))
     .map((item) => ({ row: item.ref.row, col: item.ref.col }));
-  if (result.length === 0 && selectionSize.value === 1 && activePoint.value) {
-    result.push({ ...activePoint.value });
-  }
-  return result;
 });
 function rowsForContext(row: number) {
   if (!selection.value || row < selection.value.startRow || row > selection.value.endRow) {
@@ -1467,6 +1459,10 @@ async function commitInlineEdit() {
   const current = inlineEdit.value;
   if (!current || busy.value) return;
   inlineEdit.value = null;
+  const originalValue = current.original.left.formula
+    ? `=${current.original.left.formula}`
+    : current.original.left.raw;
+  if (current.value === originalValue) return;
   const type = inlineEditType(current.value, current.original);
   const data = await guard(() =>
     backend.edit(sheet.value, cellLeftRow(current.original), current.col, current.value, type)

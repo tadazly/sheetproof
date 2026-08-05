@@ -11,7 +11,7 @@
     "workbookComparison": { "title": "ブック内容の比較", "summary": "シート、値、数式、明示的な空値、型を比較します。表示書式はセルが同じかどうかの判定に含めません。" },
     "sideBySideReview": { "title": "2 ペイン差分レビュー", "summary": "同期した仮想グリッド、差分移動、スクロールバーの印で追加・削除・変更・競合を確認します。" },
     "rowFilters": { "title": "現在のシートの行絞り込み", "summary": "確認中の元行を保ったまま、追加・削除・変更・競合を組み合わせて絞り込めます。" },
-    "controlledMerge": { "title": "選んで反映・元に戻す", "summary": "選択したセルまたは行だけを左側へ反映します。編集と反映操作は元に戻せます。" },
+    "controlledMerge": { "title": "選んで反映・元に戻す", "summary": "選択した実際の差分だけを左側へ反映します。内容を変えない編集は未保存状態を作らず、実際の編集と反映操作は元に戻せます。" },
     "beforeAfter": { "title": "押している間だけ変更前を確認", "summary": "「変更前後」を押すか、表で Tab を押している間、左側を開いた時点の状態に戻します。" },
     "localizedExperience": { "title": "英語・簡体字中国語・日本語", "summary": "デスクトップアプリ、CLI、ドキュメント、Web サイト、ローカライズ済みのデモブックを 3 言語で利用できます。" },
     "repositoryMode": { "title": "ローカル Git リポジトリモード", "summary": "実際のワークツリーと検証済みのローカル／リモート追跡参照を、checkout、fetch、ブランチ切り替えなしで比較します。指定済みのブックと参照を読み込み終えてからワークスペースを表示します。" },
@@ -33,6 +33,6 @@
     "features": { "title": "機能", "description": "ブック差分、キー対応付け、選択的な反映、取り消し、安全なローカル保存。" },
     "guide": { "title": "使い方", "description": "ファイルまたはリポジトリを開き、差分を確認し、UGit を設定して結果を安全に保存する手順。" },
     "download": { "title": "ダウンロード", "description": "未署名の SheetProof Windows amd64／macOS universal プレビューをダウンロードし、SHA-256 を確認できます。" },
-    "changelog": { "title": "変更履歴", "description": "SheetProof 0.1.0 から 0.4.0 までのユーザー向け変更履歴。" }
+    "changelog": { "title": "変更履歴", "description": "SheetProof 0.1.0 から 0.4.1 までのユーザー向け変更履歴。" }
   }
 }

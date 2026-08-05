@@ -51,6 +51,11 @@ func TestSessionEndToEndMergeEditUndoSaveAndReopen(t *testing.T) {
 	if before < 7 {
 		t.Fatalf("expected several fixture differences, got %d", before)
 	}
+	// Make A2 semantically different before copying it so the cell-copy path
+	// remains responsible for bringing across the right-side hyperlink.
+	if err := session.EditLeft(workbook.CellRef{Sheet: "数据 表", Row: 2, Col: 1}, "temporary", "text"); err != nil {
+		t.Fatal(err)
+	}
 	for _, ref := range []workbook.CellRef{
 		{Sheet: "数据 表", Row: 1, Col: 1},
 		{Sheet: "数据 表", Row: 1, Col: 2},
@@ -190,6 +195,198 @@ func TestSessionBatchCopyIsOneUndoCommand(t *testing.T) {
 			t.Fatalf("%s after undo and resave = %q, want %q (err=%v)", axis, got, before.Cells[index].Left.Raw, err)
 		}
 	}
+}
+
+func TestSessionEditNoOpsDoNotCreateState(t *testing.T) {
+	tests := []struct {
+		name      string
+		ref       workbook.CellRef
+		value     string
+		valueType string
+	}{
+		{name: "text", ref: workbook.CellRef{Sheet: "Sheet1", Row: 1, Col: 1}, value: "same", valueType: "text"},
+		{name: "number", ref: workbook.CellRef{Sheet: "Sheet1", Row: 2, Col: 1}, value: "42", valueType: "number"},
+		{name: "formula", ref: workbook.CellRef{Sheet: "Sheet1", Row: 3, Col: 1}, value: "=SUM(A2,1)", valueType: "formula"},
+		{name: "missing clear", ref: workbook.CellRef{Sheet: "Sheet1", Row: 5, Col: 1}, valueType: "clear"},
+		{name: "explicit empty string", ref: workbook.CellRef{Sheet: "Sheet1", Row: 4, Col: 1}, valueType: "text"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			session := openNoOpSession(t)
+			defer session.Close()
+			beforeState, beforeSaved, beforeNext := session.stateID, session.savedState, session.nextState
+			if err := session.EditLeft(test.ref, test.value, test.valueType); err != nil {
+				t.Fatal(err)
+			}
+			summary := session.Summary()
+			if summary.Dirty || summary.UndoCount != 0 {
+				t.Fatalf("no-op edit changed session state: dirty=%t undo=%d", summary.Dirty, summary.UndoCount)
+			}
+			if session.stateID != beforeState || session.savedState != beforeSaved || session.nextState != beforeNext {
+				t.Fatalf("state counters changed: state=%d/%d saved=%d/%d next=%d/%d", session.stateID, beforeState, session.savedState, beforeSaved, session.nextState, beforeNext)
+			}
+		})
+	}
+}
+
+func TestSessionEditTypeAndPresenceChangesRemainRealEdits(t *testing.T) {
+	t.Run("same raw with a different type", func(t *testing.T) {
+		session := openNoOpSession(t)
+		defer session.Close()
+		if err := session.EditLeft(workbook.CellRef{Sheet: "Sheet1", Row: 1, Col: 2}, "123", "number"); err != nil {
+			t.Fatal(err)
+		}
+		summary := session.Summary()
+		if !summary.Dirty || summary.UndoCount != 1 {
+			t.Fatalf("type correction state: dirty=%t undo=%d", summary.Dirty, summary.UndoCount)
+		}
+		region, err := session.Region("Sheet1", 1, 1, 2, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if region.Cells[0].Left.Type != "number" {
+			t.Fatalf("corrected type = %q, want number", region.Cells[0].Left.Type)
+		}
+	})
+
+	t.Run("explicit empty string to missing", func(t *testing.T) {
+		session := openNoOpSession(t)
+		defer session.Close()
+		if err := session.EditLeft(workbook.CellRef{Sheet: "Sheet1", Row: 4, Col: 1}, "", "clear"); err != nil {
+			t.Fatal(err)
+		}
+		region, err := session.Region("Sheet1", 4, 4, 1, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if region.Cells[0].Left.Present || !session.Dirty() || session.Summary().UndoCount != 1 {
+			t.Fatalf("explicit empty clear was lost: cell=%+v summary=%+v", region.Cells[0].Left, session.Summary())
+		}
+	})
+}
+
+func TestEditValuesEqualIgnoresOnlyFormulaCache(t *testing.T) {
+	before := workbook.CellValue{Present: true, Raw: "43", Formula: "SUM(A2,1)", Type: "formula"}
+	after := workbook.CellValue{Present: true, Formula: "SUM(A2,1)", Type: "formula"}
+	if !editValuesEqual(before, after) {
+		t.Fatal("same formula with a different cached raw value must be equal for editing")
+	}
+	after.Formula = "SUM(A2,2)"
+	if editValuesEqual(before, after) {
+		t.Fatal("changed formula was treated as equal")
+	}
+	after = workbook.CellValue{Present: true, Raw: "43", Formula: "SUM(A2,1)", Type: "string"}
+	if editValuesEqual(before, after) {
+		t.Fatal("changed formula type was treated as equal")
+	}
+}
+
+func TestSessionNoOpAfterDirtyAndSavePreservesExistingState(t *testing.T) {
+	session := openNoOpSession(t)
+	defer session.Close()
+	if err := session.EditLeft(workbook.CellRef{Sheet: "Sheet1", Row: 2, Col: 2}, "changed", "text"); err != nil {
+		t.Fatal(err)
+	}
+	dirtyState, dirtyNext := session.stateID, session.nextState
+	if err := session.EditLeft(workbook.CellRef{Sheet: "Sheet1", Row: 1, Col: 1}, "same", "text"); err != nil {
+		t.Fatal(err)
+	}
+	if !session.Dirty() || session.Summary().UndoCount != 1 || session.stateID != dirtyState || session.nextState != dirtyNext {
+		t.Fatalf("no-op changed dirty session: %+v", session.Summary())
+	}
+	if err := session.Save(""); err != nil {
+		t.Fatal(err)
+	}
+	cleanState, cleanSaved, cleanNext := session.stateID, session.savedState, session.nextState
+	if err := session.EditLeft(workbook.CellRef{Sheet: "Sheet1", Row: 3, Col: 1}, "=SUM(A2,1)", "formula"); err != nil {
+		t.Fatal(err)
+	}
+	if session.Dirty() || session.Summary().UndoCount != 1 {
+		t.Fatalf("no-op dirtied saved session: %+v", session.Summary())
+	}
+	if session.stateID != cleanState || session.savedState != cleanSaved || session.nextState != cleanNext {
+		t.Fatal("no-op after save changed state counters")
+	}
+}
+
+func TestSessionCellCopyFiltersSemanticNoOps(t *testing.T) {
+	t.Run("single equal cell", func(t *testing.T) {
+		session := openNoOpSession(t)
+		defer session.Close()
+		if err := session.CopyRightToLeft(workbook.CellRef{Sheet: "Sheet1", Row: 1, Col: 1}); err != nil {
+			t.Fatal(err)
+		}
+		if session.Dirty() || session.Summary().UndoCount != 0 {
+			t.Fatalf("equal copy changed state: %+v", session.Summary())
+		}
+	})
+
+	t.Run("display and style only", func(t *testing.T) {
+		session := openNoOpSession(t)
+		defer session.Close()
+		key := workbook.CellKey{Row: 1, Col: 3}
+		rightValue := session.right.ByName["Sheet1"].Cells[key]
+		rightValue.Display = "different display"
+		session.right.ByName["Sheet1"].Cells[key] = rightValue
+		leftStyle, err := session.leftFile.GetCellStyle("Sheet1", "C1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := session.CopyRightToLeft(workbook.CellRef{Sheet: "Sheet1", Row: 1, Col: 3}); err != nil {
+			t.Fatal(err)
+		}
+		afterStyle, err := session.leftFile.GetCellStyle("Sheet1", "C1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if afterStyle != leftStyle || session.Dirty() || session.Summary().UndoCount != 0 {
+			t.Fatalf("display/style-only copy was applied: styles=%d/%d summary=%+v", leftStyle, afterStyle, session.Summary())
+		}
+	})
+
+	t.Run("partial batch", func(t *testing.T) {
+		session := openNoOpSession(t)
+		defer session.Close()
+		leftStyle, err := session.leftFile.GetCellStyle("Sheet1", "C1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := session.CopyRightToLeftMany("Sheet1", []CellCoordinate{{Row: 1, Col: 3}, {Row: 2, Col: 2}}); err != nil {
+			t.Fatal(err)
+		}
+		region, err := session.Region("Sheet1", 2, 2, 2, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		afterStyle, err := session.leftFile.GetCellStyle("Sheet1", "C1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if region.Cells[0].Left.Raw != "new" || afterStyle != leftStyle || session.Summary().UndoCount != 1 {
+			t.Fatalf("partial batch result: cell=%+v styles=%d/%d summary=%+v", region.Cells[0], leftStyle, afterStyle, session.Summary())
+		}
+	})
+
+	t.Run("all equal leaves every session marker untouched", func(t *testing.T) {
+		session := openNoOpSession(t)
+		defer session.Close()
+		session.warnings = append(session.warnings, "existing warning")
+		existingResolution := RowResolution{
+			Sheet: "Sheet1", SourceRow: 9, TargetRow: 9,
+			Kind: ResolutionOverwriteCells, CellCount: 2, stateID: session.stateID,
+		}
+		session.resolutions = append(session.resolutions, existingResolution)
+		beforeState, beforeSaved, beforeNext := session.stateID, session.savedState, session.nextState
+		beforeWarnings := len(session.warnings)
+		if err := session.CopyRightToLeftMany("Sheet1", []CellCoordinate{{Row: 1, Col: 1}, {Row: 2, Col: 1}, {Row: 3, Col: 1}}); err != nil {
+			t.Fatal(err)
+		}
+		if session.stateID != beforeState || session.savedState != beforeSaved || session.nextState != beforeNext ||
+			session.Dirty() || session.Summary().UndoCount != 0 || len(session.warnings) != beforeWarnings ||
+			len(session.resolutions) != 1 || session.resolutions[0] != existingResolution {
+			t.Fatalf("all-equal batch changed session state: %+v", session.Summary())
+		}
+	})
 }
 
 func TestSessionClearLeftSelectionIsOneUndoCommand(t *testing.T) {
@@ -1600,6 +1797,69 @@ func TestCollectRegionStatusesOnlyBuildsRequestedViewport(t *testing.T) {
 	}
 	if rowStatuses[5] != diff.RowModified || rowStatuses[9_999] != diff.RowConflict {
 		t.Fatalf("row statuses = %#v", rowStatuses)
+	}
+}
+
+func openNoOpSession(t *testing.T) *Session {
+	t.Helper()
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeNoOpWorkbook(t, left, false)
+	writeNoOpWorkbook(t, right, true)
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return session
+}
+
+func writeNoOpWorkbook(t *testing.T, path string, right bool) {
+	t.Helper()
+	file := excelize.NewFile()
+	defer file.Close()
+	if err := file.SetCellStr("Sheet1", "A1", "same"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.SetCellValue("Sheet1", "A2", 42); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.SetCellFormula("Sheet1", "A3", "SUM(A2,1)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.SetCellStr("Sheet1", "A4", ""); err != nil {
+		t.Fatal(err)
+	}
+	if right {
+		if err := file.SetCellValue("Sheet1", "B1", 123); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.SetCellStr("Sheet1", "B2", "new"); err != nil {
+			t.Fatal(err)
+		}
+		style, err := file.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := file.SetCellStr("Sheet1", "C1", "same style-independent value"); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.SetCellStyle("Sheet1", "C1", "C1", style); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if err := file.SetCellStr("Sheet1", "B1", "123"); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.SetCellStr("Sheet1", "B2", "old"); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.SetCellStr("Sheet1", "C1", "same style-independent value"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := file.SaveAs(path); err != nil {
+		t.Fatal(err)
 	}
 }
 

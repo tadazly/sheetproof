@@ -1014,6 +1014,13 @@ func (s *Session) copyRightToLeftManyLocked(
 			continue
 		}
 		seen[key] = struct{}{}
+		if kind != "copy-row" {
+			leftValue := s.comparisonLeft.ByName[sheet].Cell(cell.Row, cell.Col)
+			rightValue := s.right.ByName[sheet].Cell(cell.Row, cell.Col)
+			if leftValue.Equal(rightValue) {
+				continue
+			}
+		}
 		if s.rowStatusLocked(sheet, cell.Row) == diff.RowConflict {
 			conflictCells[cell.Row]++
 		}
@@ -1029,6 +1036,9 @@ func (s *Session) copyRightToLeftManyLocked(
 			return err
 		}
 		operations = append(operations, merge.Operation{Ref: targetRef, Before: before, After: after, Kind: kind})
+	}
+	if len(operations) == 0 {
+		return nil
 	}
 	if err := s.applyOperationsLocked(sheet, operations); err != nil {
 		return err
@@ -1334,6 +1344,9 @@ func (s *Session) EditLeft(ref workbook.CellRef, value, valueType string) error 
 	default:
 		return fmt.Errorf("unsupported edit type %q", valueType)
 	}
+	if editValuesEqual(before.Value, after.Value) {
+		return nil
+	}
 	warnings, err := merge.Apply(s.leftFile, ref, after)
 	if err != nil {
 		return err
@@ -1351,6 +1364,13 @@ func (s *Session) EditLeft(ref workbook.CellRef, value, valueType string) error 
 	}
 	s.recordHistoryLocked([]merge.Operation{{Ref: ref, Before: before, After: after, Kind: "edit"}})
 	return nil
+}
+
+func editValuesEqual(before, after workbook.CellValue) bool {
+	if before.Present && after.Present && before.Formula != "" && before.Formula == after.Formula && before.Type == after.Type {
+		return true
+	}
+	return before.Equal(after)
 }
 
 // ClearLeftSelection removes the contents of every present left-side cell in
