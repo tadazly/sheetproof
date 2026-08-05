@@ -1707,3 +1707,34 @@ cd frontend && npm run test && npm run typecheck
   确认后，计划以 `Release SheetProof v0.5.0` 提交并普通推送 `main`，先对提交运行双平台 workflow，
   成功后创建 annotated `v0.5.0` 标签，核对 Draft Release 的 Windows/macOS 资产和校验和并发布
   Preview Release，最后通过 Lightsail/Caddy 脚本原子部署官网并核对源站、Cloudflare 和同实例站点。
+
+## 2026-08-05：v0.5.0 正式发布完成
+
+- 维护者明确确认正式发布后，43 个候选路径以 `Release SheetProof v0.5.0` 提交为
+  `78886546f8e93c4761816ea5488e0f936f374652`，并以普通 fast-forward 推送到
+  `origin/main`。没有强推、移动已有标签、切换分支、覆盖无关修改，忽略目录中的验收截图、缓存和
+  发布审计产物也未进入提交。
+- 提交级 `Build desktop release` workflow run `31009128780` 通过源码验证、Windows amd64 和
+  macOS universal 构建；随后创建并推送 annotated tag `v0.5.0`，标签对象剥离后精确指向上述发布
+  提交。标签 workflow run `31009514325` 再次通过源码验证、双平台构建和 Draft Release 创建。
+- 下载并核对 Draft 资产、API digest 与 `SHA256SUMS.txt` 后，Windows EXE 为 16,952,832 字节，
+  SHA-256 为 `91BE9DD4F22B5374F1B41B73CFAD4501247B1F3FF185ACEDEDA3F8809B6E7BDF`；
+  macOS universal ZIP 为 11,077,081 字节，SHA-256 为
+  `F2B091A825D2DDE631A80C02A9CE65BCDD626C20B4AD2A2FCCA0AAC83DF3A77C`；
+  `SHA256SUMS.txt` 为 192 字节。EXE 返回版本 `0.5.0`，ZIP 包含完整
+  `SheetProof.app/Contents/MacOS/SheetProof`。Windows 产物未签名，macOS 产物未签名、未公证。
+- 整理后的用户更新说明已替换自动生成内容，Release 明确保留 Preview、未签名和未公证限制。
+  GitHub prerelease `https://github.com/tadazly/sheetproof/releases/tag/v0.5.0` 于
+  2026-08-05 21:28（UTC+8）公开；Release 页面、三个资产和源码下载均返回 200，资产长度与审计
+  结果一致。
+- Release 公开后再次通过内容同步检查、官网 lint（0 错误、4 条既有 `<img>` warning）、16 路由
+  静态构建和 10/10 渲染测试。第一次官网部署尝试在上传前因 SSH 连接超时停止，远端未发生半部署；
+  维护者提供可用运行时目标后，重试 `scripts/deploy-site-lightsail.ps1` 成功完成原子部署。
+- 部署后 Caddy 配置有效，源站 19 项页面与资源检查、6 个版本内容页检查均通过，同一 Caddy 实例的
+  5 个虚拟主机全部健康。Cloudflare 公网 15 个三语产品路由均返回 200 且具有代理响应头，6 个下载/
+  更新日志页显示 `0.5.0` 并指向 `v0.5.0`，5 个关键静态资源和 3 个 Release 下载均可用。
+- 最终隐私扫描覆盖发布范围、提交历史、官网产物、发布说明，以及下载并展开的 Windows/macOS 实际
+  资产；私钥、GitHub/云令牌、认证 URL、Windows/macOS 私人用户路径、GitHub runner/工作区路径、
+  私网 IPv4 和敏感文件名命中均为 0。未发现需要移除、轮换或重写历史的敏感数据。
+- 常规 Go、前端、官网测试与桌面实机验收均已通过；`CGO_ENABLED=1 go test -race ./...` 因本机缺少
+  `gcc` 停在 `runtime/cgo` 编译阶段，未记为通过，也未影响已通过的双平台 GitHub Actions 构建。
