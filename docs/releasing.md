@@ -5,7 +5,9 @@
 ## 1. 更新产品事实
 
 1. 在 `product/product.json` 更新版本、发布渠道、下载地址和截图说明。
-2. 在 `product/changelog.json` 记录用户实际能看到的功能与修复。不要写提示词、内部任务、测试安排、截图制作或发布计划。
+2. 在 `product/changelog/releases.json` 登记版本、日期、渠道和变更 ID，并在
+   `product/changelog/{en,zh-CN,ja}.json` 写入三语用户可见功能与修复。不要写提示词、
+   内部任务、测试安排、截图制作或发布计划。
 3. 运行：
 
    ```bash

@@ -6,6 +6,22 @@ English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
 
 User-visible SheetProof changes.
 
+## 0.4.0 — 2026-08-05
+
+_Preview · English, Simplified Chinese, and Japanese throughout_
+
+The desktop app, CLI, documentation, and website now share a complete three-language experience, with persistent language choice and localized product examples.
+
+- The desktop interface, settings, native confirmations, difference states, merge actions, and generated demonstration workbooks are available in English, Simplified Chinese, and Japanese.
+- CLI help, status text, and errors follow --lang en|zh-CN|ja, while JSON keys and enum values remain stable for automation.
+- The website, README, changelog, SEO metadata, navigation, and product screenshots now have matching English, Simplified Chinese, and Japanese versions.
+- Language choice persists across restarts. An explicit --lang affects only that launch, and Follow system can return to operating-system detection.
+- Language, UGit configuration, cache clearing, and saved-app-data clearing now share one responsive settings window with localized confirmations.
+- Repository mode now stays in its startup loading state until a preselected XLSX file and revision are fully open, so the comparison cannot be replaced by an empty workspace.
+- The mobile site navigation uses native browser disclosure, so it remains available before scripts start.
+- Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.
+- The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference.
+
 ## 0.3.0 — 2026-08-04
 
 _Preview · More accurate and faster review of large workbooks_
@@ -16,10 +32,6 @@ Keyed records stay near their original neighbors, key columns can be detected or
 - Large difference views use bounded viewport reads and filtered-row mappings; external-file polling pauses while the app is hidden.
 - Direct-file, repository, and UGit/Git comparisons align records when both sides share an id header or one unambiguous *ID header. Ambiguous headers fall back to physical rows.
 - Records present on only one side remain between their neighboring shared keys instead of moving to the end. A key column can also be set or cleared from the column header.
-- Repository mode now stays in its startup loading state until a preselected XLSX file and revision are fully open, so the comparison cannot be replaced by an empty workspace.
-- The mobile site navigation uses native browser disclosure, so it remains available before scripts start.
-- Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.
-- The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference.
 
 ## 0.2.0 — 2026-08-03
 

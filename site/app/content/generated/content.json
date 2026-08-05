@@ -4,7 +4,7 @@
     "product": {
       "name": "SheetProof",
       "legacyName": "ugxlsx",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "channel": "preview",
       "formats": [
         ".xlsx"
@@ -23,10 +23,10 @@
     },
     "downloads": {
       "releases": "https://github.com/tadazly/sheetproof/releases",
-      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-windows-amd64.exe",
-      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-macos-universal.zip",
-      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SHA256SUMS.txt",
-      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.3.0.zip"
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.4.0.zip"
     },
     "screenshots": {
       "keyAlignment": {
@@ -81,6 +81,10 @@
         "beforeAfter": {
           "title": "Hold to compare before and after",
           "summary": "Hold Before/After or Tab in a grid to see the left workbook exactly as it was opened."
+        },
+        "localizedExperience": {
+          "title": "English, Chinese, and Japanese",
+          "summary": "Use the desktop app, CLI, documentation, website, and localized demonstration workbooks in English, Simplified Chinese, or Japanese."
         },
         "repositoryMode": {
           "title": "Local Git repository mode",
@@ -142,7 +146,7 @@
         },
         "changelog": {
           "title": "Changelog",
-          "description": "User-visible changes in SheetProof 0.1.0, 0.2.0, and 0.3.0."
+          "description": "User-visible changes in SheetProof 0.1.0 through 0.4.0."
         }
       }
     },
@@ -175,6 +179,10 @@
         "beforeAfter": {
           "title": "按住回看修改前",
           "summary": "按住“前后对比”或在表格内按住 Tab，可查看左侧工作簿刚打开时的状态。"
+        },
+        "localizedExperience": {
+          "title": "英语、简体中文和日语",
+          "summary": "桌面应用、CLI、文档、官网和本地化演示工作簿均可使用英语、简体中文或日语。"
         },
         "repositoryMode": {
           "title": "本地 Git 仓库模式",
@@ -236,7 +244,7 @@
         },
         "changelog": {
           "title": "更新日志",
-          "description": "SheetProof 0.1.0、0.2.0 和 0.3.0 的用户可见变化。"
+          "description": "SheetProof 0.1.0 至 0.4.0 的用户可见变化。"
         }
       }
     },
@@ -269,6 +277,10 @@
         "beforeAfter": {
           "title": "押している間だけ変更前を確認",
           "summary": "「変更前後」を押すか、表で Tab を押している間、左側を開いた時点の状態に戻します。"
+        },
+        "localizedExperience": {
+          "title": "英語・簡体字中国語・日本語",
+          "summary": "デスクトップアプリ、CLI、ドキュメント、Web サイト、ローカライズ済みのデモブックを 3 言語で利用できます。"
         },
         "repositoryMode": {
           "title": "ローカル Git リポジトリモード",
@@ -330,7 +342,7 @@
         },
         "changelog": {
           "title": "変更履歴",
-          "description": "SheetProof 0.1.0、0.2.0、0.3.0 のユーザー向け変更履歴。"
+          "description": "SheetProof 0.1.0 から 0.4.0 までのユーザー向け変更履歴。"
         }
       }
     }
@@ -430,6 +442,22 @@
   "changelog": {
     "releases": [
       {
+        "version": "0.4.0",
+        "date": "2026-08-05",
+        "channel": "preview",
+        "changes": [
+          "localizedDesktop",
+          "localizedCli",
+          "localizedWebsite",
+          "languagePersistence",
+          "settingsAndData",
+          "repositoryStartup",
+          "mobileNavigation",
+          "screenshotViewer",
+          "heroCarousel"
+        ]
+      },
+      {
         "version": "0.3.0",
         "date": "2026-08-04",
         "channel": "preview",
@@ -437,11 +465,7 @@
           "scrollbarMarkers",
           "viewportPerformance",
           "keyAlignment",
-          "neighborPlacement",
-          "repositoryStartup",
-          "mobileNavigation",
-          "screenshotViewer",
-          "heroCarousel"
+          "neighborPlacement"
         ]
       },
       {
@@ -479,6 +503,21 @@
     ],
     "locales": {
       "en": {
+        "0.4.0": {
+          "title": "English, Simplified Chinese, and Japanese throughout",
+          "summary": "The desktop app, CLI, documentation, and website now share a complete three-language experience, with persistent language choice and localized product examples.",
+          "changes": {
+            "localizedDesktop": "The desktop interface, settings, native confirmations, difference states, merge actions, and generated demonstration workbooks are available in English, Simplified Chinese, and Japanese.",
+            "localizedCli": "CLI help, status text, and errors follow --lang en|zh-CN|ja, while JSON keys and enum values remain stable for automation.",
+            "localizedWebsite": "The website, README, changelog, SEO metadata, navigation, and product screenshots now have matching English, Simplified Chinese, and Japanese versions.",
+            "languagePersistence": "Language choice persists across restarts. An explicit --lang affects only that launch, and Follow system can return to operating-system detection.",
+            "settingsAndData": "Language, UGit configuration, cache clearing, and saved-app-data clearing now share one responsive settings window with localized confirmations.",
+            "repositoryStartup": "Repository mode now stays in its startup loading state until a preselected XLSX file and revision are fully open, so the comparison cannot be replaced by an empty workspace.",
+            "mobileNavigation": "The mobile site navigation uses native browser disclosure, so it remains available before scripts start.",
+            "screenshotViewer": "Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.",
+            "heroCarousel": "The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference."
+          }
+        },
         "0.3.0": {
           "title": "More accurate and faster review of large workbooks",
           "summary": "Keyed records stay near their original neighbors, key columns can be detected or selected from a column header, and scrollbars show difference locations.",
@@ -486,11 +525,7 @@
             "scrollbarMarkers": "Horizontal and vertical scrollbars now mark added, deleted, modified, and conflicting positions with the existing semantic colors.",
             "viewportPerformance": "Large difference views use bounded viewport reads and filtered-row mappings; external-file polling pauses while the app is hidden.",
             "keyAlignment": "Direct-file, repository, and UGit/Git comparisons align records when both sides share an id header or one unambiguous *ID header. Ambiguous headers fall back to physical rows.",
-            "neighborPlacement": "Records present on only one side remain between their neighboring shared keys instead of moving to the end. A key column can also be set or cleared from the column header.",
-            "repositoryStartup": "Repository mode now stays in its startup loading state until a preselected XLSX file and revision are fully open, so the comparison cannot be replaced by an empty workspace.",
-            "mobileNavigation": "The mobile site navigation uses native browser disclosure, so it remains available before scripts start.",
-            "screenshotViewer": "Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.",
-            "heroCarousel": "The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference."
+            "neighborPlacement": "Records present on only one side remain between their neighboring shared keys instead of moving to the end. A key column can also be set or cleared from the column header."
           }
         },
         "0.2.0": {
@@ -525,6 +560,21 @@
         }
       },
       "zh-CN": {
+        "0.4.0": {
+          "title": "桌面、命令行与官网完整支持中英日三语",
+          "summary": "桌面应用、CLI、文档和官网现提供一致的英语、简体中文和日语体验，并支持语言持久化与本地化产品示例。",
+          "changes": {
+            "localizedDesktop": "桌面界面、设置、原生确认、差异状态、合并操作和生成式演示工作簿均支持英语、简体中文和日语。",
+            "localizedCli": "CLI 帮助、状态文本和错误遵循 --lang en|zh-CN|ja；JSON 字段与枚举值保持稳定，便于自动化使用。",
+            "localizedWebsite": "官网、README、更新日志、SEO 元数据、导航和产品截图现提供彼此对应的英语、简体中文和日语版本。",
+            "languagePersistence": "语言选择会跨重启保留；显式 --lang 只覆盖本次启动，“跟随系统”可恢复操作系统语言探测。",
+            "settingsAndData": "语言、UGit 配置、缓存清理和已保存应用数据清理统一进入响应式设置窗口，并提供本地化二次确认。",
+            "repositoryStartup": "仓库模式会保持启动加载状态，直到预选的 XLSX 文件和引用完全打开，避免真实对比被空白工作区覆盖。",
+            "mobileNavigation": "移动端导航改用浏览器原生展开结构，即使页面脚本尚未启动也能打开。",
+            "screenshotViewer": "官网产品图可在独立查看器中打开，支持桌面滚轮缩放与手机双指缩放、拖动，并修复关闭、滚动恢复和手势锁定问题。",
+            "heroCarousel": "无论浏览器是否开启减少动态效果，官网首页的使用说明都会继续轮换，并保留原有的轻量过渡。"
+          }
+        },
         "0.3.0": {
           "title": "更准确、更快地核对大表差异",
           "summary": "主键记录按原有邻近位置对齐，可自动识别或从列标题右键指定；滚动条会标出大表中的差异位置。",
@@ -532,11 +582,7 @@
             "scrollbarMarkers": "左右表格的横向和纵向滚动条新增差异位置标记，并沿用新增、删除、修改和冲突的既有颜色。",
             "viewportPerformance": "优化大差异表的视口读取与筛选行映射，快速滚动时只处理当前窗口附近的差异；应用不可见时暂停外部文件轮询。",
             "keyAlignment": "双方首行同列存在 id，或只有一个同名表头以 ID 结尾时，双文件、仓库和 UGit/Git 差异会对齐双方可靠的唯一主键；歧义表头保守回退物理行。",
-            "neighborPlacement": "中间仅一侧存在的记录会保留在相邻共同主键之间；也可右键列标题手动设置或取消主键。",
-            "repositoryStartup": "仓库模式会保持启动加载状态，直到预选的 XLSX 文件和引用完全打开，避免真实对比被空白工作区覆盖。",
-            "mobileNavigation": "移动端导航改用浏览器原生展开结构，即使页面脚本尚未启动也能打开。",
-            "screenshotViewer": "官网产品图可在独立查看器中打开，支持桌面滚轮缩放与手机双指缩放、拖动，并修复关闭、滚动恢复和手势锁定问题。",
-            "heroCarousel": "无论浏览器是否开启减少动态效果，官网首页的使用说明都会继续轮换，并保留原有的轻量过渡。"
+            "neighborPlacement": "中间仅一侧存在的记录会保留在相邻共同主键之间；也可右键列标题手动设置或取消主键。"
           }
         },
         "0.2.0": {
@@ -571,6 +617,21 @@
         }
       },
       "ja": {
+        "0.4.0": {
+          "title": "デスクトップ、CLI、Web サイトを英語・簡体字中国語・日本語に対応",
+          "summary": "デスクトップアプリ、CLI、ドキュメント、Web サイトで一貫した 3 言語表示を提供し、言語設定の保存とローカライズ済みの製品例に対応しました。",
+          "changes": {
+            "localizedDesktop": "デスクトップ画面、設定、ネイティブ確認、差分状態、反映操作、生成デモブックを英語・簡体字中国語・日本語で利用できます。",
+            "localizedCli": "CLI のヘルプ、状態表示、エラーは --lang en|zh-CN|ja に従い、JSON のキーと列挙値は自動化向けに変わりません。",
+            "localizedWebsite": "Web サイト、README、変更履歴、SEO メタデータ、ナビゲーション、製品画像に対応する英語・簡体字中国語・日本語版を用意しました。",
+            "languagePersistence": "選択した言語は再起動後も保持されます。明示的な --lang はその起動だけを上書きし、「システムに従う」で OS の言語検出へ戻せます。",
+            "settingsAndData": "言語、UGit 設定、キャッシュ削除、保存済みアプリデータ削除を、ローカライズした確認付きのレスポンシブな設定画面にまとめました。",
+            "repositoryStartup": "リポジトリモードでは、指定済みの XLSX ファイルと参照を開き終えるまで起動中の状態を保ち、比較画面が空のワークスペースに置き換わらないようにしました。",
+            "mobileNavigation": "モバイルナビゲーションをブラウザー標準の開閉要素に変更し、スクリプト起動前でも利用できるようにしました。",
+            "screenshotViewer": "製品画像を専用ビューアーで開き、デスクトップのホイール拡大とモバイルのピンチ・ドラッグに対応しました。閉じる操作、スクロール復元、ジェスチャー固定も修正しました。",
+            "heroCarousel": "ブラウザーの視差効果を減らす設定にかかわらず、トップページの利用例は元の軽いトランジションを保ったまま切り替わります。"
+          }
+        },
         "0.3.0": {
           "title": "大規模ブックの差分を、より正確かつ高速に確認",
           "summary": "キーで対応付けたレコードを元の前後関係に保ち、キー列の自動検出・手動指定に対応しました。スクロールバーには差分位置も表示されます。",
@@ -578,11 +639,7 @@
             "scrollbarMarkers": "左右の表の縦横スクロールバーに、追加・削除・変更・競合の位置を既存の色で表示します。",
             "viewportPerformance": "大きな差分表の表示範囲読み込みと絞り込み行マッピングを最適化し、アプリが非表示の間は外部変更のポーリングを休止します。",
             "keyAlignment": "両側の先頭行に同じ id、または一意に判断できる *ID 見出しがある場合、ファイル・リポジトリ・UGit/Git の各比較でレコードを対応付けます。曖昧な見出しは物理行に戻します。",
-            "neighborPlacement": "片側だけにあるレコードを共通キーの間に保ちます。列見出しの右クリックからキー列の設定と解除もできます。",
-            "repositoryStartup": "リポジトリモードでは、指定済みの XLSX ファイルと参照を開き終えるまで起動中の状態を保ち、比較画面が空のワークスペースに置き換わらないようにしました。",
-            "mobileNavigation": "モバイルナビゲーションをブラウザー標準の開閉要素に変更し、スクリプト起動前でも利用できるようにしました。",
-            "screenshotViewer": "製品画像を専用ビューアーで開き、デスクトップのホイール拡大とモバイルのピンチ・ドラッグに対応しました。閉じる操作、スクロール復元、ジェスチャー固定も修正しました。",
-            "heroCarousel": "ブラウザーの視差効果を減らす設定にかかわらず、トップページの利用例は元の軽いトランジションを保ったまま切り替わります。"
+            "neighborPlacement": "片側だけにあるレコードを共通キーの間に保ちます。列見出しの右クリックからキー列の設定と解除もできます。"
           }
         },
         "0.2.0": {

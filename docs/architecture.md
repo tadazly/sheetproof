@@ -59,7 +59,8 @@ switch 或 fetch。临时文件位于系统临时目录，切换来源和退出�
 ## 产品内容与官网
 
 - `product/product.json` 是名称、版本、下载状态、特性、适用场景和截图说明的事实源。
-- `product/changelog.json` 是面向用户的版本记录事实源。
+- `product/changelog/releases.json` 是版本顺序、日期、渠道和变更 ID 的事实源；
+  `product/changelog/{en,zh-CN,ja}.json` 保存对应的三语用户可见版本记录。
 - `scripts/sync-product-content.mjs` 从上述数据生成 README、CHANGELOG、CLI 版本文件，
   并把网站所需 JSON 同步到 `site/app/content/`。
 - `site/` 是独立可构建的 vinext 多页网站。生产构建静态导出到 `site/dist/client/`，

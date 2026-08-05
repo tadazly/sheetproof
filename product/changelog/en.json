@@ -1,4 +1,19 @@
 {
+  "0.4.0": {
+    "title": "English, Simplified Chinese, and Japanese throughout",
+    "summary": "The desktop app, CLI, documentation, and website now share a complete three-language experience, with persistent language choice and localized product examples.",
+    "changes": {
+      "localizedDesktop": "The desktop interface, settings, native confirmations, difference states, merge actions, and generated demonstration workbooks are available in English, Simplified Chinese, and Japanese.",
+      "localizedCli": "CLI help, status text, and errors follow --lang en|zh-CN|ja, while JSON keys and enum values remain stable for automation.",
+      "localizedWebsite": "The website, README, changelog, SEO metadata, navigation, and product screenshots now have matching English, Simplified Chinese, and Japanese versions.",
+      "languagePersistence": "Language choice persists across restarts. An explicit --lang affects only that launch, and Follow system can return to operating-system detection.",
+      "settingsAndData": "Language, UGit configuration, cache clearing, and saved-app-data clearing now share one responsive settings window with localized confirmations.",
+      "repositoryStartup": "Repository mode now stays in its startup loading state until a preselected XLSX file and revision are fully open, so the comparison cannot be replaced by an empty workspace.",
+      "mobileNavigation": "The mobile site navigation uses native browser disclosure, so it remains available before scripts start.",
+      "screenshotViewer": "Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.",
+      "heroCarousel": "The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference."
+    }
+  },
   "0.3.0": {
     "title": "More accurate and faster review of large workbooks",
     "summary": "Keyed records stay near their original neighbors, key columns can be detected or selected from a column header, and scrollbars show difference locations.",
@@ -6,11 +21,7 @@
       "scrollbarMarkers": "Horizontal and vertical scrollbars now mark added, deleted, modified, and conflicting positions with the existing semantic colors.",
       "viewportPerformance": "Large difference views use bounded viewport reads and filtered-row mappings; external-file polling pauses while the app is hidden.",
       "keyAlignment": "Direct-file, repository, and UGit/Git comparisons align records when both sides share an id header or one unambiguous *ID header. Ambiguous headers fall back to physical rows.",
-      "neighborPlacement": "Records present on only one side remain between their neighboring shared keys instead of moving to the end. A key column can also be set or cleared from the column header.",
-      "repositoryStartup": "Repository mode now stays in its startup loading state until a preselected XLSX file and revision are fully open, so the comparison cannot be replaced by an empty workspace.",
-      "mobileNavigation": "The mobile site navigation uses native browser disclosure, so it remains available before scripts start.",
-      "screenshotViewer": "Product screenshots open in a dedicated viewer with desktop wheel zoom and mobile pinch and drag. Closing, scroll restoration, and gesture locking were corrected.",
-      "heroCarousel": "The home-page usage examples now continue rotating with their original lightweight transitions regardless of the browser's reduced-motion preference."
+      "neighborPlacement": "Records present on only one side remain between their neighboring shared keys instead of moving to the end. A key column can also be set or cleared from the column header."
     }
   },
   "0.2.0": {

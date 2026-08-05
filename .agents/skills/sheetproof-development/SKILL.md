@@ -140,8 +140,9 @@ manual flow passed unless it was actually exercised and visually inspected.
 
 ## Keep website and releases in sync
 
-- Treat `../../../product/product.json` and `../../../product/changelog.json` as the public facts.
-  Record only user-visible behavior and fixes. Do not publish prompts, internal tasks, test plans,
+- Treat `../../../product/product.json`, `../../../product/changelog/releases.json`, and the
+  localized `../../../product/changelog/{en,zh-CN,ja}.json` files as the public facts. Record only
+  user-visible behavior and fixes. Do not publish prompts, internal tasks, test plans,
   implementation chatter, private paths, credentials, or infrastructure identities.
 - Update the website and changelog for every user-visible feature or fix. Run the content sync,
   website lint, static build, and rendered-page tests before deployment.

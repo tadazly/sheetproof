@@ -29,17 +29,18 @@ XLSX は圧縮された OOXML パッケージです。テキスト diff では�
 - **現在のシートの行絞り込み**: 確認中の元行を保ったまま、追加・削除・変更・競合を組み合わせて絞り込めます。
 - **選んで反映・元に戻す**: 選択したセルまたは行だけを左側へ反映します。編集と反映操作は元に戻せます。
 - **押している間だけ変更前を確認**: 「変更前後」を押すか、表で Tab を押している間、左側を開いた時点の状態に戻します。
+- **英語・簡体字中国語・日本語**: デスクトップアプリ、CLI、ドキュメント、Web サイト、ローカライズ済みのデモブックを 3 言語で利用できます。
 - **ローカル Git リポジトリモード**: 実際のワークツリーと検証済みのローカル／リモート追跡参照を、checkout、fetch、ブランチ切り替えなしで比較します。指定済みのブックと参照を読み込み終えてからワークスペースを表示します。
 - **安全なローカル保存**: 外部変更を検出し、同じディレクトリの一時ファイル、再オープン検証、アトミック置換を経て保存します。
 
 ## ダウンロード
 
-**0.3.0 プレビュー**
+**0.4.0 プレビュー**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.3.0.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.4.0.zip)
 
 Windows 版は未署名です。macOS 版も未署名で、公証されていません。GitHub Releases から入手し、SHA-256 を確認してください。
 

@@ -7,7 +7,7 @@
     "taglineZh": "Git 工作流中的 XLSX 差异审阅工具。",
     "description": "SheetProof compares .xlsx files in a Git worktree with validated Git refs, aligns records by key, and writes approved changes to the editable left workbook.",
     "descriptionZh": "SheetProof 比较 Git 工作区中的 .xlsx 与经过校验的本地引用，按主键对齐记录，并将确认的单元格或整行写入左侧文件。",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "channel": "预览版",
     "formats": [
       ".xlsx"
@@ -22,10 +22,10 @@
   },
   "downloads": {
     "releases": "https://github.com/tadazly/sheetproof/releases",
-    "windows": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-windows-amd64.exe",
-    "macos": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SheetProof-macos-universal.zip",
-    "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.3.0/SHA256SUMS.txt",
-    "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.3.0.zip",
+    "windows": "https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-windows-amd64.exe",
+    "macos": "https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SheetProof-macos-universal.zip",
+    "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.4.0/SHA256SUMS.txt",
+    "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.4.0.zip",
     "status": "Windows and macOS preview downloads are available from GitHub Releases. The desktop artifacts are unsigned, and the macOS build is not notarized."
   },
   "features": [
