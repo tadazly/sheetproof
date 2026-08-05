@@ -1413,3 +1413,12 @@ cd frontend && npm run test && npm run typecheck
 - 首页 `HeroMessageCarousel` 原先在 `prefers-reduced-motion: reduce` 时不创建定时器，导致
   使用该系统偏好的浏览器永远停在第一条说明。现在三条使用说明始终每 4.8 秒轮换，并保留
   原有的 0.28 秒文字淡入/4px 位移和 0.18 秒圆点高度/颜色过渡；该轻量效果不再因浏览器偏好减配。
+
+## 2026-08-05：中英日国际化验收结项
+
+- 维护者明确确认当前国际化验收可以标记完成。`docs/localization-final-acceptance.md` 的最终结论
+  更新为 Conditional Pass：自动化、Windows Wails 构建、已执行的三语桌面流程、演示数据、
+  90/16/15 基线、三语真实截图、网站路由/SEO、README/CHANGELOG 和内容同步均通过。
+- `go test -race ./...` 的 CGO/GCC 环境阻塞、macOS 未实机、少量极端底层诊断和网站静态
+  `<img>` warning 继续作为允许的已知限制。报告保留未由 Codex 独立执行的真实交互项目，
+  并明确它们由维护者接受为证据边界，未虚构为 Codex 已验证。
