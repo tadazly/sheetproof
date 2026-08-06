@@ -111,6 +111,25 @@ PNG 哈希一致。最终 EXE 已在本机原生启动并显示 250 表索引结
 - 版本、三语更新日志、README、CLI、桌面/官网 package 与 lockfile、官网生成内容和预期下载链接已同步。
   候选尚未暂存、提交、推送、打标签、创建 Release 或部署官网；须在维护者确认后执行这些外部操作。
 
+### 2026-08-06 v0.6.0 正式发布完成
+
+- 维护者确认后，发布提交 `7c6a12d7eabe52c45856e5f1ee653a9ac41408a3` 已普通推送至 `main`，
+  随后创建并推送 annotated tag `v0.6.0`；没有强推、移动既有标签或混入忽略的验收与审计产物。
+- 标签前手动 Release workflow run `31069433223` 及标签 workflow run `31069748362` 均通过源码验证、
+  Windows amd64 和 macOS universal 构建；标签 workflow 已创建 Draft Release。两项平台资产与
+  `SHA256SUMS.txt` 逐项核对一致后，整理后的用户更新说明已替换自动生成内容，并公开为 Preview：
+  `https://github.com/tadazly/sheetproof/releases/tag/v0.6.0`。Windows 产物仍未签名，macOS 产物
+  仍未签名且未公证，Release 与官网均保留该限制。
+- 常规 Go、前端与官网验证均通过；官网 lint 为 0 错误、静态构建 16 条路由、11 项渲染测试通过。
+  Windows 桌面产物报告版本 `0.6.0`，并已以 English、简体中文和日本語实际打开帮助窗口、检查版本、
+  本地化说明与快捷键后保存截图验收。
+- 公开 Release 后重新完成官网内容验证，并通过 `scripts/deploy-site-lightsail.ps1` 原子部署到正式域名。
+  源站静态文件与 Caddy 配置有效，同一 Caddy 实例的 5 个既有虚拟主机均完成源站健康检查；Cloudflare
+  公网首页、功能、使用说明、下载、更新日志、favicon 和 Open Graph 图片均返回 200 且具有代理响应头，
+  下载页已指向两个 `v0.6.0` 平台资产。
+- 最终隐私扫描覆盖发布范围、Release Notes、官网静态产物以及下载并展开的 Windows/macOS 实际资产；
+  私钥、访问令牌、构建机/工作区路径和私网 IPv4 均未命中。未发现需删除、轮换或重写历史的敏感数据。
+
 ### 仓库模式
 
 ```text
