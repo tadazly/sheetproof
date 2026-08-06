@@ -148,6 +148,22 @@ PNG 哈希一致。最终 EXE 已在本机原生启动并显示 250 表索引结
   配置有效，同一实例 5 个虚拟主机全部健康；Cloudflare 公网三语下载页均返回 200、带代理响应头，
   并包含对应语言的首次打开步骤和独立 `SHA256SUMS.txt` 校验章节。
 
+### 2026-08-06 GitHub Release 说明固化
+
+- 新增 `scripts/generate-release-notes.mjs`，以产品版本、下载 URL、签名状态、版本列表和英文
+  changelog 为唯一输入生成 GitHub Release Markdown。正文固定默认英文，末尾提供简体中文与
+  日文官网更新日志链接，并以 UTF-8 文件输出，避免 Windows PowerShell 字符串管道再次把非
+  ASCII 文本写成问号。
+- Release workflow 的源码验证会运行生成器回归测试；标签任务不再使用 `--generate-notes`，
+  创建和重复更新 Release 时均通过 `gh release create/edit --notes-file` 写入同一份说明。
+  重跑标签 workflow 只覆盖同一 Release 的正文和资产，不创建重复 Release。
+- README、架构、发布文档、手工验收与 `sheetproof-development` 项目技能已同步记录新的
+  事实源和验收基线；技能新增独立的低自由度 Release Notes 流程，并通过 `skill-creator`
+  的 `quick_validate.py` 校验。
+- 当前公开 `v0.6.0` 已写入同一生成结果。API 回读正文 SHA-256 与本地 UTF-8 文件一致，
+  不包含连续问号；简体中文与日文官网链接均返回 200。标签、目标提交、公开状态、Preview
+  状态和 3 个上传资产均保持不变。
+
 ### 仓库模式
 
 ```text

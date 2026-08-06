@@ -115,7 +115,7 @@ Only .xlsx is supported; .xlsm is not supported. SheetProof is not an Excel-leve
 
 ## Build
 
-Requires Go 1.24+, Node.js 20+, and Wails 2.10.2. On Windows use `powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build`.
+Requires Go 1.24+, Node.js 20+, and Wails 2.10.2. On Windows use `powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build`. GitHub Release notes are generated from the English changelog and end with links to the Simplified Chinese and Japanese website changelogs.
 
 ## License
 

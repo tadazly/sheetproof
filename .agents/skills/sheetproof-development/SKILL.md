@@ -1,6 +1,6 @@
 ---
 name: sheetproof-development
-description: Continue, review, debug, test, release, deploy, or document the SheetProof Go/Wails/Vue project and website. Use for implementation and handoff work, and whenever the user says to release, publish a formal version, push a version such as v0.1.0, infer the next release version, build GitHub Release executables, or synchronize and deploy the release website to Lightsail/Caddy.
+description: Continue, review, debug, test, release, deploy, or document the SheetProof Go/Wails/Vue project and website. Use for implementation and handoff work, and whenever the user says to release, publish a formal version, push a version such as v0.1.0, infer the next release version, generate or repair GitHub Release notes, build GitHub Release executables, or synchronize and deploy the release website to Lightsail/Caddy.
 ---
 
 # Develop SheetProof
@@ -166,6 +166,23 @@ manual flow passed unless it was actually exercised and visually inspected.
   desktop artifacts for embedded builder home/workspace paths as well as credentials before
   publishing them.
 
+## Generate GitHub Release notes
+
+Treat release-note generation and repair as a low-freedom workflow:
+
+1. Update `product/product.json`, `product/changelog/releases.json`, and
+   `product/changelog/en.json`; keep the Simplified Chinese and Japanese changelogs synchronized.
+2. Run `node --test --test-isolation=none scripts/generate-release-notes.test.mjs`, then run
+   `node scripts/generate-release-notes.mjs`. Do not hand-write a parallel release body.
+3. Keep the generated body in English. It must include the curated English changes, download
+   assets, current signing/notarization limits, and end with the Simplified Chinese and Japanese
+   official website changelog links.
+4. Pass the generated UTF-8 file to `gh release create/edit --notes-file`. Never use
+   `--generate-notes` or a Windows PowerShell string pipeline for the body.
+5. Read the public Release after the write. Confirm the body matches the generated file, contains
+   no run of replacement question marks, and preserves the intended tag, title, draft/prerelease
+   state, commit, and assets. A repair request authorizes changing the body, not those other fields.
+
 ## Prepare a formal release
 
 Treat requests such as “发布”, “发布正式版本”, “推送正式版本”, or “推送 v0.1.0 版本” as a
@@ -224,9 +241,9 @@ deployment.
 3. Create and push the confirmed `vX.Y.Z` tag only after the manual workflow succeeds. Wait for the
    tag-triggered workflow. Do not publish anything if verification, either platform build,
    checksums, or Draft Release creation fails.
-4. Inspect the Draft Release assets and `SHA256SUMS.txt`. Replace auto-generated notes with the
-   curated user-facing changelog so internal commit/task wording is not published. Confirm the tag,
-   asset names, download URLs, and checksums, then publish the Draft Release through GitHub.
+4. Inspect the Draft Release assets and `SHA256SUMS.txt`. Confirm the fact-generated English notes,
+   the Simplified Chinese and Japanese website changelog links, the tag, asset names, download URLs,
+   and checksums, then publish the Draft Release through GitHub.
 5. After the Release is publicly downloadable, rerun content synchronization and website lint,
    static build, and rendered-page tests if final URLs or notes changed. Deploy with
    `scripts/deploy-site-lightsail.ps1`, passing the local SSH target only at runtime. Verify the

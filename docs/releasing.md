@@ -54,6 +54,16 @@ Windows 离线入口和 GitHub Release workflow 都会设置 Go `-trimpath`。�
 - 手动运行 `workflow_dispatch`：执行测试并生成 Windows amd64 与 macOS universal 构建产物，仅作为 Actions artifact 保存，不创建 Release。
 - 推送与产品版本一致的 `v*` 标签：执行相同验证，生成 `SheetProof-windows-amd64.exe`、`SheetProof-macos-universal.zip` 和 `SHA256SUMS.txt`，并创建或更新 GitHub Draft Release。
 
+标签工作流运行 `scripts/generate-release-notes.mjs`，从当前版本的英文 changelog 生成
+UTF-8 Markdown，并通过 `gh release create/edit --notes-file` 写入 Release。GitHub Release
+正文默认使用英文，末尾固定提供简体中文和日文官网更新日志链接；不要再使用
+`--generate-notes`，也不要从 Windows PowerShell 字符串管道手工粘贴多语言正文。可在本地预览：
+
+```bash
+node scripts/generate-release-notes.mjs
+node --test --test-isolation=none scripts/generate-release-notes.test.mjs
+```
+
 例如 `product/product.json` 中版本为 `0.1.0` 时，发布标签必须是 `v0.1.0`。版本不一致会直接失败。Release 默认保持草稿，完成实机验收、文件校验和文案核对后再由维护者手动发布。重复运行同一标签会更新现有草稿资产。
 
 工作流只给 Release job `contents: write`，其他 job 使用只读权限。当前产物没有代码签名或 macOS 公证，不得把它们描述为已签名版本；后续接入签名时，凭据必须使用 GitHub Actions Secrets，不能写进工作流或仓库文件。
@@ -82,7 +92,7 @@ Release 发布后，把稳定的下载 URL 写回 `product/product.json`，再�
 
 维护者确认后，Codex 才执行完整发布：提交并推送确认范围，先手动运行一次 Release
 workflow 验证两个平台；成功后推送版本标签，等待标签 workflow 创建 Draft Release；
-核对产物与校验文件，把自动生成的说明替换为整理后的用户更新内容，再发布 Release。
+核对产物、校验文件和由事实源生成的英文说明，确认末尾本地化更新日志链接有效，再发布 Release。
 最后同步最终下载地址，重新构建测试官网，自动部署到 Lightsail，并同时检查源站、
 Cloudflare 公网入口、下载、静态资源和同一 Caddy 实例上的既有站点。任何构建或校验
 失败都必须停止后续发布，不得发布失败产物。

@@ -1,4 +1,4 @@
 interface:
   display_name: "SheetProof 项目开发"
-  short_description: "接续 SheetProof 仓库模式、表格差异、合并、安全保存与验证工作"
+  short_description: "接续 SheetProof 开发、验证、GitHub Release 与官网发布流程"
   default_prompt: "使用 $sheetproof-development 接手当前 SheetProof 工作区，先读取交接基线并验证后再实现需求。"

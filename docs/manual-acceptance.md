@@ -457,8 +457,11 @@ SheetProof compare \
    截图和 Open Graph 图片正常，并确认同一 Caddy 实例上的既有站点未受影响。
 7. 手动运行 GitHub Actions 的 Release workflow，确认可以生成 Windows amd64 和 macOS
    universal artifacts，但不会创建 Release；推送与产品版本一致的测试标签时，确认只
-   创建 Draft Release，并包含两个平台产物与 `SHA256SUMS.txt`。正式标签只能在准备
-   发布时使用，不能为了验收污染公开版本记录。
+   创建 Draft Release，并包含两个平台产物与 `SHA256SUMS.txt`。Release 正文必须由
+   `scripts/generate-release-notes.mjs` 生成，默认使用英文，不能出现自动提交列表或连续问号；
+   结尾的“Other languages”必须分别链接正式官网的简体中文与日文更新日志。重复运行标签
+   workflow 时应更新同一 Release 的正文和资产，不新建重复 Release，也不改变已公开版本的
+   draft/prerelease 状态。正式标签只能在准备发布时使用，不能为了验收污染公开版本记录。
 8. 对最终 Windows/macOS 产物做字符串隐私扫描，确认不包含构建者用户目录、仓库工作区
    路径、密钥或令牌。Windows 离线入口与 Release workflow 必须保留 Go `-trimpath`；
    官网与 README 的产品截图只能显示通用演示数据和不指向真实工作区的演示路径。

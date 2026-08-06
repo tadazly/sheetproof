@@ -31,6 +31,8 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             site/package-lock.json
+      - name: Verify release notes generator
+        run: node --test --test-isolation=none scripts/generate-release-notes.test.mjs
       - name: Test Go packages
         run: go test ./...
       - name: Vet Go packages
@@ -136,6 +138,8 @@ jobs:
           tag_version="${GITHUB_REF_NAME#v}"
           product_version="$(node -p "require('./product/product.json').product.version")"
           test "$tag_version" = "$product_version"
+      - name: Generate release notes
+        run: node scripts/generate-release-notes.mjs --version "${GITHUB_REF_NAME#v}" --output "$RUNNER_TEMP/release-notes.md"
       - name: Write checksums
         working-directory: release-assets
         run: sha256sum SheetProof-* > SHA256SUMS.txt
@@ -144,11 +148,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "SheetProof $GITHUB_REF_NAME" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
             gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" release-assets/* \
               --draft \
               --verify-tag \
-              --generate-notes \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
               --title "SheetProof $GITHUB_REF_NAME"
           fi

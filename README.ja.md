@@ -115,7 +115,7 @@ shasum -a 256 SheetProof-macos-universal.zip
 
 ## ビルド
 
-Go 1.24+、Node.js 20+、Wails 2.10.2 が必要です。Windows では `powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build` を使います。
+Go 1.24+、Node.js 20+、Wails 2.10.2 が必要です。Windows では `powershell -ExecutionPolicy Bypass -File scripts/invoke-wails.ps1 build` を使います。GitHub Release の本文は英語の変更履歴から自動生成し、末尾に簡体字中国語と日本語の公式サイト変更履歴へのリンクを追加します。
 
 ## License
 

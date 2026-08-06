@@ -63,6 +63,9 @@ switch 或 fetch。临时文件位于系统临时目录，切换来源和退出�
   `product/changelog/{en,zh-CN,ja}.json` 保存对应的三语用户可见版本记录。
 - `scripts/sync-product-content.mjs` 从上述数据生成 README、CHANGELOG、CLI 版本文件，
   并把网站所需 JSON 同步到 `site/app/content/`。
+- `scripts/generate-release-notes.mjs` 从同一版本事实和英文 changelog 生成 GitHub Release
+  Markdown。正文固定以英文为默认语言，下载文件名与签名限制来自产品事实，末尾固定链接
+  简体中文和日文官网更新日志；标签工作流只通过 UTF-8 `--notes-file` 创建或更新正文。
 - `site/` 是独立可构建的 vinext 多页网站。生产构建静态导出到 `site/dist/client/`，
   由正式域名上的 Caddy 从 `/var/www/sheetproof.luyilabs.com` 直接提供；生产环境不运行
   Node.js。网站只读取同步后的内容，不接触工作簿，也不复制桌面端业务逻辑。
