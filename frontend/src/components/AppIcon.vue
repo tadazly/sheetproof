@@ -13,6 +13,8 @@ withDefaults(defineProps<{
     | "folder"
     | "folder-open"
     | "info"
+    | "help"
+    | "external-link"
     | "merge"
     | "refresh"
     | "repository"
@@ -117,6 +119,15 @@ withDefaults(defineProps<{
     <template v-else-if="name === 'info'">
       <circle cx="12" cy="12" r="9" />
       <path d="M12 11v6M12 7h.01" />
+    </template>
+    <template v-else-if="name === 'help'">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.6 9a2.5 2.5 0 1 1 4.37 1.66c-.96.97-1.97 1.43-1.97 2.84" />
+      <path d="M12 17.2h.01" />
+    </template>
+    <template v-else-if="name === 'external-link'">
+      <path d="M14 4h6v6M20 4l-9 9" />
+      <path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />
     </template>
   </svg>
 </template>

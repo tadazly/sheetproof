@@ -12,6 +12,7 @@
     "sideBySideReview": { "title": "双栏差异审阅", "summary": "使用同步虚拟网格、差异导航和滚动条标记核对新增、删除、修改与冲突。" },
     "rowFilters": { "title": "当前工作表行筛选", "summary": "组合筛选新增、删除、修改和冲突，同时保留正在核对的来源行。" },
     "currentSheetFind": { "title": "当前工作表查找", "summary": "左右独立搜索，支持大小写、Unicode 全词和 RE2 正则选项，并可限定在当前差异行筛选范围内。" },
+    "inAppHelp": { "title": "应用内帮助", "summary": "从桌面工具栏打开帮助，可查看当前版本、按当前语言打开官网使用说明，并查看快捷键。" },
     "controlledMerge": { "title": "可控合并与撤销", "summary": "只把选中的真实差异写入左侧；未改变内容的编辑不产生未保存状态，实际编辑和合并仍可撤销。" },
     "beforeAfter": { "title": "按住回看修改前", "summary": "按住“前后对比”或在表格内按住 Tab，可查看左侧工作簿刚打开时的状态。" },
     "localizedExperience": { "title": "英语、简体中文和日语", "summary": "桌面应用、CLI、文档、官网和本地化演示工作簿均可使用英语、简体中文或日语。" },
@@ -34,6 +35,6 @@
     "features": { "title": "功能", "description": "工作簿语义对比、主键记录对齐、选择性应用、撤销与安全本地保存。" },
     "guide": { "title": "使用说明", "description": "打开文件或仓库、核对差异、配置 UGit，并安全保存 SheetProof 结果。" },
     "download": { "title": "下载", "description": "下载未签名的 SheetProof Windows amd64 或 macOS universal 预览版并核对 SHA-256。" },
-    "changelog": { "title": "更新日志", "description": "SheetProof 0.1.0 至 0.5.0 的用户可见变化。" }
+    "changelog": { "title": "更新日志", "description": "SheetProof 0.1.0 至 0.6.0 的用户可见变化。" }
   }
 }

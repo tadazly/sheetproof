@@ -6,6 +6,14 @@ English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
 
 User-visible SheetProof changes.
 
+## 0.6.0 — 2026-08-06
+
+_Preview · In-app help_
+
+The desktop toolbar now offers a dedicated help window.
+
+- View the current app version, open the guide in the selected language, and check SheetProof keyboard shortcuts.
+
 ## 0.5.0 — 2026-08-05
 
 _Preview · Find in the current worksheet_

@@ -13,6 +13,13 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // ScreenshotViewer needs a directly transformable image element for its keyboard,
+      // wheel, and touch gesture behavior; the brand icon is a static local SVG.
+      "@next/next/no-img-element": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

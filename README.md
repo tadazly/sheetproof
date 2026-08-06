@@ -28,6 +28,7 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 - **Side-by-side review**: Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data.
 - **Current-sheet row filters**: Combine added, deleted, modified, and conflict filters without losing the source row being reviewed.
 - **Find in the current worksheet**: Search the left and right sides independently with case, Unicode whole-word, and RE2 regular-expression options, including within filtered rows.
+- **In-app help**: Use Help in the desktop toolbar to view the current version, open the guide in the active language, and check keyboard shortcuts.
 - **Controlled merge and undo**: Write only selected differences to the left; unchanged edits create no unsaved state, while real edits and merges remain undoable.
 - **Hold to compare before and after**: Hold Before/After or Tab in a grid to see the left workbook exactly as it was opened.
 - **English, Chinese, and Japanese**: Use the desktop app, CLI, documentation, website, and localized demonstration workbooks in English, Simplified Chinese, or Japanese.
@@ -36,12 +37,12 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 
 ## Download
 
-**0.5.0 Preview**
+**0.6.0 Preview**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.5.0.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.6.0.zip)
 
 The current Windows build is unsigned. The macOS build is unsigned and not notarized. Download only from GitHub Releases and verify SHA-256.
 

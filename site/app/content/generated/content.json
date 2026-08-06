@@ -4,7 +4,7 @@
     "product": {
       "name": "SheetProof",
       "legacyName": "ugxlsx",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "channel": "preview",
       "formats": [
         ".xlsx"
@@ -23,10 +23,10 @@
     },
     "downloads": {
       "releases": "https://github.com/tadazly/sheetproof/releases",
-      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SheetProof-windows-amd64.exe",
-      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SheetProof-macos-universal.zip",
-      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.5.0/SHA256SUMS.txt",
-      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.5.0.zip"
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.6.0.zip"
     },
     "screenshots": {
       "keyAlignment": {
@@ -77,6 +77,10 @@
         "currentSheetFind": {
           "title": "Find in the current worksheet",
           "summary": "Search the left and right sides independently with case, Unicode whole-word, and RE2 regular-expression options, including within filtered rows."
+        },
+        "inAppHelp": {
+          "title": "In-app help",
+          "summary": "Use Help in the desktop toolbar to view the current version, open the guide in the active language, and check keyboard shortcuts."
         },
         "controlledMerge": {
           "title": "Controlled merge and undo",
@@ -150,7 +154,7 @@
         },
         "changelog": {
           "title": "Changelog",
-          "description": "User-visible changes in SheetProof 0.1.0 through 0.5.0."
+          "description": "User-visible changes in SheetProof 0.1.0 through 0.6.0."
         }
       }
     },
@@ -179,6 +183,10 @@
         "currentSheetFind": {
           "title": "当前工作表查找",
           "summary": "左右独立搜索，支持大小写、Unicode 全词和 RE2 正则选项，并可限定在当前差异行筛选范围内。"
+        },
+        "inAppHelp": {
+          "title": "应用内帮助",
+          "summary": "从桌面工具栏打开帮助，可查看当前版本、按当前语言打开官网使用说明，并查看快捷键。"
         },
         "controlledMerge": {
           "title": "可控合并与撤销",
@@ -252,7 +260,7 @@
         },
         "changelog": {
           "title": "更新日志",
-          "description": "SheetProof 0.1.0 至 0.5.0 的用户可见变化。"
+          "description": "SheetProof 0.1.0 至 0.6.0 的用户可见变化。"
         }
       }
     },
@@ -281,6 +289,10 @@
         "currentSheetFind": {
           "title": "現在のシート内を検索",
           "summary": "左右を別々に検索し、大文字小文字、Unicode 単語全体、RE2 正規表現を組み合わせ、絞り込み行だけにも限定できます。"
+        },
+        "inAppHelp": {
+          "title": "アプリ内ヘルプ",
+          "summary": "デスクトップツールバーのヘルプから、現在のバージョン、選択中の言語の使い方、ショートカットを確認できます。"
         },
         "controlledMerge": {
           "title": "選んで反映・元に戻す",
@@ -354,7 +366,7 @@
         },
         "changelog": {
           "title": "変更履歴",
-          "description": "SheetProof 0.1.0 から 0.5.0 までのユーザー向け変更履歴。"
+          "description": "SheetProof 0.1.0 から 0.6.0 までのユーザー向け変更履歴。"
         }
       }
     }
@@ -454,6 +466,14 @@
   "changelog": {
     "releases": [
       {
+        "version": "0.6.0",
+        "date": "2026-08-06",
+        "channel": "preview",
+        "changes": [
+          "inAppHelp"
+        ]
+      },
+      {
         "version": "0.5.0",
         "date": "2026-08-05",
         "channel": "preview",
@@ -532,6 +552,13 @@
     ],
     "locales": {
       "en": {
+        "0.6.0": {
+          "title": "In-app help",
+          "summary": "The desktop toolbar now offers a dedicated help window.",
+          "changes": {
+            "inAppHelp": "View the current app version, open the guide in the selected language, and check SheetProof keyboard shortcuts."
+          }
+        },
         "0.5.0": {
           "title": "Find in the current worksheet",
           "summary": "Search the current worksheet independently in either comparison grid.",
@@ -604,6 +631,13 @@
         }
       },
       "zh-CN": {
+        "0.6.0": {
+          "title": "应用内帮助",
+          "summary": "桌面工具栏新增独立的帮助窗口。",
+          "changes": {
+            "inAppHelp": "可查看当前应用版本、按所选语言打开官网使用说明，并查看 SheetProof 快捷键。"
+          }
+        },
         "0.5.0": {
           "title": "当前工作表查找",
           "summary": "可在左右对比网格中分别查找当前工作表的内容。",
@@ -676,6 +710,13 @@
         }
       },
       "ja": {
+        "0.6.0": {
+          "title": "アプリ内ヘルプ",
+          "summary": "デスクトップツールバーに専用のヘルプウィンドウを追加しました。",
+          "changes": {
+            "inAppHelp": "現在のアプリバージョンを確認し、選択中の言語の使い方を開き、SheetProof のショートカットを確認できます。"
+          }
+        },
         "0.5.0": {
           "title": "現在のシート内を検索",
           "summary": "左右いずれかの比較グリッドで、現在のシートを個別に検索できます。",

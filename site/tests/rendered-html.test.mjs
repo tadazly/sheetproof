@@ -60,12 +60,21 @@ test("feature pages preserve the 90, 16, and 15 difference scenario", async () =
   }
 });
 
-test("guide documents actual row-filter shortcuts and UGit entries", async () => {
+test("guide documents actual shortcuts, the in-app Help entry, and UGit entries", async () => {
   for (const route of ["/guide", "/zh-CN/guide", "/ja/guide"]) {
     const html = await render(route);
     assert.match(html, /1(?:–|～)4/); assert.match(html, /5/); assert.match(html, /SpreadsheetCompare/); assert.match(html, /Custom/);
     assert.match(html, /Ctrl \/ ⌘ \+ Shift \+ S/);
+    assert.match(html, /Ctrl \/ ⌘ \+ F/); assert.match(html, /F3/); assert.match(html, /Shift \+ F3/);
+    assert.match(html, /Help|帮助|ヘルプ/);
   }
+});
+
+test("localized changelogs include the unreleased in-app Help entry", async () => {
+  const [en, zh, ja] = await Promise.all([render("/changelog"), render("/zh-CN/changelog"), render("/ja/changelog")]);
+  assert.match(en, /In-app help/);
+  assert.match(zh, /应用内帮助/);
+  assert.match(ja, /アプリ内ヘルプ/);
 });
 
 test("screenshots remain accessible through the standalone viewer", async () => {

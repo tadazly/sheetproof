@@ -4,6 +4,7 @@ import { EventsOn } from "../wailsjs/runtime/runtime";
 import AppIcon from "./components/AppIcon.vue";
 import EmptyState from "./components/EmptyState.vue";
 import FindWidget from "./components/FindWidget.vue";
+import HelpDialog from "./components/HelpDialog.vue";
 import { backend } from "./backend";
 import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
@@ -87,6 +88,8 @@ const repositoryOpenDialog = ref(false);
 const repositoryOpening = ref(false);
 const repositoryOpenError = ref("");
 const settingsDialog = ref(false);
+const helpDialog = ref(false);
+const helpButton = ref<HTMLButtonElement | null>(null);
 const settingsConfirmation = ref<"cache" | "all" | null>(null);
 const settingsNotice = ref<{ kind: "success" | "error" | "info"; message: string } | null>(null);
 const externalChangeDialog = ref<{
@@ -1310,6 +1313,16 @@ async function applyRowFilters(focusStatus?: DiffFilter, anchor?: RowViewportAnc
   refreshOpenFinds();
 }
 
+function openHelp() {
+  if (settingsDialog.value || settingsConfirmation.value || repositorySwitchDialog.value.visible || repositoryOpenDialog.value || externalChangeDialog.value.visible) return;
+  helpDialog.value = true;
+}
+
+function closeHelp() {
+  helpDialog.value = false;
+  nextTick(() => helpButton.value?.focus());
+}
+
 async function toggleRowFilter(status: DiffFilter) {
   const anchor = captureRowViewportAnchor();
   const next = new Set(selectedRowFilters.value);
@@ -1868,6 +1881,11 @@ function onWindowKeyDown(event: KeyboardEvent) {
   }
   if (event.key === "Escape" && repositorySwitchDialog.value.visible) {
     repositorySwitchDialog.value.visible = false;
+    return;
+  }
+  if (event.key === "Escape" && helpDialog.value) {
+    event.preventDefault();
+    closeHelp();
     return;
   }
   const keyboardTarget = event.target === window ? document.activeElement : event.target;
@@ -2513,6 +2531,17 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <div class="toolbar-group settings-actions" :aria-label="t('toolbar.settings')">
+        <button
+          ref="helpButton"
+          class="icon-button ghost"
+          :disabled="settingsDialog || Boolean(settingsConfirmation) || repositorySwitchDialog.visible || repositoryOpenDialog || externalChangeDialog.visible"
+          :title="t('toolbar.help')"
+          :aria-label="t('toolbar.help')"
+          @click="openHelp"
+        >
+          <AppIcon name="help" />
+          <span class="button-label">{{ t("toolbar.help") }}</span>
+        </button>
         <button
           class="icon-button ghost"
           :disabled="busy"
@@ -3336,6 +3365,7 @@ onBeforeUnmount(() => {
         </div>
       </form>
     </div>
+    <HelpDialog v-if="helpDialog" @close="closeHelp" />
     <div v-if="settingsDialog" class="settings-overlay" @pointerdown.self="closeSettings">
       <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="repository-switch-header">

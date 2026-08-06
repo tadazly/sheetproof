@@ -13,6 +13,13 @@ describe("shared interface primitives", () => {
     expect(wrapper.findAll("path").length).toBeGreaterThan(0);
   });
 
+  it("renders the Help and external-link toolbar icons", () => {
+    for (const name of ["help", "external-link"] as const) {
+      const wrapper = mount(AppIcon, { props: { name } });
+      expect(wrapper.findAll("path").length).toBeGreaterThan(0);
+    }
+  });
+
   it("renders reusable empty-state copy and optional actions", () => {
     const wrapper = mount(EmptyState, {
       props: {

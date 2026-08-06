@@ -1,4 +1,11 @@
 {
+  "0.6.0": {
+    "title": "In-app help",
+    "summary": "The desktop toolbar now offers a dedicated help window.",
+    "changes": {
+      "inAppHelp": "View the current app version, open the guide in the selected language, and check SheetProof keyboard shortcuts."
+    }
+  },
   "0.5.0": {
     "title": "Find in the current worksheet",
     "summary": "Search the current worksheet independently in either comparison grid.",

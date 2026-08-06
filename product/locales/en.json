@@ -12,6 +12,7 @@
     "sideBySideReview": { "title": "Side-by-side review", "summary": "Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data." },
     "rowFilters": { "title": "Current-sheet row filters", "summary": "Combine added, deleted, modified, and conflict filters without losing the source row being reviewed." },
     "currentSheetFind": { "title": "Find in the current worksheet", "summary": "Search the left and right sides independently with case, Unicode whole-word, and RE2 regular-expression options, including within filtered rows." },
+    "inAppHelp": { "title": "In-app help", "summary": "Use Help in the desktop toolbar to view the current version, open the guide in the active language, and check keyboard shortcuts." },
     "controlledMerge": { "title": "Controlled merge and undo", "summary": "Write only selected differences to the left; unchanged edits create no unsaved state, while real edits and merges remain undoable." },
     "beforeAfter": { "title": "Hold to compare before and after", "summary": "Hold Before/After or Tab in a grid to see the left workbook exactly as it was opened." },
     "localizedExperience": { "title": "English, Chinese, and Japanese", "summary": "Use the desktop app, CLI, documentation, website, and localized demonstration workbooks in English, Simplified Chinese, or Japanese." },
@@ -34,6 +35,6 @@
       "features": { "title": "Features", "description": "Workbook-aware Git comparison, key alignment, selective application, undo, and safe local saving." },
     "guide": { "title": "Guide", "description": "Open files or repositories, review differences, configure UGit, and save SheetProof results safely." },
     "download": { "title": "Download", "description": "Download the unsigned SheetProof preview for Windows amd64 or macOS universal and verify SHA-256." },
-    "changelog": { "title": "Changelog", "description": "User-visible changes in SheetProof 0.1.0 through 0.5.0." }
+    "changelog": { "title": "Changelog", "description": "User-visible changes in SheetProof 0.1.0 through 0.6.0." }
   }
 }

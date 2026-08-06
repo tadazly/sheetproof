@@ -1,6 +1,8 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.vue";
+import packageInfo from "../package.json";
+import { setLocalePreference } from "./i18n";
 import type { CellDiff, Region, RepositoryResult, RepositoryView, Summary } from "./types";
 
 const emptySummary: Summary = {
@@ -109,6 +111,7 @@ describe("App", () => {
     Object.defineProperty(navigator, "languages", { configurable: true, value: ["zh-CN"] });
     Object.defineProperty(navigator, "language", { configurable: true, value: "zh-CN" });
     window.localStorage.clear();
+    setLocalePreference("zh-CN");
     delete (window as Window & { runtime?: Record<string, unknown> }).runtime;
     window.go = {
       main: {
@@ -333,6 +336,77 @@ describe("App", () => {
 
     expect(setKeyColumn).toHaveBeenLastCalledWith("配置", 0);
     expect(wrapper.findAll(".col-header.key-column")).toHaveLength(0);
+  });
+
+  it("opens Help before Settings on the welcome page and restores its trigger focus", async () => {
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    const actions = wrapper.find(".settings-actions").findAll("button");
+    expect(actions[0].attributes("aria-label")).toBe("帮助");
+    expect(actions[1].attributes("aria-label")).toBe("设置");
+
+    const help = wrapper.get('button[aria-label="帮助"]');
+    await help.trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".help-dialog").text()).toContain(`v${packageInfo.version}`);
+    expect(wrapper.text()).toContain("打开官网使用说明");
+    expect(wrapper.text()).toContain("Ctrl / ⌘");
+    expect(wrapper.text()).toContain("Backspace / Delete");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flushPromises();
+    expect(wrapper.find(".help-dialog").exists()).toBe(false);
+    expect(document.activeElement).toBe(help.element);
+  });
+
+  it("uses BrowserOpenURL with the localized guide URL without navigating the app", async () => {
+    const openURL = vi.fn();
+    (window as Window & { runtime?: Record<string, unknown> }).runtime = {
+      BrowserOpenURL: openURL,
+      EventsOnMultiple: () => () => undefined
+    };
+    const expected = {
+      en: ["Help", "Open the online guide", "https://sheetproof.luyilabs.com/guide/"],
+      "zh-CN": ["帮助", "打开官网使用说明", "https://sheetproof.luyilabs.com/zh-CN/guide/"],
+      ja: ["ヘルプ", "公式ガイドを開く", "https://sheetproof.luyilabs.com/ja/guide/"]
+    } as const;
+    for (const [locale, [title, button, url]] of Object.entries(expected)) {
+      const controller = window.go!.main!.Controller!;
+      controller.LanguagePreference = async () => locale;
+      controller.SetRuntimeLocale = async () => undefined;
+      const wrapper = mount(App, { attachTo: document.body });
+      await flushPromises();
+      await wrapper.get(`button[aria-label="${title}"]`).trigger("click");
+      await wrapper.get(`button[aria-label="${button}"]`).trigger("click");
+      expect(openURL).toHaveBeenLastCalledWith(url);
+      expect(window.location.pathname).toBe("/");
+      wrapper.find(".help-overlay").element.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      await flushPromises();
+      wrapper.unmount();
+    }
+  });
+
+  it("keeps background shortcuts inert while Help is open", async () => {
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('button[aria-label="帮助"]').trigger("click");
+    const dialog = wrapper.get(".help-dialog");
+    await dialog.trigger("keydown", { key: "5" });
+    await dialog.trigger("keydown", { key: "s", ctrlKey: true });
+    expect(wrapper.find(".help-dialog").exists()).toBe(true);
+  });
+
+  it("closes Help from its titlebar control and backdrop", async () => {
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('button[aria-label="帮助"]').trigger("click");
+    expect(wrapper.get(".help-dialog").attributes("aria-modal")).toBe("true");
+    await wrapper.get(".help-dialog-header .icon-button").trigger("click");
+    expect(wrapper.find(".help-dialog").exists()).toBe(false);
+    await wrapper.get('button[aria-label="帮助"]').trigger("click");
+    wrapper.get(".help-overlay").element.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    await flushPromises();
+    expect(wrapper.find(".help-dialog").exists()).toBe(false);
   });
 
   it("opens independent Find widgets by grid focus and navigates without advancing the other side", async () => {
