@@ -164,6 +164,20 @@ PNG 哈希一致。最终 EXE 已在本机原生启动并显示 250 表索引结
   不包含连续问号；简体中文与日文官网链接均返回 200。标签、目标提交、公开状态、Preview
   状态和 3 个上传资产均保持不变。
 
+### 2026-08-06 v0.6.0 GitHub 正式 Release
+
+- 维护者明确授权提交、推送并把最新版本设置为正式 Release 后，Release Notes 固化范围以
+  `Automate GitHub release notes` 提交 `ee94ee4bb9a9b31868c918c0df9b025ac79ede3e`
+  普通推送到 `origin/main`；远端 `main` 回读与本地提交一致，没有强推、移动标签或混入
+  忽略的构建与校验产物。
+- 现有 `v0.6.0` 通过 GitHub Release API 从 Pre-release 改为正式 Latest Release；`draft=false`、
+  `prerelease=false`，latest endpoint 返回 `v0.6.0`，公开页面返回 200。版本标签、目标提交、
+  3 个上传资产和正文 SHA-256 均未改变；正文仍无连续问号，并保留简体中文与日文官网链接。
+- 该操作只改变 GitHub Release 的发布级别，不宣称 Windows/macOS 产物已经签名或公证；
+  README、官网与 Release Notes 中的未签名、未公证和 Preview 产品成熟度说明继续保留。
+- 最终提交范围与公开正文隐私扫描未发现私钥、访问令牌、私人路径或私网地址，不需要移除、
+  轮换凭据或重写历史。官网静态内容没有变化，因此未重复部署 Lightsail/Caddy 官网。
+
 ### 仓库模式
 
 ```text
