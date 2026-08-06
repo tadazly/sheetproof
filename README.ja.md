@@ -44,7 +44,50 @@ XLSX は圧縮された OOXML パッケージです。テキスト diff では�
 - [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SHA256SUMS.txt)
 - [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.6.0.zip)
 
-Windows 版は未署名です。macOS 版も未署名で、公証されていません。GitHub Releases から入手し、SHA-256 を確認してください。
+## Windows／macOS で初めて開くとき
+
+現在の SheetProof は未署名のプレビュー版です。そのため、Windows や macOS で初めて開くと、システムが発行元を確認できないという警告が表示される場合があります。この警告だけでマルウェアが検出されたことを意味するわけではありません。
+
+SheetProof は、このプロジェクトの GitHub Releases からのみダウンロードしてください。マルウェアまたはファイル破損が明示された場合は実行せず、ダウンロードし直してください。
+
+### Windows
+
+現在の実行ファイルはコード署名されていないため、Windows で認識されないアプリまたは不明な発行元として表示される場合があります。
+
+1. `SheetProof-windows-amd64.exe` をダウンロードしてダブルクリックします。
+2. 「Windows によって PC が保護されました」と表示されたら、**詳細情報**を選択します。
+3. **実行**を選択します。
+
+**実行**が表示されない場合は、Smart App Control または組織のポリシーによってブロックされている可能性があります。管理者に連絡し、SheetProof のためだけに Windows の保護機能全体を無効にしないでください。
+
+### macOS
+
+現在のアプリは Apple Developer ID で署名されておらず、公証も受けていないため、Gatekeeper は開発元と公証状態を自動確認できません。
+
+1. `SheetProof-macos-universal.zip` をダウンロードして展開します。
+2. `SheetProof.app` を「アプリケーション」へ移動し、ダブルクリックします。
+3. macOS によってブロックされたら、「システム設定 → プライバシーとセキュリティ」を開きます。
+4. 「セキュリティ」で SheetProof の**このまま開く**を選択し、認証後にもう一度**開く**を選択します。
+
+**このまま開く**が表示されない場合は、SheetProof をもう一度開いてから、すぐに「プライバシーとセキュリティ」へ戻ってください。管理対象の Mac では管理者の許可が必要な場合があります。
+
+## ダウンロードファイルの確認（任意）
+
+ダウンロードしたファイルが GitHub Release のものと一致することを追加で確認する場合は、同じバージョンの `SHA256SUMS.txt` と計算結果を比較します。
+
+**Windows**
+
+```powershell
+(Get-FileHash .\SheetProof-windows-amd64.exe -Algorithm SHA256).Hash
+```
+
+**macOS**
+
+```bash
+shasum -a 256 SheetProof-macos-universal.zip
+```
+
+値が一致しない場合は実行せず、GitHub Releases からダウンロードし直してください。
 
 ## クイックスタート
 

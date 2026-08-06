@@ -44,12 +44,21 @@ test("static exports use the correct document language", async () => {
   assert.match(await render("/ja"), /<html lang="ja">/);
 });
 
-test("download copy keeps signing and notarization warnings in every locale", async () => {
+test("download copy explains unsigned first launch before optional verification in every locale", async () => {
   const [en, zh, ja] = await Promise.all([render("/download"), render("/zh-CN/download"), render("/ja/download")]);
-  assert.match(en, /unsigned/); assert.match(en, /not notarized/);
-  assert.match(zh, /未经签名/); assert.match(zh, /未经公证/);
-  assert.match(ja, /未署名/); assert.match(ja, /公証を受けていない/);
-  for (const html of [en, zh, ja]) assert.match(html, /SHA-256/);
+  assert.match(en, /unsigned/); assert.match(en, /More info/); assert.match(en, /Run anyway/); assert.match(en, /Open Anyway/);
+  assert.match(zh, /未签名/); assert.match(zh, /更多信息/); assert.match(zh, /仍要运行/); assert.match(zh, /仍要打开/);
+  assert.match(ja, /未署名/); assert.match(ja, /詳細情報/); assert.match(ja, /このまま開く/);
+  for (const html of [en, zh, ja]) {
+    assert.match(html, /Smart App Control/);
+    assert.match(html, /Gatekeeper/);
+    assert.match(html, /SHA256SUMS\.txt/);
+    assert.match(html, /Get-FileHash/);
+    assert.match(html, /shasum -a 256/);
+  }
+  assert.ok(en.indexOf("Run anyway") < en.indexOf("Optional download verification"));
+  assert.ok(zh.indexOf("仍要运行") < zh.indexOf("下载文件校验（可选）"));
+  assert.ok(ja.indexOf("このまま開く") < ja.indexOf("ダウンロードファイルの確認（任意）"));
 });
 
 test("feature pages preserve the 90, 16, and 15 difference scenario", async () => {
@@ -109,6 +118,12 @@ test("generated facts remain synchronized with the product source", async () => 
   assert.match(readme, /## Key alignment/);
   assert.match(readmeZh, /## 主键对齐/);
   assert.match(readmeJa, /## キー列によるレコード照合/);
+  assert.match(readme, /## First launch on Windows and macOS/);
+  assert.match(readmeZh, /## Windows 与 macOS 首次打开/);
+  assert.match(readmeJa, /## Windows／macOS で初めて開くとき/);
+  assert.match(readme, /More info[\s\S]*Run anyway[\s\S]*Optional download verification/);
+  assert.match(readmeZh, /更多信息[\s\S]*仍要运行[\s\S]*下载文件校验（可选）/);
+  assert.match(readmeJa, /詳細情報[\s\S]*このまま開く[\s\S]*ダウンロードファイルの確認（任意）/);
   assert.doesNotMatch(`${readmeZh}\n${readmeJa}`, /SheetProof processes workbooks locally/);
 });
 

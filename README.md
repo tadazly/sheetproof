@@ -44,7 +44,50 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 - [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SHA256SUMS.txt)
 - [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.6.0.zip)
 
-The current Windows build is unsigned. The macOS build is unsigned and not notarized. Download only from GitHub Releases and verify SHA-256.
+## First launch on Windows and macOS
+
+SheetProof is currently an unsigned preview. Windows and macOS may show a security warning the first time you open it because the system cannot verify the publisher. This warning does not by itself mean that the system found malware.
+
+Download SheetProof only from this project's GitHub Releases. If the system explicitly reports malware or a damaged file, stop and download it again.
+
+### Windows
+
+The current executable is not code-signed, so Windows may identify it as an unrecognized app or show an unknown publisher.
+
+1. Download and double-click `SheetProof-windows-amd64.exe`.
+2. If Windows says it protected your PC, select **More info**.
+3. Select **Run anyway**.
+
+If **Run anyway** is unavailable, Smart App Control or an organization policy may be blocking the app. Contact your administrator; do not disable Windows security globally just to run SheetProof.
+
+### macOS
+
+The current app is not signed with an Apple Developer ID and is not notarized, so Gatekeeper cannot automatically verify the developer or notarization status.
+
+1. Download and extract `SheetProof-macos-universal.zip`.
+2. Move `SheetProof.app` to **Applications**, then double-click it.
+3. If macOS blocks it, open **System Settings → Privacy & Security**.
+4. In the Security section, find SheetProof, select **Open Anyway**, authenticate, then select **Open**.
+
+If **Open Anyway** is not visible, try opening SheetProof once more and return to Privacy & Security. A managed Mac may require administrator approval.
+
+## Optional download verification
+
+For an additional integrity check, compare the downloaded file with `SHA256SUMS.txt` from the same GitHub Release.
+
+**Windows**
+
+```powershell
+(Get-FileHash .\SheetProof-windows-amd64.exe -Algorithm SHA256).Hash
+```
+
+**macOS**
+
+```bash
+shasum -a 256 SheetProof-macos-universal.zip
+```
+
+If the values do not match, do not run the file. Download it again from GitHub Releases.
 
 ## Quick start
 

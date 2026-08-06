@@ -44,7 +44,50 @@ SheetProof 会识别双方共同的 `id` 表头，或唯一且无歧义的 `*ID`
 - [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SHA256SUMS.txt)
 - [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.6.0.zip)
 
-当前 Windows 产物未签名；macOS 产物未签名且未公证。请只从 GitHub Releases 下载并核对 SHA-256。
+## Windows 与 macOS 首次打开
+
+SheetProof 当前是未签名的预览版，因此 Windows 和 macOS 在首次打开时可能显示安全提示。这是因为系统暂时无法验证应用发布者，并不代表系统已经确认应用含有恶意软件。
+
+请只从本项目的 GitHub Releases 下载 SheetProof。如果系统明确报告恶意软件或文件损坏，请停止运行并重新下载。
+
+### Windows
+
+当前可执行文件尚未进行代码签名，因此 Windows 可能将它显示为无法识别的应用或未知发布者。
+
+1. 下载并双击 `SheetProof-windows-amd64.exe`。
+2. 如果出现“Windows 已保护你的电脑”，点击**更多信息**。
+3. 点击**仍要运行**。
+
+如果没有“仍要运行”按钮，设备可能启用了 Smart App Control 或组织安全策略。请联系系统管理员；不建议为了运行 SheetProof 全局关闭 Windows 安全功能。
+
+### macOS
+
+当前应用尚未使用 Apple Developer ID 签名，也未经过 Apple 公证，因此 Gatekeeper 无法自动验证开发者和公证状态。
+
+1. 下载并解压 `SheetProof-macos-universal.zip`。
+2. 将 `SheetProof.app` 移到“应用程序”，然后双击打开。
+3. 如果系统阻止打开，请进入“系统设置 → 隐私与安全性”。
+4. 在“安全性”区域找到 SheetProof，点击“仍要打开”，完成验证后再次点击“打开”。
+
+如果没有看到“仍要打开”，请再次尝试打开 SheetProof，然后立即返回“隐私与安全性”。受公司或学校管理的 Mac 可能需要管理员授权。
+
+## 下载文件校验（可选）
+
+如果需要进一步确认下载文件与 GitHub Release 中发布的文件一致，可以将计算结果与同一版本的 `SHA256SUMS.txt` 对照。
+
+**Windows**
+
+```powershell
+(Get-FileHash .\SheetProof-windows-amd64.exe -Algorithm SHA256).Hash
+```
+
+**macOS**
+
+```bash
+shasum -a 256 SheetProof-macos-universal.zip
+```
+
+如果两者不一致，请不要运行该文件，并重新从 GitHub Releases 下载。
 
 ## 快速开始
 
