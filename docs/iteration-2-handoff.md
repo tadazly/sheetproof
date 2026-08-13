@@ -140,6 +140,11 @@ PNG 哈希一致。最终 EXE 已在本机原生启动并显示 250 表索引结
   workflow 验证双平台资产，再创建并推送 annotated tag `v0.7.0`；标签工作流成功后核对 Draft
   Release 资产、校验和与正文，将其公开为 `draft=false`、`prerelease=false` 的正式 Release，
   最后以运行时 SSH 目标原子部署官网并核对源站、Cloudflare 和同一 Caddy 实例既有站点。
+- 维护者确认后已创建并推送发布提交 `a01130b70a1e857fda413aa352d0badcaa10d70d`。首次标签前
+  Release workflow run `31691015137` 在发布说明测试开始时失败：`setup-node` 的宽泛 `22`
+  解析到不支持 `--test-isolation=none` 的 Node 22，尚未执行 Go、前端或双平台构建，也未创建标签
+  或 Release。发布工作流改用 Node 24；本地 Node 24.19.0 已用同一参数通过发布说明 2/2 测试，
+  修复提交推送后必须重新完整通过手动工作流，才能继续创建 `v0.7.0` 标签。
 
 ### 2026-08-06 应用内帮助
 
