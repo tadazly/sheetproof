@@ -157,6 +157,30 @@ PNG 哈希一致。最终 EXE 已在本机原生启动并显示 250 表索引结
   GUI 子系统 EXE 在 GitHub Runner 的直接 PowerShell 调用未等待到 stdout。检查已改为使用
   `.NET ProcessStartInfo` 显式重定向并等待 stdout，必须重新完整通过后再打标签。
 
+### 2026-08-13 v0.7.0 正式发布完成
+
+- 元数据与 CI 等修复最终以 `ed346bdce29954ce0ac28bfa70a4aaaa09a7d1b9` 和
+  `b7184e8b2d6ad13e565cd0b4ae6d1675336050c2` 普通推送到 `main`；标签前 Release workflow
+  run `31693039649` 完整通过源码、Windows amd64、macOS universal 和双平台包版本断言。
+  annotated tag `v0.7.0` 固定指向 `b7184e8b2d6ad13e565cd0b4ae6d1675336050c2`，没有强推或
+  移动既有标签。标签 workflow run `31693401622` 再次通过全部任务并创建 Draft Release。
+- Draft 的英文正文与 UTF-8 生成稿逐字符一致；3 个资产齐全且 `SHA256SUMS.txt` 与实际下载文件
+  一致。Windows amd64 SHA-256 为
+  `66B2F7EF68A26B49714BBD460975DA6769EC7B0DE2ECE8A05711427EB1D68384`，macOS universal
+  ZIP SHA-256 为 `04FCB0DF9B0F2785A53AD2F0B660F61278A8EE73D46366DD0FB51B3EA865483A`。
+  Windows 文件版本、产品版本和 CLI 均为 `0.7.0`；macOS 两项 bundle 版本均为 `0.7.0`。
+- `v0.7.0` 已公开为 `draft=false`、`prerelease=false` 的 Latest Release：
+  `https://github.com/tadazly/sheetproof/releases/tag/v0.7.0`。Windows 仍未签名；macOS 仍未签名且
+  未公证，README、官网和 Release Notes 均保留该限制。
+- Release 公开后重新通过产品内容同步、官网 lint、16 路由静态构建和 11/11 渲染测试，并通过
+  `scripts/deploy-site-lightsail.ps1` 原子部署正式官网。源站 18 个路由/资源健康，线上英文更新日志
+  SHA-256 与本机构建一致；Caddy 配置有效，同实例 5 个虚拟主机全部健康。Cloudflare 公网 18 个
+  路由/资源返回 200 且具有代理响应头，6 个三语下载/更新日志页显示 `0.7.0`，4 个 Release 页面与
+  下载 URL 可用，TLS 证书校验通过。
+- 最终隐私扫描覆盖发布范围、正文、官网产物以及下载并展开的 Windows/macOS 实际可执行文件；
+  私钥、GitHub/云令牌、认证头或 URL、本机/工作区/Runner 路径均为 0 命中。未发现需要移除、轮换
+  或重写历史的敏感数据。
+
 ### 2026-08-06 应用内帮助
 
 - 顶部工具栏在设置左侧提供独立“帮助 / Help / ヘルプ”按钮，欢迎页和已打开工作簿时均可用；
