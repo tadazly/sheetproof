@@ -20,6 +20,9 @@ type rowAlignmentResult struct {
 	sheetEligible map[string]bool
 	moved         int
 	available     bool
+	leftColumns   map[string]map[int]int
+	rightColumns  map[string]map[int]int
+	columnAligned map[string]bool
 }
 
 type sheetRowAlignment struct {
@@ -430,23 +433,30 @@ func prepareRightForComparison(
 	keyOverrides map[string]int,
 ) rowAlignmentResult {
 	if right == nil {
-		return rowAlignmentResult{}
+		return rowAlignmentResult{left: left, leftSources: identityWorkbookRows(left), leftColumns: identityWorkbookColumns(left)}
 	}
+	columns := alignWorkbookColumns(left, right)
+	left, right = columns.left, columns.right
+	var result rowAlignmentResult
 	if gitMerge {
-		return alignRightRows(left, right, false, keyOverrides)
+		result = alignRightRows(left, right, false, keyOverrides)
+	} else {
+		result = alignRightRowsForComparison(left, right, keyOverrides)
+		if mode == RowAlignmentPosition {
+			alignedSheets := make(map[string]bool, len(right.Sheets))
+			result = rowAlignmentResult{
+				left: left, right: right,
+				leftSources: identityWorkbookRows(left), rowSources: identityWorkbookRows(right),
+				keyColumns: result.keyColumns, alignedSheets: alignedSheets,
+				sheetMoved: result.sheetMoved, sheetEligible: result.sheetEligible,
+				available: result.available,
+			}
+		}
 	}
-	alignment := alignRightRowsForComparison(left, right, keyOverrides)
-	if mode != RowAlignmentPosition {
-		return alignment
-	}
-	alignedSheets := make(map[string]bool, len(right.Sheets))
-	return rowAlignmentResult{
-		left: left, right: right,
-		leftSources: identityWorkbookRows(left), rowSources: identityWorkbookRows(right),
-		keyColumns: alignment.keyColumns, alignedSheets: alignedSheets,
-		sheetMoved: alignment.sheetMoved, sheetEligible: alignment.sheetEligible,
-		available: alignment.available,
-	}
+	result.leftColumns = columns.leftSources
+	result.rightColumns = columns.rightSources
+	result.columnAligned = columns.alignedSheets
+	return result
 }
 
 // CompareSnapshots applies the same safe unique-ID alignment used by desktop
@@ -455,7 +465,7 @@ func prepareRightForComparison(
 func CompareSnapshots(
 	left, right *workbook.WorkbookSnapshot,
 ) *diff.WorkbookDiff {
-	alignment := alignRightRowsForComparison(left, right)
+	alignment := prepareRightForComparison(left, right, false, RowAlignmentAuto, nil)
 	return diff.CompareWithKeyColumns(alignment.left, alignment.right, alignment.keyColumns)
 }
 
@@ -510,8 +520,8 @@ func mergeSemanticNotice(
 	base, left, right *workbook.WorkbookSnapshot,
 	locale string,
 ) string {
-	leftAlignment := alignRightRows(base, left, false, nil)
-	rightAlignment := alignRightRows(base, right, false, nil)
+	leftAlignment := prepareRightForComparison(base, left, true, RowAlignmentAuto, nil)
+	rightAlignment := prepareRightForComparison(base, right, true, RowAlignmentAuto, nil)
 	leftChanged := !diff.CompareWithKeyColumns(
 		leftAlignment.left, leftAlignment.right, leftAlignment.keyColumns,
 	).Equal

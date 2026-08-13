@@ -154,6 +154,7 @@ let pendingActions = 0;
 let syncing = false;
 let draggingSelection = false;
 let draggingRows = false;
+let draggingColumns = false;
 let dragAnchor: CellPoint | null = null;
 let resizeState: { col: number; startX: number; startWidth: number } | null = null;
 let repositoryResize: { startX: number; startWidth: number } | null = null;
@@ -380,6 +381,37 @@ const contextRows = computed(() => {
   const row = contextMenu.value.row;
   if (!row) return [];
   return rowsForContext(row);
+});
+const contextColumns = computed(() => {
+  if (contextMenu.value.kind !== "column") return [];
+  const current = selection.value;
+  const lastRow = rowFilterActive.value
+    ? filteredRowMappings.value.length
+    : Math.max(activeSheet.value?.maxRow ?? 1, 1);
+  if (!current || current.startRow !== 1 || current.endRow !== lastRow) {
+    return [contextMenu.value.col];
+  }
+  return Array.from(
+    { length: current.endCol - current.startCol + 1 },
+    (_, index) => current.startCol + index
+  );
+});
+const contextCopyableColumns = computed(() =>
+  contextColumns.value.filter((col) =>
+    (region.value?.columns?.find((item) => item.col === col)?.rightCol ?? col) > 0
+  )
+);
+const contextRemovableColumns = computed(() =>
+  contextColumns.value.filter((col) => {
+    const mapping = region.value?.columns?.find((item) => item.col === col);
+    return (mapping?.leftCol ?? col) > 0 && (mapping?.rightCol ?? col) <= 0;
+  })
+);
+const contextKeyColumnAvailable = computed(() => {
+  if (contextMenu.value.kind !== "column") return false;
+  const mapping = region.value?.columns?.find((item) => item.col === contextMenu.value.col);
+  return (mapping?.leftCol ?? contextMenu.value.col) > 0
+    && (mapping?.rightCol ?? contextMenu.value.col) > 0;
 });
 const contextActionableRows = computed(() =>
   contextRows.value.filter((row) => rowStatusForSource(row) !== "unchanged")
@@ -1172,6 +1204,7 @@ function beginCellSelection(cell: RegionCell, event: PointerEvent) {
   selection.value = makeRange(dragAnchor, point);
   draggingSelection = true;
   draggingRows = false;
+  draggingColumns = false;
 }
 
 function extendCellSelection(cell: RegionCell) {
@@ -1200,6 +1233,7 @@ function beginRowSelection(row: number, event: PointerEvent | MouseEvent) {
   dragAnchor = { row: anchorRow, col: 1 };
   draggingRows = event.type.startsWith("pointer");
   draggingSelection = false;
+  draggingColumns = false;
 }
 
 function extendRowSelection(row: number) {
@@ -1214,9 +1248,47 @@ function extendRowSelection(row: number) {
   activePoint.value = { row, col: region.value?.fromCol ?? 1 };
 }
 
+function beginColumnSelection(col: number, event: PointerEvent | MouseEvent) {
+  if ("button" in event && event.button !== 0) return;
+  contextMenu.value.visible = false;
+  const lastRow = rowFilterActive.value
+    ? filteredRowMappings.value.length
+    : Math.max(activeSheet.value?.maxRow ?? 1, 1);
+  const anchorCol = event.shiftKey && selectionAnchor.value ? selectionAnchor.value.col : col;
+  if (!event.shiftKey || !selectionAnchor.value) {
+    selectionAnchor.value = { row: 1, col };
+  }
+  selection.value = {
+    startRow: 1,
+    endRow: lastRow,
+    startCol: Math.min(anchorCol, col),
+    endCol: Math.max(anchorCol, col)
+  };
+  activePoint.value = { row: region.value?.fromRow ?? 1, col };
+  dragAnchor = { row: 1, col: anchorCol };
+  draggingColumns = event.type.startsWith("pointer");
+  draggingRows = false;
+  draggingSelection = false;
+}
+
+function extendColumnSelection(col: number) {
+  if (!draggingColumns || !dragAnchor) return;
+  const lastRow = rowFilterActive.value
+    ? filteredRowMappings.value.length
+    : Math.max(activeSheet.value?.maxRow ?? 1, 1);
+  selection.value = {
+    startRow: 1,
+    endRow: lastRow,
+    startCol: Math.min(dragAnchor.col, col),
+    endCol: Math.max(dragAnchor.col, col)
+  };
+  activePoint.value = { row: region.value?.fromRow ?? 1, col };
+}
+
 function finishPointerAction() {
   draggingSelection = false;
   draggingRows = false;
+  draggingColumns = false;
   dragAnchor = null;
   if (resizeState) {
     resizeState = null;
@@ -1439,6 +1511,20 @@ async function copyContextRows() {
   if (!contextActionableRows.value.length) return;
   await runContextAction(() =>
     backend.copyRows(sheet.value, contextActionableRows.value)
+  );
+}
+
+async function copyContextColumns() {
+  if (!contextCopyableColumns.value.length) return;
+  await runContextAction(() =>
+    backend.copyColumns(sheet.value, contextCopyableColumns.value)
+  );
+}
+
+async function deleteContextColumns() {
+  if (!contextRemovableColumns.value.length) return;
+  await runContextAction(() =>
+    backend.deleteColumns(sheet.value, contextRemovableColumns.value)
   );
 }
 
@@ -2209,7 +2295,27 @@ function rowLabel(row: number, side: "left" | "right") {
 
 function cellAxis(cell: RegionCell, side: "left" | "right") {
   const row = side === "left" ? cellLeftRow(cell) : cellRightRow(cell);
-  return `${columnName(cell.col)}${row}`;
+  const col = side === "left" ? (cell.leftCol ?? cell.col) : (cell.rightCol ?? cell.col);
+  return col > 0 && row > 0 ? `${columnName(col)}${row}` : "—";
+}
+
+function sourceColumn(col: number, side: "left" | "right") {
+  const mapping = region.value?.columns?.find((item) => item.col === col);
+  return side === "left" ? (mapping?.leftCol ?? col) : (mapping?.rightCol ?? col);
+}
+
+function columnHeaderLabel(col: number, side: "left" | "right") {
+  const source = sourceColumn(col, side);
+  return source > 0 ? columnName(source) : "—";
+}
+
+function columnHeaderSelected(col: number) {
+  if (!selection.value) return false;
+  const lastRow = rowFilterActive.value
+    ? filteredRowMappings.value.length
+    : Math.max(activeSheet.value?.maxRow ?? 1, 1);
+  return selection.value.startRow === 1 && selection.value.endRow === lastRow
+    && col >= selection.value.startCol && col <= selection.value.endCol;
 }
 
 function queueSyncedWheel(source: HTMLElement, deltaTop: number, deltaLeft: number) {
@@ -2349,6 +2455,18 @@ function openRowMenu(event: MouseEvent, row: number, side: "left" | "right") {
 
 function openColumnMenu(event: MouseEvent, col: number, side: "left" | "right") {
   event.preventDefault();
+  const lastRow = rowFilterActive.value
+    ? filteredRowMappings.value.length
+    : Math.max(activeSheet.value?.maxRow ?? 1, 1);
+  const selected = Boolean(
+    selection.value && selection.value.startRow === 1 && selection.value.endRow === lastRow
+    && col >= selection.value.startCol && col <= selection.value.endCol
+  );
+  if (!selected) {
+    selectionAnchor.value = { row: 1, col };
+    activePoint.value = { row: region.value?.fromRow ?? 1, col };
+    selection.value = { startRow: 1, endRow: lastRow, startCol: col, endCol: col };
+  }
   contextMenu.value = {
     visible: true,
     x: Math.max(8, Math.min(event.clientX, window.innerWidth - 260)),
@@ -3047,7 +3165,7 @@ onBeforeUnmount(() => {
                       v-for="col in visibleColumns"
                       :key="`lh${col}`"
                       class="col-header"
-                      :class="{ 'key-column': activeSheet?.idColumn === col }"
+                      :class="{ 'key-column': activeSheet?.idColumn === col, selected: columnHeaderSelected(col) }"
                       :style="{
                         top: 0,
                         left: `${columnLeft(col)}px`,
@@ -3055,10 +3173,12 @@ onBeforeUnmount(() => {
                         height: `${rowHeight}px`,
                         fontSize: `${scaledFontSize}px`
                       }"
+                      @pointerdown="beginColumnSelection(col, $event)"
+                      @pointerenter="extendColumnSelection(col)"
                       @contextmenu="openColumnMenu($event, col, 'left')"
                     >
-                      {{ columnName(col) }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">{{ t("alignment.keyColumn") }}</span>
-                      <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
+                      {{ columnHeaderLabel(col, "left") }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">{{ t("alignment.keyColumn") }}</span>
+                      <span class="col-resizer" @pointerdown.stop="beginColumnResize(col, $event)"></span>
                     </div>
                   </div>
                   <div class="row-header-layer" :style="{ width: `${rowHeaderWidth}px` }">
@@ -3164,7 +3284,7 @@ onBeforeUnmount(() => {
                       v-for="col in visibleColumns"
                       :key="`rh${col}`"
                       class="col-header"
-                      :class="{ 'key-column': activeSheet?.idColumn === col }"
+                      :class="{ 'key-column': activeSheet?.idColumn === col, selected: columnHeaderSelected(col) }"
                       :style="{
                         top: 0,
                         left: `${columnLeft(col)}px`,
@@ -3172,10 +3292,12 @@ onBeforeUnmount(() => {
                         height: `${rowHeight}px`,
                         fontSize: `${scaledFontSize}px`
                       }"
+                      @pointerdown="beginColumnSelection(col, $event)"
+                      @pointerenter="extendColumnSelection(col)"
                       @contextmenu="openColumnMenu($event, col, 'right')"
                     >
-                      {{ columnName(col) }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">{{ t("alignment.keyColumn") }}</span>
-                      <span class="col-resizer" @pointerdown="beginColumnResize(col, $event)"></span>
+                      {{ columnHeaderLabel(col, "right") }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">{{ t("alignment.keyColumn") }}</span>
+                      <span class="col-resizer" @pointerdown.stop="beginColumnResize(col, $event)"></span>
                     </div>
                   </div>
                   <div class="row-header-layer" :style="{ width: `${rowHeaderWidth}px` }">
@@ -3297,11 +3419,25 @@ onBeforeUnmount(() => {
     >
       <template v-if="contextMenu.kind === 'column'">
         <button
+          v-if="contextCopyableColumns.length"
+          class="column-copy-action"
+          :disabled="busy || Boolean(summary?.options.readonlyLeft) || !comparisonActive"
+          @click="copyContextColumns"
+        >{{ t("context.copyColumns", { count: contextCopyableColumns.length }) }}</button>
+        <button
+          v-if="contextRemovableColumns.length"
+          class="column-delete-action"
+          :disabled="busy || Boolean(summary?.options.readonlyLeft) || !comparisonActive"
+          @click="deleteContextColumns"
+        >{{ t("context.deleteColumns", { count: contextRemovableColumns.length }) }}</button>
+        <button
+          v-if="contextKeyColumnAvailable"
+          class="key-column-action"
           :disabled="busy || Boolean(summary?.options.gitMerge) || Boolean(summary?.undoCount)"
           @click="setContextKeyColumn"
-        >{{ activeSheet?.idColumn === contextMenu.col ? t("alignment.clearKey") : t("alignment.setKey", { column: columnName(contextMenu.col) }) }}</button>
-        <span v-if="summary?.undoCount" class="context-menu-warning">{{ t("alignment.historyLocked") }}</span>
-        <span v-else>{{ t("alignment.help") }}</span>
+        >{{ activeSheet?.idColumn === contextMenu.col ? t("alignment.clearKey") : t("alignment.setKey", { column: columnHeaderLabel(contextMenu.col, contextMenu.side) }) }}</button>
+        <span v-if="contextKeyColumnAvailable && summary?.undoCount" class="context-menu-warning">{{ t("alignment.historyLocked") }}</span>
+        <span v-else-if="contextKeyColumnAvailable">{{ t("alignment.help") }}</span>
       </template>
       <template v-else-if="contextHasMixedConflict">
         <span class="context-menu-warning">{{ t("context.mixedConflict") }}</span>

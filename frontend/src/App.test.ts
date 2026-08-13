@@ -321,7 +321,7 @@ describe("App", () => {
     await rightHeaders[1].trigger("contextmenu", { clientX: 300, clientY: 100 });
     expect(wrapper.get(".context-menu").text()).toContain("将 B 列设为主键");
     expect(wrapper.get(".context-menu").text()).not.toContain("第 0 行");
-    await wrapper.get(".context-menu button").trigger("click");
+    await wrapper.get(".context-menu .key-column-action").trigger("click");
     await flushPromises();
 
     expect(setKeyColumn).toHaveBeenLastCalledWith("配置", 2);
@@ -331,11 +331,153 @@ describe("App", () => {
     const leftKeyHeader = wrapper.findAll(".grid-panel")[0].findAll(".col-header")[1];
     await leftKeyHeader.trigger("contextmenu", { clientX: 300, clientY: 100 });
     expect(wrapper.get(".context-menu").text()).toContain("取消主键列");
-    await wrapper.get(".context-menu button").trigger("click");
+    await wrapper.get(".context-menu .key-column-action").trigger("click");
     await flushPromises();
 
     expect(setKeyColumn).toHaveBeenLastCalledWith("配置", 0);
     expect(wrapper.findAll(".col-header.key-column")).toHaveLength(0);
+  });
+
+  it("selects a whole column from its header and copies it from the right", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.sheetCount = 1;
+    loaded.diff.differentSheetCount = 1;
+    loaded.diff.differenceCount = 2;
+    loaded.diff.sheets = [{
+      name: "配置", status: "modified", orderDifferent: false,
+      differenceCount: 2, maxRow: 2, maxCol: 5, idColumn: 1, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 1, conflictRowCount: 0,
+      rows: [{ row: 2, leftRow: 2, rightRow: 2, status: "modified" }]
+    }];
+    loaded.selectedSheet = "配置";
+    const copied = structuredClone(loaded);
+    copied.diff.differenceCount = 0;
+    copied.diff.differentSheetCount = 0;
+    copied.diff.sheets[0].differenceCount = 0;
+    copied.diff.sheets[0].rows = [];
+    copied.dirty = true;
+    copied.undoCount = 1;
+    const empty = { present: false, raw: "", display: "", type: "unset" };
+    const region = {
+      sheet: "配置", fromRow: 1, toRow: 2, fromCol: 1, toCol: 5,
+      columns: [
+        { col: 1, leftCol: 1, rightCol: 1 },
+        { col: 2, leftCol: 2, rightCol: 2 },
+        { col: 3, leftCol: 0, rightCol: 3 },
+        { col: 4, leftCol: 3, rightCol: 4 },
+        { col: 5, leftCol: 4, rightCol: 5 }
+      ],
+      cells: [1, 2].flatMap((row) => [1, 2, 3, 4, 5].map((col) => ({
+        row, sourceRow: row, leftRow: row, rightRow: row, col,
+        leftCol: col === 3 ? 0 : col > 3 ? col - 1 : col,
+        rightCol: col,
+        axis: `${String.fromCharCode(64 + col)}${row}`,
+        status: col === 3 ? "right-added" : "unchanged",
+        rowStatus: row === 2 ? "modified" as const : "unchanged" as const,
+        left: { ...empty },
+        right: col === 3
+          ? { present: true, raw: row === 1 ? "插入列" : "值", display: row === 1 ? "插入列" : "值", type: "string" }
+          : { ...empty }
+      })))
+    } satisfies Region;
+    const copyColumns = vi.fn(async () => copied);
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: async () => region,
+          CopyColumnsRightToLeft: copyColumns,
+          SetKeyColumn: async () => loaded
+        }
+      }
+    };
+
+    const wrapper = mount(App);
+    await flushPromises();
+    const rightHeaders = wrapper.findAll(".grid-panel")[1].findAll(".col-header");
+    expect(rightHeaders.slice(0, 5).map((header) => header.text().replace("主键", ""))).toEqual(["A", "B", "C", "D", "E"]);
+    await rightHeaders[2].trigger("pointerdown", { button: 0 });
+    expect(wrapper.findAll(".col-header.selected")).toHaveLength(2);
+    await rightHeaders[2].trigger("contextmenu", { clientX: 320, clientY: 120 });
+    expect(wrapper.get(".context-menu .column-copy-action").text()).toBe("复制整列到左侧");
+    await wrapper.get(".context-menu .column-copy-action").trigger("click");
+    await flushPromises();
+
+    expect(copyColumns).toHaveBeenCalledWith("配置", [3]);
+  });
+
+  it("offers left-column deletion for a missing right column and never offers a key", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.sheetCount = 1;
+    loaded.diff.differentSheetCount = 1;
+    loaded.diff.differenceCount = 2;
+    loaded.diff.sheets = [{
+      name: "配置", status: "modified", orderDifferent: false,
+      differenceCount: 2, maxRow: 2, maxCol: 5, idColumn: 1, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 1, conflictRowCount: 0,
+      rows: [{ row: 2, leftRow: 2, rightRow: 2, status: "modified" }]
+    }];
+    loaded.selectedSheet = "配置";
+    const deleted = structuredClone(loaded);
+    deleted.diff.differenceCount = 0;
+    deleted.diff.differentSheetCount = 0;
+    deleted.diff.sheets[0].differenceCount = 0;
+    deleted.diff.sheets[0].rows = [];
+    deleted.dirty = true;
+    deleted.undoCount = 1;
+    const empty = { present: false, raw: "", display: "", type: "unset" };
+    const region = {
+      sheet: "配置", fromRow: 1, toRow: 2, fromCol: 1, toCol: 5,
+      columns: [
+        { col: 1, leftCol: 1, rightCol: 1 },
+        { col: 2, leftCol: 2, rightCol: 2 },
+        { col: 3, leftCol: 3, rightCol: 0 },
+        { col: 4, leftCol: 4, rightCol: 3 },
+        { col: 5, leftCol: 5, rightCol: 4 }
+      ],
+      cells: [1, 2].flatMap((row) => [1, 2, 3, 4, 5].map((col) => ({
+        row, sourceRow: row, leftRow: row, rightRow: row, col,
+        leftCol: col,
+        rightCol: col === 3 ? 0 : col > 3 ? col - 1 : col,
+        axis: `${String.fromCharCode(64 + col)}${row}`,
+        status: col === 3 ? "left-deleted" : "unchanged",
+        rowStatus: row === 2 ? "modified" as const : "unchanged" as const,
+        left: col === 3
+          ? { present: true, raw: row === 1 ? "列插入测试" : "值", display: row === 1 ? "列插入测试" : "值", type: "string" }
+          : { ...empty },
+        right: { ...empty }
+      })))
+    } satisfies Region;
+    const deleteColumns = vi.fn(async () => deleted);
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "" }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: async () => region,
+          DeleteLeftColumns: deleteColumns,
+          SetKeyColumn: async () => loaded
+        }
+      }
+    };
+
+    const wrapper = mount(App);
+    await flushPromises();
+    const rightHeader = wrapper.findAll(".grid-panel")[1].findAll(".col-header")[2];
+    expect(rightHeader.text()).toBe("—");
+    await rightHeader.trigger("contextmenu", { clientX: 320, clientY: 120 });
+    const menu = wrapper.get(".context-menu");
+    expect(menu.get(".column-delete-action").text()).toBe("删除左侧整列");
+    expect(menu.find(".column-copy-action").exists()).toBe(false);
+    expect(menu.find(".key-column-action").exists()).toBe(false);
+    expect(menu.text()).not.toContain("设为主键");
+    await menu.get(".column-delete-action").trigger("click");
+    await flushPromises();
+
+    expect(deleteColumns).toHaveBeenCalledWith("配置", [3]);
   });
 
   it("opens Help before Settings on the welcome page and restores its trigger focus", async () => {

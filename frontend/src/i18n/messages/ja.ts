@@ -235,6 +235,8 @@ export const ja = {
   "context.appendSpecified": "ID を指定して左側へ行を追加",
   "context.copyCells": "セルを左側へ反映",
   "context.copyRows": "行を左側へ反映",
+  "context.copyColumns": (p: MessageParams) => Number(p.count) === 1 ? "列全体を左側へ反映" : `${p.count} 列全体を左側へ反映`,
+  "context.deleteColumns": (p: MessageParams) => Number(p.count) === 1 ? "左側だけの列を削除" : `左側だけの ${p.count} 列を削除`,
   "context.selectedRows": (p: MessageParams) => Number(p.count) === 1 ? `${p.row} 行目` : `${p.count} 行を選択`,
   "dialog.idsTitle": "追加する行の ID を指定",
   "dialog.idsDescription": "各コピー元の行には、左側で未使用の ID が必要です。",

@@ -1,4 +1,12 @@
 {
+  "0.7.0": {
+    "title": "Column-aware comparison and merging",
+    "summary": "Inserted columns no longer shift every later comparison, and complete columns can be selected and applied.",
+    "changes": {
+      "columnAlignment": "Worksheets with reliable unique text headers align shared columns before comparing cells, so a one-sided inserted column remains a focused difference instead of shifting every later column.",
+      "wholeColumnCopy": "Select one or more complete columns from the A/B/C headers. Copy right-side columns to the editable left workbook, or delete columns that exist only on the left, as one undoable operation. A missing-side dash is never offered as a key column."
+    }
+  },
   "0.6.0": {
     "title": "In-app help",
     "summary": "The desktop toolbar now offers a dedicated help window.",

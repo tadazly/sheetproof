@@ -4,7 +4,7 @@
     "product": {
       "name": "SheetProof",
       "legacyName": "ugxlsx",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "channel": "preview",
       "formats": [
         ".xlsx"
@@ -23,10 +23,10 @@
     },
     "downloads": {
       "releases": "https://github.com/tadazly/sheetproof/releases",
-      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SheetProof-windows-amd64.exe",
-      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SheetProof-macos-universal.zip",
-      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SHA256SUMS.txt",
-      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.6.0.zip"
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.7.0.zip"
     },
     "screenshots": {
       "keyAlignment": {
@@ -70,6 +70,10 @@
           "title": "Side-by-side review",
           "summary": "Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data."
         },
+        "columnAlignment": {
+          "title": "Inserted-column alignment",
+          "summary": "Align reliable unique text headers before comparison, keeping one-sided inserted columns local instead of shifting every later column."
+        },
         "rowFilters": {
           "title": "Current-sheet row filters",
           "summary": "Combine added, deleted, modified, and conflict filters without losing the source row being reviewed."
@@ -84,7 +88,7 @@
         },
         "controlledMerge": {
           "title": "Controlled merge and undo",
-          "summary": "Write only selected differences to the left; unchanged edits create no unsaved state, while real edits and merges remain undoable."
+          "summary": "Write selected cells, rows, or complete right-side columns to the left, or remove left-only columns; every structural action remains undoable."
         },
         "beforeAfter": {
           "title": "Hold to compare before and after",
@@ -154,7 +158,7 @@
         },
         "changelog": {
           "title": "Changelog",
-          "description": "User-visible changes in SheetProof 0.1.0 through 0.6.0."
+          "description": "User-visible changes in SheetProof 0.1.0 through 0.7.0."
         }
       }
     },
@@ -176,6 +180,10 @@
           "title": "双栏差异审阅",
           "summary": "使用同步虚拟网格、差异导航和滚动条标记核对新增、删除、修改与冲突。"
         },
+        "columnAlignment": {
+          "title": "插入列自动对齐",
+          "summary": "按可靠且唯一的文本表头对齐双方共有列，使单侧插入列保持为局部差异，不再带偏后续列。"
+        },
         "rowFilters": {
           "title": "当前工作表行筛选",
           "summary": "组合筛选新增、删除、修改和冲突，同时保留正在核对的来源行。"
@@ -190,7 +198,7 @@
         },
         "controlledMerge": {
           "title": "可控合并与撤销",
-          "summary": "只把选中的真实差异写入左侧；未改变内容的编辑不产生未保存状态，实际编辑和合并仍可撤销。"
+          "summary": "可把选中的单元格、整行或右侧整列写入左侧，也可删除左侧独有列；所有结构操作均可撤销。"
         },
         "beforeAfter": {
           "title": "按住回看修改前",
@@ -260,7 +268,7 @@
         },
         "changelog": {
           "title": "更新日志",
-          "description": "SheetProof 0.1.0 至 0.6.0 的用户可见变化。"
+          "description": "SheetProof 0.1.0 至 0.7.0 的用户可见变化。"
         }
       }
     },
@@ -282,6 +290,10 @@
           "title": "2 ペイン差分レビュー",
           "summary": "同期した仮想グリッド、差分移動、スクロールバーの印で追加・削除・変更・競合を確認します。"
         },
+        "columnAlignment": {
+          "title": "挿入列の自動対応付け",
+          "summary": "信頼できる一意のテキスト見出しで共通列を揃え、片側だけの挿入列が後続列をずらさないようにします。"
+        },
         "rowFilters": {
           "title": "現在のシートの行絞り込み",
           "summary": "確認中の元行を保ったまま、追加・削除・変更・競合を組み合わせて絞り込めます。"
@@ -296,7 +308,7 @@
         },
         "controlledMerge": {
           "title": "選んで反映・元に戻す",
-          "summary": "選択した実際の差分だけを左側へ反映します。内容を変えない編集は未保存状態を作らず、実際の編集と反映操作は元に戻せます。"
+          "summary": "選択したセル、行全体、右側の列全体を左側へ反映し、左側だけの列は削除できます。構造変更も元に戻せます。"
         },
         "beforeAfter": {
           "title": "押している間だけ変更前を確認",
@@ -366,7 +378,7 @@
         },
         "changelog": {
           "title": "変更履歴",
-          "description": "SheetProof 0.1.0 から 0.6.0 までのユーザー向け変更履歴。"
+          "description": "SheetProof 0.1.0 から 0.7.0 までのユーザー向け変更履歴。"
         }
       }
     }
@@ -466,6 +478,15 @@
   "changelog": {
     "releases": [
       {
+        "version": "0.7.0",
+        "date": "2026-08-13",
+        "channel": "preview",
+        "changes": [
+          "columnAlignment",
+          "wholeColumnCopy"
+        ]
+      },
+      {
         "version": "0.6.0",
         "date": "2026-08-06",
         "channel": "preview",
@@ -552,6 +573,14 @@
     ],
     "locales": {
       "en": {
+        "0.7.0": {
+          "title": "Column-aware comparison and merging",
+          "summary": "Inserted columns no longer shift every later comparison, and complete columns can be selected and applied.",
+          "changes": {
+            "columnAlignment": "Worksheets with reliable unique text headers align shared columns before comparing cells, so a one-sided inserted column remains a focused difference instead of shifting every later column.",
+            "wholeColumnCopy": "Select one or more complete columns from the A/B/C headers. Copy right-side columns to the editable left workbook, or delete columns that exist only on the left, as one undoable operation. A missing-side dash is never offered as a key column."
+          }
+        },
         "0.6.0": {
           "title": "In-app help",
           "summary": "The desktop toolbar now offers a dedicated help window.",
@@ -631,6 +660,14 @@
         }
       },
       "zh-CN": {
+        "0.7.0": {
+          "title": "按列语义对比与合并",
+          "summary": "中间插列不再使后续列整体错位，并可选中整列后一次应用。",
+          "changes": {
+            "columnAlignment": "当工作表存在可靠且唯一的文本表头时，先对齐双方共有列再比较单元格；单侧插入列只保留为局部差异，不再使后续各列连续误报。",
+            "wholeColumnCopy": "点击 A/B/C…列标题可选择一列或多列：右侧独有列可整列复制到可编辑左侧，左侧独有列可整列删除，整批操作只占一次撤销；缺失侧的“—”不能设为主键。"
+          }
+        },
         "0.6.0": {
           "title": "应用内帮助",
           "summary": "桌面工具栏新增独立的帮助窗口。",
@@ -710,6 +747,14 @@
         }
       },
       "ja": {
+        "0.7.0": {
+          "title": "列を対応付けた比較と反映",
+          "summary": "途中に列を挿入しても後続列がずれず、列全体を選んで反映できます。",
+          "changes": {
+            "columnAlignment": "信頼できる一意のテキスト見出しがあるシートでは、共通列を対応付けてからセルを比較します。片側だけの挿入列を局所的な差分として保ち、後続列の連続した誤検出を防ぎます。",
+            "wholeColumnCopy": "A/B/C…の見出しから 1 列または複数列を選択できます。右側だけの列は左側へ反映し、左側だけの列は削除でき、どちらも一括操作として元に戻せます。欠けている側の「—」はキー列に指定できません。"
+          }
+        },
         "0.6.0": {
           "title": "アプリ内ヘルプ",
           "summary": "デスクトップツールバーに専用のヘルプウィンドウを追加しました。",

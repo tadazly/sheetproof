@@ -107,6 +107,8 @@ export interface RegionCell {
   leftRow?: number;
   rightRow?: number;
   col: number;
+  leftCol?: number;
+  rightCol?: number;
   axis: string;
   left: CellValue;
   originalLeft?: CellValue;
@@ -125,6 +127,7 @@ export interface Region {
   toCol: number;
   filtered?: boolean;
   totalRows?: number;
+  columns?: Array<{ col: number; leftCol?: number; rightCol?: number }>;
   cells: RegionCell[];
 }
 

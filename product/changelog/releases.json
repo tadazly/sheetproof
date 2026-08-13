@@ -1,5 +1,6 @@
 {
   "releases": [
+    { "version": "0.7.0", "date": "2026-08-13", "channel": "preview", "changes": ["columnAlignment", "wholeColumnCopy"] },
     { "version": "0.6.0", "date": "2026-08-06", "channel": "preview", "changes": ["inAppHelp"] },
     { "version": "0.5.0", "date": "2026-08-05", "channel": "preview", "changes": ["currentSheetFind"] },
     { "version": "0.4.1", "date": "2026-08-05", "channel": "preview", "changes": ["noOpEditing", "differenceOnlyCopy"] },

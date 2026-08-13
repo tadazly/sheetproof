@@ -236,6 +236,8 @@ export const en = {
   "context.appendSpecified": "Append row to the left with a specified ID",
   "context.copyCells": "Copy cells to the left",
   "context.copyRows": "Copy rows to the left",
+  "context.copyColumns": (p: MessageParams) => count(p, "Copy the whole column to the left", `Copy ${p.count} whole columns to the left`),
+  "context.deleteColumns": (p: MessageParams) => count(p, "Delete the left-only column", `Delete ${p.count} left-only columns`),
   "context.selectedRows": (p: MessageParams) => count(p, `Row ${p.row}`, `${p.count} rows selected`),
   "dialog.idsTitle": "Specify IDs for appended rows",
   "dialog.idsDescription": "Each source row needs an ID that is not already used on the left.",

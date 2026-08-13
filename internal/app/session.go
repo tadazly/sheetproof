@@ -114,6 +114,8 @@ type RegionCell struct {
 	LeftRow      int                `json:"leftRow"`
 	RightRow     int                `json:"rightRow"`
 	Col          int                `json:"col"`
+	LeftCol      int                `json:"leftCol"`
+	RightCol     int                `json:"rightCol"`
 	Axis         string             `json:"axis"`
 	Left         workbook.CellValue `json:"left"`
 	OriginalLeft workbook.CellValue `json:"originalLeft"`
@@ -124,15 +126,22 @@ type RegionCell struct {
 	RightMatch   bool               `json:"rightMatch,omitempty"`
 }
 
+type RegionColumn struct {
+	Col      int `json:"col"`
+	LeftCol  int `json:"leftCol"`
+	RightCol int `json:"rightCol"`
+}
+
 type Region struct {
-	Sheet     string       `json:"sheet"`
-	FromRow   int          `json:"fromRow"`
-	ToRow     int          `json:"toRow"`
-	FromCol   int          `json:"fromCol"`
-	ToCol     int          `json:"toCol"`
-	Filtered  bool         `json:"filtered"`
-	TotalRows int          `json:"totalRows"`
-	Cells     []RegionCell `json:"cells"`
+	Sheet     string         `json:"sheet"`
+	FromRow   int            `json:"fromRow"`
+	ToRow     int            `json:"toRow"`
+	FromCol   int            `json:"fromCol"`
+	ToCol     int            `json:"toCol"`
+	Filtered  bool           `json:"filtered"`
+	TotalRows int            `json:"totalRows"`
+	Columns   []RegionColumn `json:"columns"`
+	Cells     []RegionCell   `json:"cells"`
 }
 
 type regionRow struct {
@@ -159,6 +168,9 @@ type Session struct {
 	rightSource            *workbook.WorkbookSnapshot
 	leftRows               map[string]map[int]int
 	rightRows              map[string]map[int]int
+	leftCols               map[string]map[int]int
+	rightCols              map[string]map[int]int
+	columnAligned          map[string]bool
 	keyColumns             map[string]int
 	alignedSheets          map[string]bool
 	currentDiff            *diff.WorkbookDiff
@@ -236,7 +248,9 @@ func OpenContext(ctx context.Context, leftPath, rightPath string, options Option
 		leftFile: leftFile, rightFile: rightFile,
 		left: left, comparisonLeft: alignment.left, originalLeft: cloneWorkbookSnapshot(left),
 		right: right, rightSource: rightSource,
-		leftRows: alignment.leftSources, rightRows: rightRows, keyColumns: make(map[string]int),
+		leftRows: alignment.leftSources, rightRows: rightRows,
+		leftCols: alignment.leftColumns, rightCols: alignment.rightColumns,
+		columnAligned: alignment.columnAligned, keyColumns: make(map[string]int),
 		alignedSheets: alignment.alignedSheets,
 		currentDiff:   currentDiff, alignmentNotice: alignmentWarning(options.Locale, alignment.moved),
 		alignmentMode: RowAlignmentAuto, alignmentMoved: alignment.moved,
@@ -300,7 +314,7 @@ func OpenLeft(leftPath string, options Options) (*Session, error) {
 	return &Session{
 		leftFile: leftFile, left: left, comparisonLeft: left,
 		originalLeft: cloneWorkbookSnapshot(left), options: options,
-		leftRows: identityWorkbookRows(left), keyColumns: make(map[string]int),
+		leftRows: identityWorkbookRows(left), leftCols: identityWorkbookColumns(left), keyColumns: make(map[string]int),
 		alignmentMode: RowAlignmentAuto,
 		stateID:       1, savedState: 1, nextState: 2,
 		dataGeneration: 1, searches: make(map[SearchSide]*searchCache),
@@ -376,6 +390,9 @@ func (s *Session) ReplaceRight(rightPath, rightLabel string) error {
 	s.rightSource = rightSource
 	s.leftRows = alignment.leftSources
 	s.rightRows = alignment.rowSources
+	s.leftCols = alignment.leftColumns
+	s.rightCols = alignment.rightColumns
+	s.columnAligned = alignment.columnAligned
 	s.alignedSheets = alignment.alignedSheets
 	s.alignmentNotice = alignmentWarning(s.options.Locale, alignment.moved)
 	s.alignmentMoved = alignment.moved
@@ -493,6 +510,9 @@ func (s *Session) ReloadLeft() error {
 	s.right = right
 	s.leftRows = alignment.leftSources
 	s.rightRows = alignment.rowSources
+	s.leftCols = alignment.leftColumns
+	s.rightCols = alignment.rightColumns
+	s.columnAligned = alignment.columnAligned
 	s.alignedSheets = alignment.alignedSheets
 	s.currentDiff = currentDiff
 	s.history.Clear()
@@ -539,6 +559,9 @@ func (s *Session) DetachRight(rightLabel string) error {
 	s.rightSource = nil
 	s.leftRows = identityWorkbookRows(s.left)
 	s.rightRows = nil
+	s.leftCols = identityWorkbookColumns(s.left)
+	s.rightCols = nil
+	s.columnAligned = nil
 	s.alignedSheets = nil
 	s.currentDiff = nil
 	s.alignmentNotice = ""
@@ -843,7 +866,14 @@ func (s *Session) regionForRowsLocked(
 	region := Region{
 		Sheet:   sheet,
 		FromCol: fromCol, ToCol: fromCol + colCount - 1,
-		Cells: make([]RegionCell, 0, len(rows)*colCount),
+		Columns: make([]RegionColumn, 0, colCount),
+		Cells:   make([]RegionCell, 0, len(rows)*colCount),
+	}
+	for col := region.FromCol; col <= region.ToCol; col++ {
+		region.Columns = append(region.Columns, RegionColumn{
+			Col: col, LeftCol: physicalColumnForLogical(s.leftCols[sheet], col),
+			RightCol: physicalColumnForLogical(s.rightCols[sheet], col),
+		})
 	}
 	var activeFilters []diff.RowStatus
 	if len(filters) > 0 {
@@ -853,6 +883,8 @@ func (s *Session) regionForRowsLocked(
 	rightMatches := s.searchMatchesLocked(SearchRight, sheet, activeFilters)
 	for _, row := range rows {
 		for col := region.FromCol; col <= region.ToCol; col++ {
+			leftCol := physicalColumnForLogical(s.leftCols[sheet], col)
+			rightCol := physicalColumnForLogical(s.rightCols[sheet], col)
 			ref := workbook.CellRef{Sheet: sheet, Row: row.source, Col: col}
 			key := workbook.CellKey{Row: row.source, Col: col}
 			status := statuses[key]
@@ -865,9 +897,9 @@ func (s *Session) regionForRowsLocked(
 			}
 			cell := RegionCell{
 				Row: row.display, SourceRow: row.source, LeftRow: row.left, RightRow: row.right,
-				Col: col, Axis: ref.Axis(),
-				Left: leftSheet.Cell(row.left, col), OriginalLeft: originalLeftSheet.Cell(row.left, col),
-				Right:  rightSheet.Cell(row.right, col),
+				Col: col, LeftCol: leftCol, RightCol: rightCol, Axis: ref.Axis(),
+				Left: leftSheet.Cell(row.left, leftCol), OriginalLeft: originalLeftSheet.Cell(row.left, leftCol),
+				Right:  rightSheet.Cell(row.right, rightCol),
 				Status: status, RowStatus: rowStatus,
 			}
 			cell.LeftMatch = searchMatchAt(leftMatches, row.source, col)
@@ -880,6 +912,13 @@ func (s *Session) regionForRowsLocked(
 		region.ToRow = rows[len(rows)-1].display
 	}
 	return region, nil
+}
+
+func physicalColumnForLogical(columns map[int]int, logical int) int {
+	if physical := columns[logical]; physical > 0 {
+		return physical
+	}
+	return 0
 }
 
 // collectRegionStatuses reads only the sparse diff entries that intersect the
@@ -997,6 +1036,13 @@ func (s *Session) copyRightToLeftManyLocked(
 		sourceRef := workbook.CellRef{Sheet: sheet, Row: cell.Row, Col: cell.Col}
 		targetRef := sourceRef
 		targetRef.Row = s.ensureLeftPhysicalRowLocked(sheet, cell.Row)
+		targetRef.Col = physicalColumnForLogical(s.leftCols[sheet], cell.Col)
+		if targetRef.Col == 0 {
+			return errors.New(sessionText(s.options.Locale,
+				"This column does not exist on the left. Copy the whole column first.",
+				"左侧尚无此列，请先复制整列到左侧。",
+				"左側にこの列がありません。先に列全体を左側へ反映してください。"))
+		}
 		before, err := merge.Capture(s.leftFile, targetRef)
 		if err != nil {
 			return err
@@ -1075,7 +1121,16 @@ func (s *Session) applyOperationsLocked(sheet string, operations []merge.Operati
 		s.warnings = append(s.warnings, warnings...)
 		appliedCount++
 	}
-	if err := s.reclassifyRowsLocked(sheet); err != nil {
+	rebuild := false
+	for _, operation := range operations {
+		if operation.Ref.Row == 1 {
+			rebuild = true
+			break
+		}
+	}
+	if rebuild {
+		s.rebuildComparisonLocked()
+	} else if err := s.reclassifyRowsLocked(sheet); err != nil {
 		s.rollbackCopiesLocked(operations[:appliedCount])
 		return err
 	}
@@ -1100,7 +1155,7 @@ func (s *Session) CopyRowsRightToLeft(sheet string, rows []int) error {
 	if err != nil {
 		return err
 	}
-	maxCol := max(leftSheet.MaxCol, rightSheet.MaxCol)
+	maxCol := max(s.comparisonLeft.ByName[sheet].MaxCol, s.right.ByName[sheet].MaxCol)
 	if len(unique)*maxCol > 10000 {
 		return errors.New("too many cells selected (maximum 10000)")
 	}
@@ -1111,6 +1166,300 @@ func (s *Session) CopyRowsRightToLeft(sheet string, rows []int) error {
 		}
 	}
 	return s.copyRightToLeftManyLocked(sheet, cells, "copy-row")
+}
+
+// CopyColumnsRightToLeft copies complete logical comparison columns. If a
+// selected source column only exists on the right, a real column is inserted
+// into the editable workbook at the corresponding neighboring position. The
+// insertion and all copied cells form one undo step.
+func (s *Session) CopyColumnsRightToLeft(sheet string, columns []int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.options.ReadonlyLeft {
+		return errors.New(sessionText(s.options.Locale, "The workbook on the left is read-only.", "左侧工作簿为只读，无法修改。", "左側のブックは読み取り専用のため編集できません。"))
+	}
+	if s.rightSource == nil || s.rightFile == nil {
+		return errors.New(sessionText(s.options.Locale, "There is no workbook on the right to copy from.", "当前没有可供复制的右侧工作簿。", "右側に反映元となるブックがありません。"))
+	}
+	leftSheet, rightSheet := s.left.ByName[sheet], s.rightSource.ByName[sheet]
+	if leftSheet == nil || rightSheet == nil {
+		return fmt.Errorf("worksheet %q must exist on both sides", sheet)
+	}
+	unique := make([]int, 0, len(columns))
+	seen := make(map[int]struct{}, len(columns))
+	logicalMaxCol := max(s.comparisonLeft.ByName[sheet].MaxCol, s.right.ByName[sheet].MaxCol)
+	for _, column := range columns {
+		if column < 1 || column > logicalMaxCol {
+			return fmt.Errorf("invalid column %d", column)
+		}
+		if _, exists := seen[column]; exists {
+			continue
+		}
+		seen[column] = struct{}{}
+		unique = append(unique, column)
+	}
+	if len(unique) == 0 {
+		return errors.New("no columns selected")
+	}
+	sort.Ints(unique)
+	maxRow := max(s.comparisonLeft.ByName[sheet].MaxRow, s.right.ByName[sheet].MaxRow)
+	if len(unique)*maxRow > 10000 {
+		return errors.New(sessionText(s.options.Locale,
+			"Too many cells selected for a whole-column copy (maximum 10000).",
+			"整列复制的单元格过多（最多 10000 个）。",
+			"列全体の反映対象が多すぎます（最大 10000 セル）。"))
+	}
+
+	insertions := make([]history.ColumnInsertion, 0)
+	operations := make([]merge.Operation, 0, len(unique)*maxRow)
+	for _, logicalCol := range unique {
+		if physicalColumnForLogical(s.rightCols[sheet], logicalCol) == 0 {
+			continue
+		}
+		leftCol := physicalColumnForLogical(s.leftCols[sheet], logicalCol)
+		if leftCol == 0 {
+			leftCol = s.insertionColumnForLogicalLocked(sheet, logicalCol)
+			name, err := excelize.ColumnNumberToName(leftCol)
+			if err != nil {
+				s.rollbackColumnCopyLocked(operations, insertions)
+				return err
+			}
+			if err := s.leftFile.InsertCols(sheet, name, 1); err != nil {
+				s.rollbackColumnCopyLocked(operations, insertions)
+				return err
+			}
+			insertSnapshotColumn(s.left.ByName[sheet], leftCol)
+			insertSnapshotColumn(s.originalLeft.ByName[sheet], leftCol)
+			shiftColumnSourcesForInsert(s.leftCols[sheet], leftCol)
+			s.leftCols[sheet][logicalCol] = leftCol
+			insertions = append(insertions, history.ColumnInsertion{Sheet: sheet, Column: leftCol})
+		}
+		for logicalRow := 1; logicalRow <= maxRow; logicalRow++ {
+			targetRow := s.ensureLeftPhysicalRowLocked(sheet, logicalRow)
+			targetRef := workbook.CellRef{Sheet: sheet, Row: targetRow, Col: leftCol}
+			before, err := merge.Capture(s.leftFile, targetRef)
+			if err != nil {
+				s.rollbackColumnCopyLocked(operations, insertions)
+				return err
+			}
+			after, err := s.captureRightLocked(workbook.CellRef{Sheet: sheet, Row: logicalRow, Col: logicalCol})
+			if err != nil {
+				s.rollbackColumnCopyLocked(operations, insertions)
+				return err
+			}
+			operations = append(operations, merge.Operation{
+				Ref: targetRef, Before: before, After: after, Kind: "copy-column",
+			})
+		}
+	}
+	if len(operations) == 0 {
+		return errors.New(sessionText(s.options.Locale, "The selected columns do not exist on the right.", "右侧不存在所选列。", "選択した列は右側にありません。"))
+	}
+	for index, operation := range operations {
+		warnings, err := merge.Apply(s.leftFile, operation.Ref, operation.After)
+		if err != nil {
+			s.rollbackColumnCopyLocked(operations[:index+1], insertions)
+			return fmt.Errorf("copy column %s failed: %w", operation.Ref.Axis(), err)
+		}
+		applied, err := merge.Capture(s.leftFile, operation.Ref)
+		if err != nil {
+			s.rollbackColumnCopyLocked(operations[:index+1], insertions)
+			return err
+		}
+		s.warnings = append(s.warnings, warnings...)
+		updateSnapshotCell(s.left.ByName[sheet], workbook.CellKey{Row: operation.Ref.Row, Col: operation.Ref.Col}, applied.Value)
+	}
+	s.rebuildComparisonLocked()
+	s.recordHistoryEntryLocked(operations, insertions, nil)
+	return nil
+}
+
+// DeleteLeftColumns removes complete columns that exist only on the editable
+// left side. The removed workbook structure and cell states form one undo step.
+func (s *Session) DeleteLeftColumns(sheet string, columns []int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.options.ReadonlyLeft {
+		return errors.New(sessionText(s.options.Locale, "The workbook on the left is read-only.", "左侧工作簿为只读，无法修改。", "左側のブックは読み取り専用のため編集できません。"))
+	}
+	if s.rightSource == nil {
+		return errors.New(sessionText(s.options.Locale, "There is no workbook on the right to reconcile with.", "当前没有可用于恢复结构的右侧工作簿。", "列構成の復元に使える右側のブックがありません。"))
+	}
+	leftSheet, rightSheet := s.left.ByName[sheet], s.rightSource.ByName[sheet]
+	if leftSheet == nil || rightSheet == nil {
+		return fmt.Errorf("worksheet %q must exist on both sides", sheet)
+	}
+	seen := make(map[int]struct{}, len(columns))
+	removals := make([]history.ColumnRemoval, 0, len(columns))
+	for _, logicalCol := range columns {
+		if logicalCol < 1 {
+			return fmt.Errorf("invalid column %d", logicalCol)
+		}
+		if _, exists := seen[logicalCol]; exists {
+			continue
+		}
+		seen[logicalCol] = struct{}{}
+		leftCol := physicalColumnForLogical(s.leftCols[sheet], logicalCol)
+		rightCol := physicalColumnForLogical(s.rightCols[sheet], logicalCol)
+		if leftCol == 0 || rightCol != 0 {
+			continue
+		}
+		removal := history.ColumnRemoval{Sheet: sheet, Column: leftCol}
+		for row := 1; row <= leftSheet.MaxRow; row++ {
+			ref := workbook.CellRef{Sheet: sheet, Row: row, Col: leftCol}
+			before, err := merge.Capture(s.leftFile, ref)
+			if err != nil {
+				return err
+			}
+			removal.Cells = append(removal.Cells, merge.Operation{Ref: ref, Before: before, Kind: "delete-column"})
+		}
+		if original := s.originalLeft.ByName[sheet]; original != nil {
+			for _, key := range original.CellList {
+				if key.Col == leftCol {
+					removal.OriginalCells = append(removal.OriginalCells, history.OriginalColumnCell{Row: key.Row, Value: original.Cells[key]})
+				}
+			}
+		}
+		removals = append(removals, removal)
+	}
+	if len(removals) == 0 {
+		return errors.New(sessionText(s.options.Locale,
+			"The selected columns are not left-only columns.",
+			"所选列不是仅存在于左侧的列。",
+			"選択した列は左側だけにある列ではありません。"))
+	}
+	if len(removals)*leftSheet.MaxRow > 10000 {
+		return errors.New(sessionText(s.options.Locale,
+			"Too many cells selected for whole-column removal (maximum 10000).",
+			"整列删除的单元格过多（最多 10000 个）。",
+			"列全体の削除対象が多すぎます（最大 10000 セル）。"))
+	}
+	sort.Slice(removals, func(i, j int) bool { return removals[i].Column > removals[j].Column })
+	applied := make([]history.ColumnRemoval, 0, len(removals))
+	for _, removal := range removals {
+		name, err := excelize.ColumnNumberToName(removal.Column)
+		if err != nil {
+			_ = s.restoreRemovedColumnsLocked(applied)
+			return err
+		}
+		if err := s.leftFile.RemoveCol(removal.Sheet, name); err != nil {
+			_ = s.restoreRemovedColumnsLocked(applied)
+			return err
+		}
+		removeSnapshotColumn(s.left.ByName[removal.Sheet], removal.Column)
+		removeSnapshotColumn(s.originalLeft.ByName[removal.Sheet], removal.Column)
+		applied = append(applied, removal)
+	}
+	s.rebuildComparisonLocked()
+	s.recordHistoryEntryLocked(nil, nil, removals)
+	return nil
+}
+
+func (s *Session) insertionColumnForLogicalLocked(sheet string, logical int) int {
+	target := s.left.ByName[sheet].MaxCol + 1
+	for candidate := logical + 1; candidate <= max(logical, s.comparisonLeft.ByName[sheet].MaxCol+1); candidate++ {
+		if physical := physicalColumnForLogical(s.leftCols[sheet], candidate); physical > 0 {
+			target = physical
+			break
+		}
+	}
+	return target
+}
+
+func shiftColumnSourcesForInsert(columns map[int]int, inserted int) {
+	for logical, physical := range columns {
+		if physical >= inserted {
+			columns[logical] = physical + 1
+		}
+	}
+}
+
+func insertSnapshotColumn(sheet *workbook.SheetSnapshot, inserted int) {
+	if sheet == nil {
+		return
+	}
+	cells := make(map[workbook.CellKey]workbook.CellValue, len(sheet.Cells))
+	list := make([]workbook.CellKey, 0, len(sheet.CellList))
+	for _, original := range sheet.CellList {
+		key := original
+		if key.Col >= inserted {
+			key.Col++
+		}
+		cells[key] = sheet.Cells[original]
+		list = append(list, key)
+	}
+	sheet.Cells, sheet.CellList = cells, list
+	sheet.MaxCol++
+}
+
+func removeSnapshotColumn(sheet *workbook.SheetSnapshot, removed int) {
+	if sheet == nil {
+		return
+	}
+	cells := make(map[workbook.CellKey]workbook.CellValue, len(sheet.Cells))
+	list := make([]workbook.CellKey, 0, len(sheet.CellList))
+	for _, original := range sheet.CellList {
+		if original.Col == removed {
+			continue
+		}
+		key := original
+		if key.Col > removed {
+			key.Col--
+		}
+		cells[key] = sheet.Cells[original]
+		list = append(list, key)
+	}
+	sheet.Cells, sheet.CellList = cells, list
+	recalculateSheetBounds(sheet)
+}
+
+func (s *Session) rollbackColumnCopyLocked(operations []merge.Operation, insertions []history.ColumnInsertion) {
+	for index := len(operations) - 1; index >= 0; index-- {
+		operation := operations[index]
+		if _, err := merge.Apply(s.leftFile, operation.Ref, operation.Before); err == nil {
+			updateSnapshotCell(s.left.ByName[operation.Ref.Sheet], workbook.CellKey{Row: operation.Ref.Row, Col: operation.Ref.Col}, operation.Before.Value)
+		}
+	}
+	for index := len(insertions) - 1; index >= 0; index-- {
+		insertion := insertions[index]
+		name, err := excelize.ColumnNumberToName(insertion.Column)
+		if err == nil {
+			_ = s.leftFile.RemoveCol(insertion.Sheet, name)
+		}
+		removeSnapshotColumn(s.left.ByName[insertion.Sheet], insertion.Column)
+		removeSnapshotColumn(s.originalLeft.ByName[insertion.Sheet], insertion.Column)
+	}
+	s.rebuildComparisonLocked()
+}
+
+func (s *Session) restoreRemovedColumnsLocked(removals []history.ColumnRemoval) error {
+	sort.Slice(removals, func(i, j int) bool { return removals[i].Column < removals[j].Column })
+	for _, removal := range removals {
+		name, err := excelize.ColumnNumberToName(removal.Column)
+		if err != nil {
+			return err
+		}
+		if err := s.leftFile.InsertCols(removal.Sheet, name, 1); err != nil {
+			return err
+		}
+		insertSnapshotColumn(s.left.ByName[removal.Sheet], removal.Column)
+		insertSnapshotColumn(s.originalLeft.ByName[removal.Sheet], removal.Column)
+		for _, original := range removal.OriginalCells {
+			updateSnapshotCell(s.originalLeft.ByName[removal.Sheet], workbook.CellKey{Row: original.Row, Col: removal.Column}, original.Value)
+		}
+		for _, cell := range removal.Cells {
+			if _, applyErr := merge.Apply(s.leftFile, cell.Ref, cell.Before); applyErr != nil {
+				return applyErr
+			}
+			if restored, captureErr := merge.Capture(s.leftFile, cell.Ref); captureErr == nil {
+				updateSnapshotCell(s.left.ByName[removal.Sheet], workbook.CellKey{Row: cell.Ref.Row, Col: removal.Column}, restored.Value)
+			} else {
+				return captureErr
+			}
+		}
+	}
+	s.rebuildComparisonLocked()
+	return nil
 }
 
 func (s *Session) AppendRowsRightToLeft(
@@ -1150,15 +1499,16 @@ func (s *Session) AppendRowsRightToLeft(
 	if idColumn == 0 && len(requestedIDs) != 0 {
 		return nil, errors.New(sessionText(s.options.Locale, "This sheet has no integer ID column for assigned IDs.", "当前工作表没有可用的整数 ID 列，无法指定 ID。", "このシートには整数の ID 列がないため、ID を指定できません。"))
 	}
-	maxCol := max(leftSheet.MaxCol, rightSheet.MaxCol)
+	maxCol := max(s.comparisonLeft.ByName[sheet].MaxCol, s.right.ByName[sheet].MaxCol)
 	if len(unique)*maxCol > 10000 {
 		return nil, errors.New("too many cells selected (maximum 10000)")
 	}
 	assigned := []string{}
 	if idColumn > 0 {
 		existingIDs := make(map[string]struct{})
+		physicalIDColumn := physicalColumnForLogical(s.leftCols[sheet], idColumn)
 		for row := 2; row <= leftSheet.MaxRow; row++ {
-			id := strings.TrimSpace(leftSheet.Cell(row, idColumn).Raw)
+			id := strings.TrimSpace(leftSheet.Cell(row, physicalIDColumn).Raw)
 			if id != "" {
 				existingIDs[id] = struct{}{}
 			}
@@ -1202,7 +1552,14 @@ func (s *Session) AppendRowsRightToLeft(
 		}
 		targetRow := targetStart + index
 		for col := 1; col <= maxCol; col++ {
-			targetRef := workbook.CellRef{Sheet: sheet, Row: targetRow, Col: col}
+			physicalCol := physicalColumnForLogical(s.leftCols[sheet], col)
+			if physicalCol == 0 {
+				return nil, errors.New(sessionText(s.options.Locale,
+					"A source column does not exist on the left. Copy that whole column first.",
+					"左侧缺少来源列，请先复制对应整列。",
+					"左側に元の列がありません。先にその列全体を反映してください。"))
+			}
+			targetRef := workbook.CellRef{Sheet: sheet, Row: targetRow, Col: physicalCol}
 			before, captureErr := merge.Capture(s.leftFile, targetRef)
 			if captureErr != nil {
 				return nil, captureErr
@@ -1289,6 +1646,14 @@ func (s *Session) EditLeft(ref workbook.CellRef, value, valueType string) error 
 	if s.left.ByName[ref.Sheet] == nil {
 		return fmt.Errorf("left worksheet %q not found", ref.Sheet)
 	}
+	logicalRef := ref
+	ref.Col = physicalColumnForLogical(s.leftCols[ref.Sheet], logicalRef.Col)
+	if ref.Col == 0 {
+		return errors.New(sessionText(s.options.Locale,
+			"This column does not exist on the editable workbook.",
+			"可编辑工作簿中不存在此列。",
+			"編集可能なブックにこの列はありません。"))
+	}
 	before, err := merge.Capture(s.leftFile, ref)
 	if err != nil {
 		return err
@@ -1329,7 +1694,9 @@ func (s *Session) EditLeft(ref workbook.CellRef, value, valueType string) error 
 	if err := s.updateCellLocked(ref, applied); err != nil {
 		return err
 	}
-	if err := s.reclassifyRowsLocked(ref.Sheet); err != nil {
+	if ref.Row == 1 {
+		s.rebuildComparisonLocked()
+	} else if err := s.reclassifyRowsLocked(ref.Sheet); err != nil {
 		return err
 	}
 	s.recordHistoryLocked([]merge.Operation{{Ref: ref, Before: before, After: after, Kind: "edit"}})
@@ -1388,10 +1755,16 @@ func (s *Session) ClearLeftSelection(
 			}
 		}
 	}
+	selectedCols := make(map[int]struct{}, endCol-startCol+1)
+	for logicalCol := startCol; logicalCol <= endCol; logicalCol++ {
+		if physicalCol := physicalColumnForLogical(s.leftCols[sheetName], logicalCol); physicalCol > 0 {
+			selectedCols[physicalCol] = struct{}{}
+		}
+	}
 
 	operations := make([]merge.Operation, 0)
 	for _, key := range sheet.CellList {
-		if key.Col < startCol || key.Col > endCol {
+		if _, selected := selectedCols[key.Col]; !selected {
 			continue
 		}
 		if _, selected := selectedRows[key.Row]; !selected {
@@ -1425,8 +1798,50 @@ func (s *Session) Undo() error {
 		return err
 	}
 	commands := entry.Operations
+	if len(entry.RemovedColumns) > 0 {
+		if err := s.restoreRemovedColumnsLocked(entry.RemovedColumns); err != nil {
+			s.history.PushEntry(entry)
+			return err
+		}
+		s.removeResolutionsForStateLocked(entry.AfterState)
+		s.stateID = entry.BeforeState
+		s.dirty = s.stateID != s.savedState
+		return nil
+	}
+	if len(entry.InsertedColumns) > 0 {
+		for index := len(commands) - 1; index >= 0; index-- {
+			command := commands[index]
+			warnings, applyErr := merge.Apply(s.leftFile, command.Ref, command.Before)
+			if applyErr != nil {
+				s.history.PushEntry(entry)
+				return applyErr
+			}
+			s.warnings = append(s.warnings, warnings...)
+			updateSnapshotCell(s.left.ByName[command.Ref.Sheet], workbook.CellKey{Row: command.Ref.Row, Col: command.Ref.Col}, command.Before.Value)
+		}
+		for index := len(entry.InsertedColumns) - 1; index >= 0; index-- {
+			insertion := entry.InsertedColumns[index]
+			name, nameErr := excelize.ColumnNumberToName(insertion.Column)
+			if nameErr != nil {
+				s.history.PushEntry(entry)
+				return nameErr
+			}
+			if removeErr := s.leftFile.RemoveCol(insertion.Sheet, name); removeErr != nil {
+				s.history.PushEntry(entry)
+				return removeErr
+			}
+			removeSnapshotColumn(s.left.ByName[insertion.Sheet], insertion.Column)
+			removeSnapshotColumn(s.originalLeft.ByName[insertion.Sheet], insertion.Column)
+		}
+		s.rebuildComparisonLocked()
+		s.removeResolutionsForStateLocked(entry.AfterState)
+		s.stateID = entry.BeforeState
+		s.dirty = s.stateID != s.savedState
+		return nil
+	}
 	undone := make([]merge.Operation, 0, len(commands))
 	changedSheets := make(map[string]struct{})
+	rebuildComparison := false
 	for index := len(commands) - 1; index >= 0; index-- {
 		command := commands[index]
 		warnings, err := merge.Apply(s.leftFile, command.Ref, command.Before)
@@ -1449,12 +1864,17 @@ func (s *Session) Undo() error {
 		}
 		undone = append(undone, command)
 		changedSheets[command.Ref.Sheet] = struct{}{}
+		rebuildComparison = rebuildComparison || command.Ref.Row == 1
 	}
-	for sheet := range changedSheets {
-		if err := s.reclassifyRowsLocked(sheet); err != nil {
-			s.restoreUndoneLocked(undone)
-			s.history.PushEntry(entry)
-			return err
+	if rebuildComparison {
+		s.rebuildComparisonLocked()
+	} else {
+		for sheet := range changedSheets {
+			if err := s.reclassifyRowsLocked(sheet); err != nil {
+				s.restoreUndoneLocked(undone)
+				s.history.PushEntry(entry)
+				return err
+			}
 		}
 	}
 	s.removeResolutionsForStateLocked(entry.AfterState)
@@ -1539,10 +1959,18 @@ func (s *Session) Dirty() bool {
 }
 
 func (s *Session) recordHistoryLocked(operations []merge.Operation) {
+	s.recordHistoryEntryLocked(operations, nil, nil)
+}
+
+func (s *Session) recordHistoryEntryLocked(
+	operations []merge.Operation,
+	insertions []history.ColumnInsertion,
+	removals []history.ColumnRemoval,
+) {
 	after := s.nextState
 	s.nextState++
 	s.history.PushEntry(history.Entry{
-		Operations:  operations,
+		Operations: operations, InsertedColumns: insertions, RemovedColumns: removals,
 		BeforeState: s.stateID,
 		AfterState:  after,
 	})
@@ -1563,6 +1991,13 @@ func (s *Session) sheetDiffLocked(name string) *diff.SheetDiff {
 }
 
 func (s *Session) captureRightLocked(ref workbook.CellRef) (merge.CellState, error) {
+	if columns := s.rightCols[ref.Sheet]; columns != nil {
+		if physicalCol := columns[ref.Col]; physicalCol > 0 {
+			ref.Col = physicalCol
+		} else if s.columnAligned[ref.Sheet] {
+			return merge.CellState{}, nil
+		}
+	}
 	if rows := s.rightRows[ref.Sheet]; rows != nil {
 		if physicalRow := rows[ref.Row]; physicalRow > 0 {
 			ref.Row = physicalRow
@@ -1649,6 +2084,9 @@ func (s *Session) rebuildComparisonLocked() {
 		s.right = nil
 		s.leftRows = identityWorkbookRows(s.left)
 		s.rightRows = nil
+		s.leftCols = identityWorkbookColumns(s.left)
+		s.rightCols = nil
+		s.columnAligned = nil
 		s.alignedSheets = nil
 		s.currentDiff = nil
 		s.alignmentNotice = ""
@@ -1665,6 +2103,9 @@ func (s *Session) rebuildComparisonLocked() {
 	s.right = alignment.right
 	s.leftRows = alignment.leftSources
 	s.rightRows = alignment.rowSources
+	s.leftCols = alignment.leftColumns
+	s.rightCols = alignment.rightColumns
+	s.columnAligned = alignment.columnAligned
 	s.alignedSheets = alignment.alignedSheets
 	s.currentDiff = diff.CompareWithKeyColumns(alignment.left, alignment.right, alignment.keyColumns)
 	annotateDiffRowSources(s.currentDiff, alignment.leftSources, alignment.rowSources)
@@ -1724,11 +2165,25 @@ func (s *Session) updateCellLocked(ref workbook.CellRef, state merge.CellState) 
 	}
 	logicalRef := ref
 	logicalRef.Row = logicalRow
+	logicalCol := logicalColumnForPhysical(s.leftCols[ref.Sheet], ref.Col)
+	if logicalCol == 0 {
+		logicalCol = ref.Col
+	}
+	logicalRef.Col = logicalCol
 	comparisonSheet := s.comparisonLeft.ByName[ref.Sheet]
-	updateSnapshotCell(comparisonSheet, workbook.CellKey{Row: logicalRow, Col: ref.Col}, state.Value)
+	updateSnapshotCell(comparisonSheet, workbook.CellKey{Row: logicalRow, Col: logicalCol}, state.Value)
 	return s.currentDiff.UpdateCell(
-		logicalRef, state.Value, s.right.ByName[ref.Sheet].Cell(logicalRow, ref.Col),
+		logicalRef, state.Value, s.right.ByName[ref.Sheet].Cell(logicalRow, logicalCol),
 	)
+}
+
+func logicalColumnForPhysical(columns map[int]int, physical int) int {
+	for logical, candidate := range columns {
+		if candidate == physical {
+			return logical
+		}
+	}
+	return 0
 }
 
 func nextLogicalRow(rows map[int]int) int {

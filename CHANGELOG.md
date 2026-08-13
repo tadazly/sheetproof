@@ -6,6 +6,15 @@ English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
 
 User-visible SheetProof changes.
 
+## 0.7.0 — 2026-08-13
+
+_Preview · Column-aware comparison and merging_
+
+Inserted columns no longer shift every later comparison, and complete columns can be selected and applied.
+
+- Worksheets with reliable unique text headers align shared columns before comparing cells, so a one-sided inserted column remains a focused difference instead of shifting every later column.
+- Select one or more complete columns from the A/B/C headers. Copy right-side columns to the editable left workbook, or delete columns that exist only on the left, as one undoable operation. A missing-side dash is never offered as a key column.
+
 ## 0.6.0 — 2026-08-06
 
 _Preview · In-app help_

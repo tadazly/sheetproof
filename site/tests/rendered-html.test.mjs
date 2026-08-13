@@ -79,8 +79,11 @@ test("guide documents actual shortcuts, the in-app Help entry, and UGit entries"
   }
 });
 
-test("localized changelogs include the unreleased in-app Help entry", async () => {
+test("localized changelogs include column alignment, whole-column copy, and in-app Help", async () => {
   const [en, zh, ja] = await Promise.all([render("/changelog"), render("/zh-CN/changelog"), render("/ja/changelog")]);
+  assert.match(en, /Column-aware comparison and merging/); assert.match(en, /complete columns/);
+  assert.match(zh, /按列语义对比与合并/); assert.match(zh, /整列复制/);
+  assert.match(ja, /列を対応付けた比較と反映/); assert.match(ja, /列全体/);
   assert.match(en, /In-app help/);
   assert.match(zh, /应用内帮助/);
   assert.match(ja, /アプリ内ヘルプ/);

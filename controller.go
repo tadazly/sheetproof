@@ -1324,6 +1324,28 @@ func (c *Controller) CopyRowsRightToLeft(sheet string, rows []int) (coreapp.Summ
 	return session.Summary(), nil
 }
 
+func (c *Controller) CopyColumnsRightToLeft(sheet string, columns []int) (coreapp.Summary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	if err := session.CopyColumnsRightToLeft(sheet, columns); err != nil {
+		return coreapp.Summary{}, err
+	}
+	return session.Summary(), nil
+}
+
+func (c *Controller) DeleteLeftColumns(sheet string, columns []int) (coreapp.Summary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	if err := session.DeleteLeftColumns(sheet, columns); err != nil {
+		return coreapp.Summary{}, err
+	}
+	return session.Summary(), nil
+}
+
 func (c *Controller) AppendRowsRightToLeft(
 	sheet string,
 	rows []int,

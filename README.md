@@ -26,10 +26,11 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 
 - **Workbook-aware comparison**: Compare worksheets, values, formulas, explicit blanks, and types. Display formatting does not determine whether cells are equal.
 - **Side-by-side review**: Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data.
+- **Inserted-column alignment**: Align reliable unique text headers before comparison, keeping one-sided inserted columns local instead of shifting every later column.
 - **Current-sheet row filters**: Combine added, deleted, modified, and conflict filters without losing the source row being reviewed.
 - **Find in the current worksheet**: Search the left and right sides independently with case, Unicode whole-word, and RE2 regular-expression options, including within filtered rows.
 - **In-app help**: Use Help in the desktop toolbar to view the current version, open the guide in the active language, and check keyboard shortcuts.
-- **Controlled merge and undo**: Write only selected differences to the left; unchanged edits create no unsaved state, while real edits and merges remain undoable.
+- **Controlled merge and undo**: Write selected cells, rows, or complete right-side columns to the left, or remove left-only columns; every structural action remains undoable.
 - **Hold to compare before and after**: Hold Before/After or Tab in a grid to see the left workbook exactly as it was opened.
 - **English, Chinese, and Japanese**: Use the desktop app, CLI, documentation, website, and localized demonstration workbooks in English, Simplified Chinese, or Japanese.
 - **Local Git repository mode**: Read the real worktree against a validated local or remote-tracking reference without checkout, fetch, or branch switching. A preselected workbook and revision finish loading before the workspace is shown.
@@ -37,12 +38,12 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 
 ## Download
 
-**0.6.0 Preview**
+**0.7.0 Preview**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.6.0/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.6.0.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.7.0.zip)
 
 ## First launch on Windows and macOS
 

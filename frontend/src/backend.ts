@@ -84,6 +84,10 @@ export const backend = {
     controller().CopyRightToLeftMany(sheet, cells),
   copyRows: (sheet: string, rows: number[]): Promise<Summary> =>
     controller().CopyRowsRightToLeft(sheet, rows),
+  copyColumns: (sheet: string, columns: number[]): Promise<Summary> =>
+    controller().CopyColumnsRightToLeft(sheet, columns),
+  deleteColumns: (sheet: string, columns: number[]): Promise<Summary> =>
+    controller().DeleteLeftColumns(sheet, columns),
   appendRows: (sheet: string, rows: number[], ids: string[]): Promise<Summary> =>
     controller().AppendRowsRightToLeft(sheet, rows, ids),
   edit: (sheet: string, row: number, col: number, value: string, type: string): Promise<Summary> =>

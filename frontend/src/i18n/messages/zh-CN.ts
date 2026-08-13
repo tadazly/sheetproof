@@ -235,6 +235,8 @@ export const zhCN = {
   "context.appendSpecified": "指定 id 后新增到左侧",
   "context.copyCells": "复制单元格到左侧",
   "context.copyRows": "复制整行到左侧",
+  "context.copyColumns": (p: MessageParams) => Number(p.count) === 1 ? "复制整列到左侧" : `复制 ${p.count} 整列到左侧`,
+  "context.deleteColumns": (p: MessageParams) => Number(p.count) === 1 ? "删除左侧整列" : `删除左侧 ${p.count} 整列`,
   "context.selectedRows": (p: MessageParams) => Number(p.count) === 1 ? `第 ${p.row} 行` : `已选择 ${p.count} 行`,
   "dialog.idsTitle": "指定新增行的 ID",
   "dialog.idsDescription": "每个来源行都需要一个左侧尚未使用的 ID。",

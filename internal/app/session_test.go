@@ -197,6 +197,170 @@ func TestSessionBatchCopyIsOneUndoCommand(t *testing.T) {
 	}
 }
 
+func TestSessionAlignsInsertedColumnsByUniqueHeaders(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{
+		{"id", "name", "inserted", "code", "value"},
+		{1, "same", "left-only", "stable-code", 42},
+	})
+	writeRowsWorkbook(t, right, [][]any{
+		{"id", "name", "code", "value"},
+		{1, "same", "stable-code", 42},
+	})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if got := session.Summary().Diff.DifferenceCount; got != 2 {
+		t.Fatalf("inserted column differences = %d, want 2", got)
+	}
+	region, err := session.Region("Sheet1", 1, 2, 1, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Columns[2].LeftCol != 3 || region.Columns[2].RightCol != 0 {
+		t.Fatalf("inserted column mapping = %+v", region.Columns[2])
+	}
+	if region.Columns[3].LeftCol != 4 || region.Columns[3].RightCol != 3 {
+		t.Fatalf("shifted common column mapping = %+v", region.Columns[3])
+	}
+	code := region.Cells[8]
+	if code.Left.Raw != "stable-code" || code.Right.Raw != "stable-code" || code.Status != diff.Unchanged {
+		t.Fatalf("shifted common cell = %+v", code)
+	}
+}
+
+func TestSessionDeletesLeftOnlyColumnAndUndoesRemoval(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{
+		{"id", "name", "inserted", "code", "value"},
+		{1, "same", "left-only", "stable-code", 42},
+	})
+	writeRowsWorkbook(t, right, [][]any{
+		{"id", "name", "code", "value"},
+		{1, "same", "stable-code", 42},
+	})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if err := session.DeleteLeftColumns("Sheet1", []int{3}); err != nil {
+		t.Fatal(err)
+	}
+	if got := session.Summary(); got.Diff.DifferenceCount != 0 || got.UndoCount != 1 || !got.Dirty {
+		t.Fatalf("summary after whole-column deletion = %+v", got)
+	}
+	if value, valueErr := session.leftFile.GetCellValue("Sheet1", "C1"); valueErr != nil || value != "code" {
+		t.Fatalf("shifted workbook column C1=%q err=%v", value, valueErr)
+	}
+	if err := session.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if got := session.Summary(); got.Diff.DifferenceCount != 2 || got.UndoCount != 0 || got.Dirty {
+		t.Fatalf("summary after undoing whole-column deletion = %+v", got)
+	}
+	for axis, want := range map[string]string{"C1": "inserted", "C2": "left-only", "D1": "code"} {
+		if value, valueErr := session.leftFile.GetCellValue("Sheet1", axis); valueErr != nil || value != want {
+			t.Fatalf("restored workbook %s=%q, want %q err=%v", axis, value, want, valueErr)
+		}
+	}
+	region, err := session.Region("Sheet1", 1, 2, 1, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[2].OriginalLeft.Raw != "inserted" || region.Cells[7].OriginalLeft.Raw != "left-only" {
+		t.Fatalf("restored original-left column = %+v", region.Cells)
+	}
+}
+
+func TestSessionCopiesRightOnlyColumnToLeftAndUndoesInsertion(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{
+		{"id", "name", "code", "value"},
+		{1, "same", "stable-code", 42},
+	})
+	writeRowsWorkbook(t, right, [][]any{
+		{"id", "name", "inserted", "code", "value"},
+		{1, "same", "right-only", "stable-code", 42},
+	})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if err := session.CopyColumnsRightToLeft("Sheet1", []int{3}); err != nil {
+		t.Fatal(err)
+	}
+	if got := session.Summary(); got.Diff.DifferenceCount != 0 || got.UndoCount != 1 || !got.Dirty {
+		t.Fatalf("summary after whole-column copy = %+v", got)
+	}
+	region, err := session.Region("Sheet1", 1, 2, 1, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[2].Left.Raw != "inserted" || region.Cells[7].Left.Raw != "right-only" {
+		t.Fatalf("copied column cells = %+v", region.Cells)
+	}
+	if value, valueErr := session.leftFile.GetCellValue("Sheet1", "C1"); valueErr != nil || value != "inserted" {
+		t.Fatalf("inserted workbook column C1=%q err=%v", value, valueErr)
+	}
+	if err := session.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if got := session.Summary(); got.Diff.DifferenceCount != 2 || got.UndoCount != 0 || got.Dirty {
+		t.Fatalf("summary after undoing whole-column copy = %+v", got)
+	}
+	if value, valueErr := session.leftFile.GetCellValue("Sheet1", "C1"); valueErr != nil || value != "code" {
+		t.Fatalf("workbook column after undo C1=%q err=%v", value, valueErr)
+	}
+	book, err := excelize.OpenFile(left)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer book.Close()
+	if value, valueErr := book.GetCellValue("Sheet1", "C1"); valueErr != nil || value != "code" {
+		t.Fatalf("source workbook changed before save: C1=%q err=%v", value, valueErr)
+	}
+}
+
+func TestSessionMarksUnalignedTailColumnMissingOnShorterSide(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{{"first", "second"}, {"a", "b"}})
+	writeRowsWorkbook(t, right, [][]any{{"first", "second", "third"}, {"a", "b", "c"}})
+
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	region, err := session.Region("Sheet1", 1, 2, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := region.Columns[2]; got.LeftCol != 0 || got.RightCol != 3 {
+		t.Fatalf("tail column mapping = %+v", got)
+	}
+	if err := session.CopyColumnsRightToLeft("Sheet1", []int{3}); err != nil {
+		t.Fatal(err)
+	}
+	if got := session.Summary(); got.Diff.DifferenceCount != 0 || got.UndoCount != 1 {
+		t.Fatalf("summary after copying tail column = %+v", got)
+	}
+}
+
 func TestSessionEditNoOpsDoNotCreateState(t *testing.T) {
 	tests := []struct {
 		name      string
