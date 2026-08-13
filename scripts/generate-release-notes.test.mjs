@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { generateReleaseNotes, renderReleaseNotes } from "./generate-release-notes.mjs";
@@ -21,4 +22,15 @@ test("rejects a tag that does not match the product version", () => {
     english: {},
     version: "1.0.1",
   }), /does not match release/);
+});
+
+test("keeps Wails package metadata aligned with the product facts", async () => {
+  const [facts, wails] = await Promise.all([
+    readFile(new URL("../product/product.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../wails.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+
+  assert.equal(wails.info.productName, facts.product.name);
+  assert.equal(wails.info.productVersion, facts.product.version);
+  assert.equal(wails.info.copyright, facts.product.copyright);
 });

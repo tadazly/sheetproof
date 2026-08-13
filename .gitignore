@@ -15,6 +15,7 @@ node_modules/
 !/build/windows/
 /build/windows/*
 !/build/windows/icon.ico
+!/build/windows/info.json
 
 # Local caches, logs, and temporary files
 .cache/

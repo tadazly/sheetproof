@@ -6,6 +6,12 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
+  "info": {
+    "companyName": "SheetProof contributors",
+    "productName": "SheetProof",
+    "productVersion": "0.7.0",
+    "copyright": "Copyright (c) 2026 tadazly"
+  },
   "author": {
     "name": "SheetProof contributors"
   }

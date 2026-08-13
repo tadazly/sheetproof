@@ -207,6 +207,16 @@ for (const path of ["frontend/package.json", "site/package.json"]) {
   outputs.set(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
 }
 
+const wails = await readJSON("wails.json");
+wails.info = {
+  ...wails.info,
+  companyName: "SheetProof contributors",
+  productName: facts.product.name,
+  productVersion: facts.product.version,
+  copyright: facts.product.copyright,
+};
+outputs.set("wails.json", `${JSON.stringify(wails, null, 2)}\n`);
+
 let drift = false;
 for (const [path, expected] of outputs) {
   const full = resolve(root, path);

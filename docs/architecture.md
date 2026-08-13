@@ -99,6 +99,11 @@ switch 或 fetch。临时文件位于系统临时目录，切换来源和退出�
   PNG、Windows ICO、favicon 和前端/网站副本。
 - Windows 离线优先构建入口和 GitHub Release 工作流都通过 Go `-trimpath` 生成桌面
   产物，避免把执行者或托管 runner 的源码目录写入可执行文件。
+- `scripts/sync-product-content.mjs` 同时把产品事实版本写入 `wails.json` 的包元数据，
+  使 Windows 文件版本和 macOS `CFBundleVersion` / `CFBundleShortVersionString` 与 CLI、
+  桌面帮助、官网和 Release 标签保持一致。`build/windows/info.json` 保留可由 Windows
+  资源管理器读取的四段固定版本与三段显示版本；Release workflow 在上传前直接检查
+  Windows 文件属性、macOS plist 和两个平台的 CLI 版本。
 - `cmd/genproductdemo` 生成角色成长、关卡掉落和技能参数工作簿，并提供主键对齐、
   按行号比较和选择性合并前后的演示变体；这些文件只用于产品演示与截图，不参与
   自动化测试基线。`scripts/capture-wails-window.ps1` 可直接捕获客户区或客户区内

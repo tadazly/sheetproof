@@ -145,6 +145,14 @@ PNG 哈希一致。最终 EXE 已在本机原生启动并显示 250 表索引结
   解析到不支持 `--test-isolation=none` 的 Node 22，尚未执行 Go、前端或双平台构建，也未创建标签
   或 Release。发布工作流改用 Node 24；本地 Node 24.19.0 已用同一参数通过发布说明 2/2 测试，
   修复提交推送后必须重新完整通过手动工作流，才能继续创建 `v0.7.0` 标签。
+- Node 24 修复提交 `1e2ba5d64891940f1f56c8e5a9d9f562f2aaac43` 推送后，手动 Release
+  workflow run `31691231543` 已通过源码验证、Windows amd64 和 macOS universal 构建；无标签时
+  Draft job 按预期跳过。下载候选资产复核时发现 macOS `Info.plist` 仍使用 Wails 默认 `1.0.0`，
+  因此没有创建标签。`wails.json` 现由产品事实同步 `productVersion`、产品名和版权，使 Windows
+  文件版本与 macOS bundle 版本都跟随 `0.7.0`。Wails 默认 Windows 资源模板还会造成文件属性
+  为空，因此已跟踪 `build/windows/info.json`，补齐四段固定版本、固定产品版本和显示版本。本机
+  `-clean` 构建已确认文件版本、产品版本、CLI 均为 `0.7.0`；Release workflow 也新增 Windows
+  文件属性、macOS plist 和双平台 CLI 断言，必须重新完整通过后再打标签。
 
 ### 2026-08-06 应用内帮助
 

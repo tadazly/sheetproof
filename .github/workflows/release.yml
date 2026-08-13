@@ -78,6 +78,16 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v${{ env.WAILS_VERSION }}
       - name: Build application
         run: wails build -clean -platform windows/amd64
+      - name: Verify package metadata
+        shell: pwsh
+        run: |
+          $expected = (Get-Content product/product.json -Raw | ConvertFrom-Json).product.version
+          $version = (Get-Item build/bin/SheetProof.exe).VersionInfo
+          if ($version.FileVersion -ne $expected) { throw "Unexpected file version: $($version.FileVersion)" }
+          if ($version.ProductVersion -ne $expected) { throw "Unexpected product version: $($version.ProductVersion)" }
+          if ($version.ProductName -ne "SheetProof") { throw "Unexpected product name: $($version.ProductName)" }
+          $cliVersion = & build/bin/SheetProof.exe version
+          if ($cliVersion -ne "SheetProof $expected") { throw "Unexpected CLI version: $cliVersion" }
       - name: Prepare artifact
         shell: pwsh
         run: Copy-Item build/bin/SheetProof.exe SheetProof-windows-amd64.exe
@@ -109,6 +119,13 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v${WAILS_VERSION}
       - name: Build application
         run: wails build -clean -platform darwin/universal
+      - name: Verify package metadata
+        run: |
+          expected="$(node -p "require('./product/product.json').product.version")"
+          plist="build/bin/SheetProof.app/Contents/Info.plist"
+          test "$(plutil -extract CFBundleVersion raw "$plist")" = "$expected"
+          test "$(plutil -extract CFBundleShortVersionString raw "$plist")" = "$expected"
+          test "$(build/bin/SheetProof.app/Contents/MacOS/SheetProof version)" = "SheetProof $expected"
       - name: Prepare artifact
         run: ditto -c -k --sequesterRsrc --keepParent build/bin/SheetProof.app SheetProof-macos-universal.zip
       - uses: actions/upload-artifact@v7
