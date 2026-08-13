@@ -86,7 +86,13 @@ jobs:
           if ($version.FileVersion -ne $expected) { throw "Unexpected file version: $($version.FileVersion)" }
           if ($version.ProductVersion -ne $expected) { throw "Unexpected product version: $($version.ProductVersion)" }
           if ($version.ProductName -ne "SheetProof") { throw "Unexpected product name: $($version.ProductName)" }
-          $cliVersion = & build/bin/SheetProof.exe version
+          $startInfo = [System.Diagnostics.ProcessStartInfo]::new((Resolve-Path build/bin/SheetProof.exe).Path, "version")
+          $startInfo.UseShellExecute = $false
+          $startInfo.RedirectStandardOutput = $true
+          $process = [System.Diagnostics.Process]::Start($startInfo)
+          $cliVersion = $process.StandardOutput.ReadToEnd().Trim()
+          $process.WaitForExit()
+          if ($process.ExitCode -ne 0) { throw "Version command failed with exit code $($process.ExitCode)" }
           if ($cliVersion -ne "SheetProof $expected") { throw "Unexpected CLI version: $cliVersion" }
       - name: Prepare artifact
         shell: pwsh

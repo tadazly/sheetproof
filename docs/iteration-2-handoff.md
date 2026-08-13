@@ -152,7 +152,10 @@ PNG 哈希一致。最终 EXE 已在本机原生启动并显示 250 表索引结
   文件版本与 macOS bundle 版本都跟随 `0.7.0`。Wails 默认 Windows 资源模板还会造成文件属性
   为空，因此已跟踪 `build/windows/info.json`，补齐四段固定版本、固定产品版本和显示版本。本机
   `-clean` 构建已确认文件版本、产品版本、CLI 均为 `0.7.0`；Release workflow 也新增 Windows
-  文件属性、macOS plist 和双平台 CLI 断言，必须重新完整通过后再打标签。
+  文件属性、macOS plist 和双平台 CLI 断言。首次门禁 run `31692686593` 中源码验证和 macOS
+  universal（含 bundle/CLI 元数据）通过，Windows 文件版本、产品版本和产品名也通过；仅 Windows
+  GUI 子系统 EXE 在 GitHub Runner 的直接 PowerShell 调用未等待到 stdout。检查已改为使用
+  `.NET ProcessStartInfo` 显式重定向并等待 stdout，必须重新完整通过后再打标签。
 
 ### 2026-08-06 应用内帮助
 
