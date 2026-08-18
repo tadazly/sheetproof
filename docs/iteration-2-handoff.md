@@ -1,10 +1,26 @@
 # 第二、三轮交付与下一轮迭代交接
 
-更新时间：2026-08-13
+更新时间：2026-08-18
 
 本文是新会话接手 SheetProof（原 `ugxlsx`）的当前事实基线。第一轮历史交付保留在
 `docs/iteration-1-handoff.md`；项目约束见根目录 `AGENTS.md`，实现设计见
 `docs/architecture.md`。
+
+## 2026-08-18 Agent 上下文与技能路由优化
+
+- 根 `AGENTS.md` 改为稳定不变量和任务路由，不再要求每个任务完整读取 README、架构与
+  累计交接；新会话优先用 `rg` 定位与当前任务相关的章节。
+- `sheetproof-development` 仅负责 Go/Wails/Vue 桌面开发；桌面构建与真实 GUI 验收说明
+  移入按需 reference。官网与公开事实、正式版本与 GitHub Release 分别由
+  `sheetproof-site` 和 `sheetproof-release` 处理。
+- 发布 skill 使用当前拆分的 `product/changelog/releases.json` 与本地化事实文件，不再
+  引用已移除的 `product/changelog.json`；主键说明与自动 `id`、唯一 `*ID` 候选和手动
+  主键行为保持一致。
+- 本次仅改变 Agent 协作说明和交接提示，不改变应用行为、公开产品事实或官网内容，因此
+  不触发桌面应用构建、GUI 验收或官网部署。
+- 优化后常规开发任务默认加载的 `AGENTS.md + sheetproof-development/SKILL.md` 约为
+  5,746 字符；相比旧规则强制串联三份大文档的约 130,699 字符减少约 95.6%。三个 skill
+  均通过 `skill-creator` 的 `quick_validate.py`，所有说明中引用的仓库路径均已核对存在。
 
 ## 当前工作区状态
 
