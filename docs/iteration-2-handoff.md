@@ -102,6 +102,39 @@
   annotated `v0.8.0`，核对标签 workflow 生成的 Draft Release、双平台资产、校验和及说明后
   发布 GitHub Release，最后通过维护者本轮显式提供的 SSH 目标部署并核对源站、Cloudflare 和同实例站点。
 
+## 2026-09-03 v0.8.0 正式发布完成
+
+- 维护者确认正式发布后，78 个候选路径以 `Release SheetProof v0.8.0` 提交为
+  `c8dfebfa05500566275e9792bdc3b7f45e5746e6`，并以普通 fast-forward 推送到
+  `origin/main`。提交父节点为 `dd88c51de5253e75ffbaeeb167d9c43027a87ccd`；没有强推、
+  移动已有标签、切换分支或混入忽略目录中的验收资料。
+- 提交级 `Build desktop release` workflow `33713603089` 通过源码验证、Windows amd64 和
+  macOS universal 构建。下载的 Windows artifact 已在隔离配置中真实启动：显示 16 处差异，
+  Ctrl+滚轮从 100% 调整为 110%，Region 完成、无 panic/failure 并以 code 0 正常退出。
+  macOS artifact 的 Mach-O fat header 包含 x86_64 与 arm64，两个 bundle 版本字段均为 `0.8.0`。
+- 随后创建并推送 annotated tag `v0.8.0`；远端 tag object 为
+  `9cbfae86ead642e4c9fb9fec73849c4716e800fb`，剥离后精确指向上述发布提交。标签 workflow
+  `33714205621` 再次通过源码验证、Windows/macOS 构建和 Draft Release 创建。
+- Draft 的英文说明与本地 UTF-8 生成结果完全一致，并保留简体中文、日文更新日志链接。
+  `SheetProof-windows-amd64.exe` 为 17,156,608 字节、SHA-256
+  `9CFE813D76B76724B125D41DA9FCC82CEEAC8F5455D39EC5EF0D1E2FA02B04F0`；
+  `SheetProof-macos-universal.zip` 为 11,214,589 字节、SHA-256
+  `49852D672D39C4A3AB0385F4DE3D3E48F68534CA0B505207564F954093FCB53C`；
+  192 字节的 `SHA256SUMS.txt` 与两项实际文件一致。Windows 仍未签名，macOS 仍未签名、
+  未公证；macOS 原生 GUI 在当前 Windows 宿主上仍为 `NOT TESTED`。
+- GitHub Release `https://github.com/tadazly/sheetproof/releases/tag/v0.8.0` 已公开且不是 Draft；
+  Release 页面、Windows EXE、macOS ZIP 和校验文件均通过未认证公网请求，状态为 200，下载
+  长度与已审计资产一致。
+- Release 公开后重新执行内容同步、锁定依赖安装、官网 lint、16 个静态路由构建和 13 项渲染
+  测试，全部通过。维护者在运行时提供 SSH 目标后，原子部署脚本成功切换正式站点；源站 15 个
+  三语产品路由、15 个关键资产、Caddy 配置和同实例 7 个虚拟主机均健康。Cloudflare 公网
+  15 个三语路由均返回 200 和代理响应头，版本内容正确；15 个关键资产与本地构建哈希一致，
+  TLS 校验通过，公开页面未出现 AI、Agent、Codex、ChatGPT 或生成式实现描述。
+- 最终隐私扫描覆盖候选差异、提交范围、Release Notes、官网静态产物、实际 Windows EXE 和
+  展开的 macOS 应用；凭据、私钥、私人用户/工作区路径、构建机路径及基础设施身份命中均为 0。
+  `go test -race` 仍因本机缺少 GCC/CGO 为 `BLOCKED`，没有记为通过；常规 Go、前端、官网、
+  Windows GUI 与双平台 Actions 门禁均已通过。
+
 ## 2026-08-18 Agent 上下文与技能路由优化
 
 - 根 `AGENTS.md` 改为稳定不变量和任务路由，不再要求每个任务完整读取 README、架构与
