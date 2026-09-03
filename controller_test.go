@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	coreapp "github.com/tadazly/sheetproof/internal/app"
+	"github.com/tadazly/sheetproof/internal/diagnostics"
 	"github.com/tadazly/sheetproof/internal/preferences"
 	"github.com/tadazly/sheetproof/internal/repository"
 	"github.com/tadazly/sheetproof/internal/testutil"
@@ -69,6 +71,46 @@ func TestControllerClearsDifferenceCacheAndAllStoredData(t *testing.T) {
 	}
 	if got := store.LanguagePreference(); got != "ja" {
 		t.Fatalf("language changed to %q", got)
+	}
+}
+
+func TestControllerBridgesClipboardAndWorkbookOpenActions(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller := NewController("", "", coreapp.Options{})
+	if _, err := controller.OpenFiles(pair.Left, pair.Right); err != nil {
+		t.Fatal(err)
+	}
+	defer controller.shutdown(context.Background())
+
+	var opened, revealed, clipboard string
+	controller.openWorkbook = func(path string) error { opened = path; return nil }
+	controller.revealWorkbook = func(path string) error { revealed = path; return nil }
+	controller.clipboardWrite = func(_ context.Context, text string) error { clipboard = text; return nil }
+	controller.clipboardRead = func(context.Context) (string, error) { return "pasted", nil }
+
+	if err := controller.OpenWorkbook(""); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.RevealWorkbook(""); err != nil {
+		t.Fatal(err)
+	}
+	if opened != pair.Left || revealed != pair.Left {
+		t.Fatalf("open paths = %q / %q, want %q", opened, revealed, pair.Left)
+	}
+	if err := controller.CopySelectionToClipboard("数据 表", "left", 1, 1, 1, 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	if clipboard == "" {
+		t.Fatal("clipboard copy produced no text")
+	}
+	if _, err := controller.PasteClipboard("数据 表", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.CutSelectionToClipboard("数据 表", 1, 1, 1, 1, nil, nil); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -230,6 +272,29 @@ func TestControllerShutdownCancelsDifferenceIndexBeforeWaiting(t *testing.T) {
 	case <-indexStopped:
 	default:
 		t.Fatal("difference index worker did not observe shutdown cancellation")
+	}
+}
+
+func TestRepositoryDifferenceIndexPanicIsContainedAndLogged(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "sheetproof.log")
+	log := diagnostics.New(logPath, 1024*1024)
+	result, skipped, err := runRepositoryDifferenceIndexSafely(log, func() ([]string, []string, error) {
+		panic("broken workbook parser")
+	})
+	if err == nil || result != nil || skipped != nil {
+		t.Fatalf("guard result = %#v, skipped = %#v, error = %v", result, skipped, err)
+	}
+	var panicError *repositoryDifferenceIndexPanic
+	if !errors.As(err, &panicError) {
+		t.Fatalf("error type = %T, want repositoryDifferenceIndexPanic", err)
+	}
+	contents, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(contents), `"event":"repository.difference-index.panic"`) ||
+		!strings.Contains(string(contents), `"stack"`) {
+		t.Fatalf("panic diagnostic = %s", contents)
 	}
 }
 

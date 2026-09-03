@@ -123,19 +123,19 @@ func TestSessionSearchUsesLogicalAlignmentAndFilteredRows(t *testing.T) {
 	if missing := mustSearch(t, session, "Sheet1", SearchLeft, "right added", false, false, false, nil); missing.Count != 0 {
 		t.Fatalf("missing-side cell matched = %+v", missing)
 	}
-	filteredAdded := mustSearch(t, session, "Sheet1", SearchRight, "needle", false, false, false, []diff.RowStatus{diff.RowAdded})
-	if filteredAdded.Count != 1 || filteredAdded.CurrentRef == nil || filteredAdded.CurrentRef.Row != 1 || filteredAdded.CurrentRef.SourceRow != 4 {
-		t.Fatalf("filtered added result = %+v", filteredAdded)
-	}
-	filteredDeleted := mustSearch(t, session, "Sheet1", SearchLeft, "needle", false, false, false, []diff.RowStatus{diff.RowDeleted})
-	if filteredDeleted.Count != 1 || filteredDeleted.CurrentRef == nil || filteredDeleted.CurrentRef.Row != 1 {
+	filteredDeleted := mustSearch(t, session, "Sheet1", SearchRight, "needle", false, false, false, []diff.RowStatus{diff.RowDeleted})
+	if filteredDeleted.Count != 1 || filteredDeleted.CurrentRef == nil || filteredDeleted.CurrentRef.Row != 1 || filteredDeleted.CurrentRef.SourceRow != 4 {
 		t.Fatalf("filtered deleted result = %+v", filteredDeleted)
 	}
-	multiple := mustSearch(t, session, "Sheet1", SearchLeft, "needle", false, false, false, []diff.RowStatus{diff.RowDeleted, diff.RowModified})
+	filteredAdded := mustSearch(t, session, "Sheet1", SearchLeft, "needle", false, false, false, []diff.RowStatus{diff.RowAdded})
+	if filteredAdded.Count != 1 || filteredAdded.CurrentRef == nil || filteredAdded.CurrentRef.Row != 1 {
+		t.Fatalf("filtered added result = %+v", filteredAdded)
+	}
+	multiple := mustSearch(t, session, "Sheet1", SearchLeft, "needle", false, false, false, []diff.RowStatus{diff.RowAdded, diff.RowModified})
 	if multiple.Count != 1 || multiple.CurrentRef == nil || multiple.CurrentRef.SourceRow != 3 {
 		t.Fatalf("multi-filter result = %+v", multiple)
 	}
-	region, err := session.FilteredRegion("Sheet1", []diff.RowStatus{diff.RowAdded}, 1, 48, 1, 20)
+	region, err := session.FilteredRegion("Sheet1", []diff.RowStatus{diff.RowDeleted}, 1, 48, 1, 20)
 	if err != nil {
 		t.Fatal(err)
 	}

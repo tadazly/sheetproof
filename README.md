@@ -6,7 +6,7 @@ English | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
 
 > Review and apply XLSX changes in Git.
 
-SheetProof compares .xlsx workbooks in a Git worktree with validated Git revisions, aligns records by key, and applies approved changes to the editable left workbook.
+SheetProof compares .xlsx workbooks in a Git worktree with validated Git revisions, aligns records by key, and applies approved cells, rows, or columns to the editable left workbook.
 
 For developers and content teams who review versioned configuration workbooks. Files are processed locally, and Excel is not required.
 
@@ -26,6 +26,7 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 
 - **Workbook-aware comparison**: Compare worksheets, values, formulas, explicit blanks, and types. Display formatting does not determine whether cells are equal.
 - **Side-by-side review**: Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data.
+- **Keyboard and system-tool workflow**: Pin selected rows or columns, adjust UI text and worksheet zoom in Settings, navigate and edit by keyboard, then use the system clipboard or default spreadsheet app when needed.
 - **Inserted-column alignment**: Align reliable unique text headers before comparison, keeping one-sided inserted columns local instead of shifting every later column.
 - **Current-sheet row filters**: Combine added, deleted, modified, and conflict filters without losing the source row being reviewed.
 - **Find in the current worksheet**: Search the left and right sides independently with case, Unicode whole-word, and RE2 regular-expression options, including within filtered rows.
@@ -38,12 +39,12 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 
 ## Download
 
-**0.7.0 Preview**
+**0.8.0 Preview**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.7.0.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.0.zip)
 
 ## First launch on Windows and macOS
 

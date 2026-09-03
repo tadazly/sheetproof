@@ -5,7 +5,7 @@ import AppIcon from "./components/AppIcon.vue";
 import EmptyState from "./components/EmptyState.vue";
 import FindWidget from "./components/FindWidget.vue";
 import HelpDialog from "./components/HelpDialog.vue";
-import { backend } from "./backend";
+import { backend, type FrontendDiagnosticEvent } from "./backend";
 import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
 import { scrollMarkerGradient, type ScrollMarker } from "./scrollMarkers";
@@ -32,8 +32,11 @@ const MIN_COL_WIDTH = 48;
 const MAX_COL_WIDTH = 420;
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.8;
+const ZOOM_SETTLE_MS = 140;
 const VIEW_ROWS = 48;
 const VIEW_COLS = 20;
+const MAX_FROZEN_ROWS = 300;
+const MAX_FROZEN_COLUMNS = 100;
 const REGION_ROW_STEP = 12;
 const REGION_COL_STEP = 4;
 const REGION_SCHEDULE_MS = 16;
@@ -42,12 +45,23 @@ const REPOSITORY_SEARCH_HISTORY_PREFIX = "sheetproof:repository-search-history:"
 const LEGACY_REPOSITORY_SEARCH_HISTORY_PREFIX = "ugxlsx:repository-search-history:";
 const SHEET_LAYOUT_PREFIX = "sheetproof:sheet-layout:v1:";
 const LEGACY_SHEET_LAYOUT_PREFIX = "ugxlsx.sheet-layout.v1:";
+const UI_FONT_SCALE_KEY = "sheetproof:ui-font-scale:v1";
+const MIN_UI_FONT_SCALE = 0.85;
+const MAX_UI_FONT_SCALE = 1.25;
+const UI_FONT_SCALE_STEP = 0.05;
+const DIAGNOSTIC_RING_KEY = "sheetproof:diagnostics:ring:v1";
+const DIAGNOSTIC_RING_LIMIT = 80;
+const DIAGNOSTIC_BATCH_LIMIT = 40;
+const DIAGNOSTIC_FLUSH_MS = 120;
 const DIFF_FILTER_TABS: DiffFilter[] = ["added", "deleted", "modified", "conflict"];
 const { locale, preference, t, setLocalePreference } = useI18n();
 
 const summary = ref<Summary | null>(null);
 const repository = ref<RepositoryView | null>(null);
 const region = ref<Region | null>(null);
+const frozenTopRegion = ref<Region | null>(null);
+const frozenLeftRegion = ref<Region | null>(null);
+const frozenCornerRegion = ref<Region | null>(null);
 const sheet = ref("");
 const diffs = ref<CellDiff[]>([]);
 const diffIndex = ref(-1);
@@ -64,8 +78,12 @@ const rightScroll = ref<HTMLElement | null>(null);
 const viewportTop = ref(0);
 const viewportLeft = ref(0);
 const zoom = ref(1);
+const uiFontScale = ref(1);
 const columnWidths = ref<Record<number, number>>({});
 const markerColumnWidths = ref<Record<number, number>>({});
+const frozenRows = ref<number[]>([]);
+const frozenColumns = ref<number[]>([]);
+const platform = ref("windows");
 const contextMenu = ref<{
   visible: boolean;
   x: number;
@@ -75,6 +93,7 @@ const contextMenu = ref<{
   side: "left" | "right";
   kind: "cell" | "row" | "column";
 }>({ visible: false, x: 0, y: 0, row: 0, col: 0, side: "right", kind: "cell" });
+const repositoryFileMenu = ref({ visible: false, x: 0, y: 0, path: "" });
 const idDialog = ref<{
   visible: boolean;
   rows: number[];
@@ -147,6 +166,23 @@ let wheelFrame = 0;
 let wheelSource: HTMLElement | null = null;
 let wheelDeltaTop = 0;
 let wheelDeltaLeft = 0;
+let sheetZoomFrame = 0;
+let sheetZoomReloadTimer = 0;
+let sheetZoomApplyGeneration = 0;
+let pendingSheetZoom: {
+  sheet: string;
+  value: number;
+  source: HTMLElement | null;
+  anchorX: number;
+  anchorY: number;
+  origin: "wheel" | "settings" | "reset";
+} | null = null;
+const diagnosticSession = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+let diagnosticSequence = 0;
+let diagnosticFlushTimer = 0;
+let diagnosticFlushInFlight = false;
+let diagnosticsActive = true;
+let diagnosticQueue: FrontendDiagnosticEvent[] = [];
 let regionRequest = 0;
 let sheetRequest = 0;
 let repositoryRequest = 0;
@@ -189,6 +225,9 @@ const activeSheet = computed(() => summary.value?.diff.sheets.find((item) => ite
 const activeRowAlignment = computed(() => summary.value?.rowAlignment.sheets?.[sheet.value]);
 const leftReadonly = computed(() => Boolean(summary.value?.options.readonlyLeft));
 const rowFilterActive = computed(() => selectedRowFilters.value.length > 0);
+const effectiveFrozenRows = computed(() => rowFilterActive.value ? [] : frozenRows.value);
+const frozenRowSet = computed(() => new Set(effectiveFrozenRows.value));
+const frozenColumnSet = computed(() => new Set(frozenColumns.value));
 const selectedRowFilterSet = computed(() => new Set(selectedRowFilters.value));
 const filteredRowMappings = computed<FilteredRowMapping[]>(() => {
   if (!rowFilterActive.value) return [];
@@ -231,7 +270,16 @@ const visibleRows = computed(() => {
   const end = Math.min(totalRows.value, region.value.fromRow + VIEW_ROWS - 1);
   return Array.from({ length: Math.max(0, end - region.value.fromRow + 1) }, (_, index) => region.value!.fromRow + index);
 });
-const visibleCells = computed(() => region.value?.cells.filter((cell) => cell.row <= totalRows.value && cell.col <= totalCols.value) ?? []);
+const visibleCells = computed(() => region.value?.cells.filter((cell) =>
+  cell.row <= totalRows.value && cell.col <= totalCols.value
+) ?? []);
+const frozenTopCells = computed(() => frozenTopRegion.value?.cells.filter((cell) =>
+  !frozenColumnSet.value.has(cell.col)
+) ?? []);
+const frozenLeftCells = computed(() => frozenLeftRegion.value?.cells.filter((cell) =>
+  !frozenRowSet.value.has(cell.sourceRow ?? cell.row)
+) ?? []);
+const frozenCornerCells = computed(() => frozenCornerRegion.value?.cells ?? []);
 
 function sourcePathLabel(path: string, snapshot: boolean): string {
   if (!snapshot) return path;
@@ -243,7 +291,9 @@ function sourcePathLabel(path: string, snapshot: boolean): string {
 }
 const rowHeight = computed(() => Math.round(BASE_ROW_HEIGHT * zoom.value));
 const rowHeaderWidth = computed(() => Math.round(BASE_ROW_HEADER_WIDTH * zoom.value));
-const scaledFontSize = computed(() => Math.max(9, Math.round(11 * zoom.value)));
+const uiFontPercent = computed(() => Math.round(uiFontScale.value * 100));
+const sheetZoomPercent = computed(() => Math.round(zoom.value * 100));
+const scaledFontSize = computed(() => Math.max(9, Math.round(11 * zoom.value * uiFontScale.value)));
 const columnOffsets = computed(() => {
   const offsets = new Array<number>(totalCols.value + 2).fill(0);
   let left = 0;
@@ -255,6 +305,18 @@ const columnOffsets = computed(() => {
   return offsets;
 });
 const canvasWidth = computed(() => rowHeaderWidth.value + columnOffsets.value[totalCols.value + 1]);
+const frozenColumnOffsets = computed(() => {
+  const offsets = new Map<number, number>();
+  let left = 0;
+  for (const col of frozenColumns.value) {
+    offsets.set(col, left);
+    left += columnWidth(col);
+  }
+  return offsets;
+});
+const frozenColumnsWidth = computed(() => frozenColumns.value.reduce(
+  (width, col) => width + columnWidth(col), 0
+));
 const markerColumnOffsets = computed(() => {
   const offsets = new Array<number>(totalCols.value + 2).fill(0);
   let left = 0;
@@ -339,7 +401,12 @@ const filteredDiffPosition = computed(() =>
 );
 const activeCell = computed(() => {
   const point = activePoint.value;
-  return point ? region.value?.cells.find((cell) => cell.row === point.row && cell.col === point.col) ?? null : null;
+  if (!point) return null;
+  for (const source of [region.value, frozenTopRegion.value, frozenLeftRegion.value, frozenCornerRegion.value]) {
+    const cell = source?.cells.find((item) => item.row === point.row && item.col === point.col);
+    if (cell) return cell;
+  }
+  return null;
 });
 const canPreviewOriginal = computed(() => Boolean(
   summary.value?.undoCount && region.value && !inlineEdit.value
@@ -396,6 +463,12 @@ const contextColumns = computed(() => {
     (_, index) => current.startCol + index
   );
 });
+const contextFreezableRows = computed(() => rowFilterActive.value ? [] : contextRows.value);
+const contextFreezableColumns = computed(() => contextColumns.value);
+const contextHasFrozenRows = computed(() => contextFreezableRows.value.some((row) => frozenRows.value.includes(row)));
+const contextHasFrozenColumns = computed(() => contextFreezableColumns.value.some((col) => frozenColumns.value.includes(col)));
+const contextHasUnfrozenRows = computed(() => contextFreezableRows.value.some((row) => !frozenRows.value.includes(row)));
+const contextHasUnfrozenColumns = computed(() => contextFreezableColumns.value.some((col) => !frozenColumns.value.includes(col)));
 const contextCopyableColumns = computed(() =>
   contextColumns.value.filter((col) =>
     (region.value?.columns?.find((item) => item.col === col)?.rightCol ?? col) > 0
@@ -417,7 +490,7 @@ const contextActionableRows = computed(() =>
   contextRows.value.filter((row) => rowStatusForSource(row) !== "unchanged")
 );
 const contextAppendableRows = computed(() =>
-  contextActionableRows.value.filter((row) => rowStatusForSource(row) !== "deleted")
+  contextActionableRows.value.filter((row) => rowStatusForSource(row) !== "added")
 );
 const contextActionableStatuses = computed(() =>
   contextActionableRows.value.map((row) => rowStatusForSource(row))
@@ -531,6 +604,7 @@ async function initialLoad() {
     if (state?.error) {
       error.value = state.error;
     }
+    if (state?.platform) platform.value = state.platform;
     if (state?.repository) {
       acceptRepositoryView(state.repository);
     }
@@ -660,11 +734,15 @@ async function acceptRepositoryResult(result: RepositoryResult) {
 }
 
 function clearWorkbook() {
+  cancelPendingSheetZoom();
   sheetRequest++;
   regionRequest++;
   invalidateFindResults();
   summary.value = null;
   region.value = null;
+  frozenTopRegion.value = null;
+  frozenLeftRegion.value = null;
+  frozenCornerRegion.value = null;
   sheet.value = "";
   diffs.value = [];
   diffIndex.value = -1;
@@ -820,12 +898,48 @@ async function configureUGit() {
   }
 }
 
+function normalizeUIFontScale(value: unknown): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  const stepped = Math.round(numeric / UI_FONT_SCALE_STEP) * UI_FONT_SCALE_STEP;
+  return Math.min(MAX_UI_FONT_SCALE, Math.max(MIN_UI_FONT_SCALE, stepped));
+}
+
+function setUIFontScale(value: number, persist = true) {
+  uiFontScale.value = normalizeUIFontScale(value);
+  if (!persist) return;
+  try {
+    window.localStorage.setItem(UI_FONT_SCALE_KEY, String(uiFontScale.value));
+  } catch {
+    // Font scaling still applies for this session when local storage is unavailable.
+  }
+}
+
+function loadUIFontScale() {
+  try {
+    setUIFontScale(Number(window.localStorage.getItem(UI_FONT_SCALE_KEY) ?? 1), false);
+  } catch {
+    setUIFontScale(1, false);
+  }
+}
+
+function changeUIFontScale(event: Event) {
+  const input = event.target as HTMLInputElement;
+  setUIFontScale(Number(input.value) / 100);
+}
+
+function resetUIFontScale() {
+  setUIFontScale(1);
+}
+
 function clearStoredClientData() {
   const prefixes = [
     REPOSITORY_SEARCH_HISTORY_PREFIX,
     LEGACY_REPOSITORY_SEARCH_HISTORY_PREFIX,
     SHEET_LAYOUT_PREFIX,
-    LEGACY_SHEET_LAYOUT_PREFIX
+    LEGACY_SHEET_LAYOUT_PREFIX,
+    UI_FONT_SCALE_KEY,
+    DIAGNOSTIC_RING_KEY
   ];
   const keys: string[] = [];
   for (let index = 0; index < window.localStorage.length; index++) {
@@ -855,6 +969,7 @@ async function confirmSettingsCleanup() {
   });
   if (completed) {
     repositorySearchHistory.value = action === "all" ? [] : repositorySearchHistory.value;
+    if (action === "all") setUIFontScale(1, false);
     settingsNotice.value = {
       kind: "success",
       message: action === "cache" ? t("settings.cacheCleared") : t("settings.allDataCleared")
@@ -1075,29 +1190,61 @@ async function loadRegion(fromRow: number, fromCol: number): Promise<boolean> {
   const request = ++regionRequest;
   const requestedSheet = sheet.value;
   const requestedFilters = [...selectedRowFilters.value];
+  const requestedFromRow = Math.max(1, fromRow);
+  const requestedFromCol = Math.max(1, fromCol);
+  const bodyRows = requestedFilters.length
+    ? filteredRowMappings.value
+      .slice(requestedFromRow - 1, requestedFromRow - 1 + VIEW_ROWS)
+      .map((item) => item.source)
+    : Array.from({ length: VIEW_ROWS }, (_, index) => requestedFromRow + index);
+  const bodyDisplayRows = new Map(bodyRows.map((sourceRow, index) => [sourceRow, requestedFromRow + index]));
+  const viewportColumns = Array.from({ length: VIEW_COLS }, (_, index) => requestedFromCol + index)
+    .filter((col) => col <= totalCols.value);
   try {
-    const data = requestedFilters.length
-      ? await backend.filteredRegion(
+    const bodyRequest = requestedFilters.length
+      ? backend.filteredRegion(
         requestedSheet,
         requestedFilters,
-        Math.max(1, fromRow),
+        requestedFromRow,
         VIEW_ROWS,
-        Math.max(1, fromCol),
+        requestedFromCol,
         VIEW_COLS
       )
-      : await backend.region(
+      : backend.region(
         requestedSheet,
-        Math.max(1, fromRow),
+        requestedFromRow,
         VIEW_ROWS,
-        Math.max(1, fromCol),
+        requestedFromCol,
         VIEW_COLS
       );
+    const [body, top, rawLeft, corner] = await Promise.all([
+      bodyRequest,
+      effectiveFrozenRows.value.length && viewportColumns.length
+        ? backend.pinnedRegion(requestedSheet, effectiveFrozenRows.value, viewportColumns)
+        : Promise.resolve(null),
+      frozenColumns.value.length && bodyRows.length
+        ? backend.pinnedRegion(requestedSheet, bodyRows, frozenColumns.value)
+        : Promise.resolve(null),
+      effectiveFrozenRows.value.length && frozenColumns.value.length
+        ? backend.pinnedRegion(requestedSheet, effectiveFrozenRows.value, frozenColumns.value)
+        : Promise.resolve(null)
+    ]);
     if (
       request !== regionRequest ||
       sheet.value !== requestedSheet ||
       requestedFilters.join(",") !== selectedRowFilters.value.join(",")
     ) return false;
-    region.value = data;
+    const left = rawLeft ? {
+      ...rawLeft,
+      cells: rawLeft.cells.map((cell) => ({
+        ...cell,
+        row: bodyDisplayRows.get(cell.sourceRow ?? cell.row) ?? cell.row
+      }))
+    } : null;
+    region.value = body;
+    frozenTopRegion.value = top;
+    frozenLeftRegion.value = left;
+    frozenCornerRegion.value = corner;
     return true;
   } catch (reason) {
     if (request === regionRequest && sheet.value === requestedSheet) {
@@ -1140,7 +1287,7 @@ function scheduleViewportRegion(source: HTMLElement) {
   }, REGION_SCHEDULE_MS);
 }
 
-function applySyncedScroll(source: HTMLElement, top: number, left: number) {
+function applySyncedScroll(source: HTMLElement, top: number, left: number, requestRegion = true) {
   const target = source === leftScroll.value ? rightScroll.value : leftScroll.value;
   syncing = true;
   source.scrollTop = Math.max(0, top);
@@ -1153,7 +1300,7 @@ function applySyncedScroll(source: HTMLElement, top: number, left: number) {
   }
   syncing = false;
   updateViewportOffsets(actualTop, actualLeft);
-  scheduleViewportRegion(source);
+  if (requestRegion) scheduleViewportRegion(source);
 }
 
 function onScroll(side: "left" | "right") {
@@ -1563,19 +1710,20 @@ async function confirmSpecifiedIDs() {
   );
 }
 
-function startInlineEdit(cell: RegionCell) {
+function startInlineEdit(cell: RegionCell, initialValue?: string) {
   if (busy.value || previewOriginal.value || summary.value?.options.readonlyLeft) return;
   setSingleSelection(cell);
   inlineEdit.value = {
     row: cell.row,
     col: cell.col,
-    value: cell.left.formula ? `=${cell.left.formula}` : cell.left.raw,
+    value: initialValue ?? (cell.left.formula ? `=${cell.left.formula}` : cell.left.raw),
     original: cell
   };
   void nextTick(() => {
     const input = document.querySelector<HTMLInputElement>(".inline-cell-editor");
     input?.focus();
-    input?.select();
+    if (initialValue === undefined) input?.select();
+    else input?.setSelectionRange(initialValue.length, initialValue.length);
   });
 }
 
@@ -1914,6 +2062,122 @@ function selectAllCells() {
   };
 }
 
+function explicitSourceRowsForSelection(): number[] {
+  const current = selection.value;
+  if (!current || !rowFilterActive.value) return [];
+  return Array.from(
+    { length: current.endRow - current.startRow + 1 },
+    (_, index) => sourceRowForDisplay(current.startRow + index)
+  );
+}
+
+function explicitLeftRowsForSelection(): number[] {
+  const current = selection.value;
+  if (!current || !rowFilterActive.value) return [];
+  return Array.from(new Set(Array.from(
+    { length: current.endRow - current.startRow + 1 },
+    (_, index) => leftRowForDisplay(current.startRow + index)
+  ).filter((row) => row > 0)));
+}
+
+async function copyClipboardSelection(side: "left" | "right") {
+  const current = selection.value;
+  if (!current || busy.value) return;
+  contextMenu.value.visible = false;
+  await guard(() => backend.copySelectionToClipboard(
+    sheet.value,
+    side,
+    current.startRow,
+    current.endRow,
+    current.startCol,
+    current.endCol,
+    explicitSourceRowsForSelection()
+  ));
+}
+
+async function pasteClipboardSelection() {
+  const point = activePoint.value;
+  if (!point || busy.value || leftReadonly.value) return;
+  contextMenu.value.visible = false;
+  const savedSelection = selection.value ? { ...selection.value } : null;
+  const data = await guard(() => backend.pasteClipboard(
+    sheet.value,
+    sourceRowForDisplay(point.row),
+    point.col
+  ));
+  if (!data) return;
+  await acceptSummary(data, sheet.value, false);
+  selection.value = savedSelection;
+  activePoint.value = point;
+}
+
+async function cutClipboardSelection() {
+  const current = selection.value;
+  if (!current || busy.value || leftReadonly.value) return;
+  contextMenu.value.visible = false;
+  const focus = activePoint.value ? { ...activePoint.value } : null;
+  const savedSelection = { ...current };
+  const data = await guard(() => backend.cutSelectionToClipboard(
+    sheet.value,
+    current.startRow,
+    current.endRow,
+    current.startCol,
+    current.endCol,
+    explicitSourceRowsForSelection(),
+    explicitLeftRowsForSelection()
+  ));
+  if (!data) return;
+  await acceptSummary(data, sheet.value, false);
+  selection.value = savedSelection;
+  activePoint.value = focus;
+}
+
+async function moveActiveCell(rowDelta: number, colDelta: number, extend: boolean) {
+  const point = activePoint.value;
+  const current = activeSheet.value;
+  if (!point || !current) return;
+  const maxRow = rowFilterActive.value ? filteredRowMappings.value.length : Math.max(current.maxRow, 1);
+  const maxCol = Math.max(current.maxCol, 1);
+  const target = {
+    row: Math.max(1, Math.min(maxRow, point.row + rowDelta)),
+    col: Math.max(1, Math.min(maxCol, point.col + colDelta))
+  };
+  if (target.row === point.row && target.col === point.col) return;
+  if (!extend || !selectionAnchor.value) selectionAnchor.value = target;
+  activePoint.value = target;
+  selection.value = makeRange(selectionAnchor.value ?? target, target);
+
+  const source = leftScroll.value ?? rightScroll.value;
+  if (!source) return;
+  let nextTop = source.scrollTop;
+  let nextLeft = source.scrollLeft;
+  if (!frozenRowSet.value.has(sourceRowForDisplay(target.row))) {
+    const cellTop = target.row * rowHeight.value;
+    const cellBottom = cellTop + rowHeight.value;
+    const visibleTop = nextTop + rowHeight.value + effectiveFrozenRows.value.length * rowHeight.value;
+    const visibleBottom = nextTop + source.clientHeight;
+    if (cellTop < visibleTop) nextTop = Math.max(0, cellTop - rowHeight.value - effectiveFrozenRows.value.length * rowHeight.value);
+    else if (cellBottom > visibleBottom) nextTop = Math.max(0, cellBottom - source.clientHeight);
+  }
+  if (!frozenColumnSet.value.has(target.col)) {
+    const cellLeft = columnLeft(target.col);
+    const cellRight = cellLeft + columnWidth(target.col);
+    const frozenWidth = frozenColumnsWidth.value;
+    const visibleLeft = nextLeft + rowHeaderWidth.value + frozenWidth;
+    const visibleRight = nextLeft + source.clientWidth;
+    if (cellLeft < visibleLeft) nextLeft = Math.max(0, cellLeft - rowHeaderWidth.value - frozenWidth);
+    else if (cellRight > visibleRight) nextLeft = Math.max(0, cellRight - source.clientWidth);
+  }
+  applySyncedScroll(source, nextTop, nextLeft);
+  if (
+    !region.value || target.row < region.value.fromRow || target.row > region.value.toRow ||
+    target.col < region.value.fromCol || target.col > region.value.toCol
+  ) {
+    const targetRegion = viewportRegionTarget(source);
+    await loadRegion(targetRegion.row, targetRegion.col);
+  }
+}
+
 async function clearSelectedCells() {
   const current = selection.value;
   if (!current || busy.value || leftReadonly.value) return;
@@ -2014,6 +2278,54 @@ function onWindowKeyDown(event: KeyboardEvent) {
   ) {
     event.preventDefault();
     selectAllCells();
+    return;
+  }
+  if (
+    summary.value && gridSide && !editing && !event.altKey &&
+    (event.ctrlKey || event.metaKey) && !event.shiftKey && key === "c" && selection.value
+  ) {
+    event.preventDefault();
+    void copyClipboardSelection(gridSide);
+    return;
+  }
+  if (
+    summary.value && gridSide === "left" && !editing && !event.altKey &&
+    (event.ctrlKey || event.metaKey) && !event.shiftKey && key === "v" &&
+    selection.value && !leftReadonly.value && !busy.value
+  ) {
+    event.preventDefault();
+    void pasteClipboardSelection();
+    return;
+  }
+  if (
+    summary.value && gridSide === "left" && !editing && !event.altKey &&
+    (event.ctrlKey || event.metaKey) && !event.shiftKey && key === "x" &&
+    selection.value && !leftReadonly.value && !busy.value
+  ) {
+    event.preventDefault();
+    void cutClipboardSelection();
+    return;
+  }
+  if (
+    summary.value && gridSide && !editing && !event.ctrlKey && !event.metaKey && !event.altKey &&
+    ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && activePoint.value
+  ) {
+    event.preventDefault();
+    const movement: Record<string, [number, number]> = {
+      ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1]
+    };
+    const [rowDelta, colDelta] = movement[event.key];
+    void moveActiveCell(rowDelta, colDelta, event.shiftKey);
+    return;
+  }
+  if (
+    summary.value && gridSide === "left" && !editing && !event.repeat &&
+    !event.ctrlKey && !event.metaKey && !event.altKey && !leftReadonly.value && !busy.value &&
+    selectionSize.value === 1 && activeCell.value &&
+    (event.key === "Enter" || event.key === "F2" || (event.key.length === 1 && event.key !== "\t"))
+  ) {
+    event.preventDefault();
+    startInlineEdit(activeCell.value, event.key === "Enter" || event.key === "F2" ? undefined : event.key);
     return;
   }
   if (
@@ -2179,14 +2491,14 @@ function cellClass(cell: RegionCell, side: "left" | "right") {
     switch (cell.status) {
     case "right-added":
     case "left-missing":
-      if (side === "right") changeState = "added";
+      if (side === "right") changeState = "deleted";
       break;
     case "left-added":
     case "right-missing":
-      if (side === "left") changeState = "deleted";
+      if (side === "left") changeState = "added";
       break;
     case "modified":
-      changeState = side === "left" ? "deleted" : "added";
+      changeState = side === "left" ? "added" : "deleted";
       break;
     }
   }
@@ -2257,18 +2569,33 @@ function legacyLayoutKey(name = sheet.value) {
 }
 
 function loadLayout(name: string) {
+  cancelPendingSheetZoom();
   zoom.value = 1;
   columnWidths.value = {};
   markerColumnWidths.value = {};
+  frozenRows.value = activeSheet.value?.idColumn ? [1] : [];
+  frozenColumns.value = [];
   try {
     const key = layoutKey(name);
     let saved = window.localStorage.getItem(key);
     if (!saved) saved = window.localStorage.getItem(legacyLayoutKey(name));
     if (!saved) return;
-    const value = JSON.parse(saved) as { zoom?: number; widths?: Record<number, number> };
+    const value = JSON.parse(saved) as {
+      zoom?: number;
+      widths?: Record<number, number>;
+      frozenRows?: number | number[];
+      frozenColumns?: number | number[];
+    };
     zoom.value = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value.zoom ?? 1));
+    recordDiagnostic("zoom.restore", {
+      percent: Math.round(zoom.value * 100),
+      frozenRows: Array.isArray(value.frozenRows) ? value.frozenRows.length : Number(value.frozenRows ?? 0),
+      frozenColumns: Array.isArray(value.frozenColumns) ? value.frozenColumns.length : Number(value.frozenColumns ?? 0)
+    });
     columnWidths.value = value.widths ?? {};
     markerColumnWidths.value = { ...columnWidths.value };
+    frozenRows.value = normalizeFrozenIndexes(value.frozenRows, frozenRows.value, activeSheet.value?.maxRow ?? MAX_FROZEN_ROWS);
+    frozenColumns.value = normalizeFrozenIndexes(value.frozenColumns, [], activeSheet.value?.maxCol ?? MAX_FROZEN_COLUMNS);
     if (window.localStorage.getItem(key) === null) {
       window.localStorage.setItem(key, JSON.stringify(value));
     }
@@ -2282,7 +2609,9 @@ function persistLayout() {
   try {
     window.localStorage.setItem(layoutKey(), JSON.stringify({
       zoom: zoom.value,
-      widths: columnWidths.value
+      widths: columnWidths.value,
+      frozenRows: frozenRows.value,
+      frozenColumns: frozenColumns.value
     }));
   } catch {
     // Layout caching is best effort.
@@ -2297,6 +2626,70 @@ function cellAxis(cell: RegionCell, side: "left" | "right") {
   const row = side === "left" ? cellLeftRow(cell) : cellRightRow(cell);
   const col = side === "left" ? (cell.leftCol ?? cell.col) : (cell.rightCol ?? cell.col);
   return col > 0 && row > 0 ? `${columnName(col)}${row}` : "—";
+}
+
+function normalizeFrozenIndexes(value: number | number[] | undefined, fallback: number[], maximum: number) {
+  if (value === undefined) return [...fallback];
+  const values = Array.isArray(value)
+    ? value
+    : Array.from({ length: Math.max(0, Math.trunc(value)) }, (_, index) => index + 1);
+  return [...new Set(values
+    .map((item) => Math.trunc(Number(item)))
+    .filter((item) => item >= 1 && item <= maximum))].sort((a, b) => a - b);
+}
+
+async function freezeContextRows() {
+  frozenRows.value = [...new Set([...frozenRows.value, ...contextFreezableRows.value])].sort((a, b) => a - b);
+  contextMenu.value.visible = false;
+  persistLayout();
+  await reloadVisibleRegion();
+}
+
+async function unfreezeContextRows(all = false) {
+  const selected = new Set(contextFreezableRows.value);
+  frozenRows.value = all ? [] : frozenRows.value.filter((row) => !selected.has(row));
+  contextMenu.value.visible = false;
+  persistLayout();
+  await reloadVisibleRegion();
+}
+
+async function freezeContextColumns() {
+  frozenColumns.value = [...new Set([...frozenColumns.value, ...contextFreezableColumns.value])].sort((a, b) => a - b);
+  contextMenu.value.visible = false;
+  persistLayout();
+  await reloadVisibleRegion();
+}
+
+async function unfreezeContextColumns(all = false) {
+  const selected = new Set(contextFreezableColumns.value);
+  frozenColumns.value = all ? [] : frozenColumns.value.filter((col) => !selected.has(col));
+  contextMenu.value.visible = false;
+  persistLayout();
+  await reloadVisibleRegion();
+}
+
+function frozenRowTop(row: number) {
+  return Math.max(0, effectiveFrozenRows.value.indexOf(row)) * rowHeight.value;
+}
+
+function frozenColumnLeft(col: number) {
+  return frozenColumnOffsets.value.get(col) ?? 0;
+}
+
+function pinnedRowLabel(row: number, side: "left" | "right") {
+  const cell = frozenTopRegion.value?.cells.find((item) => item.sourceRow === row || item.row === row);
+  if (!cell) return row;
+  return side === "left" ? cellLeftRow(cell) : cellRightRow(cell);
+}
+
+async function openWorkbook(relative = "") {
+  repositoryFileMenu.value.visible = false;
+  await guard(() => backend.openWorkbook(relative));
+}
+
+async function revealWorkbook(relative = "") {
+  repositoryFileMenu.value.visible = false;
+  await guard(() => backend.revealWorkbook(relative));
 }
 
 function sourceColumn(col: number, side: "left" | "right") {
@@ -2316,6 +2709,107 @@ function columnHeaderSelected(col: number) {
     : Math.max(activeSheet.value?.maxRow ?? 1, 1);
   return selection.value.startRow === 1 && selection.value.endRow === lastRow
     && col >= selection.value.startCol && col <= selection.value.endCol;
+}
+
+function readDiagnosticRing(): FrontendDiagnosticEvent[] {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(DIAGNOSTIC_RING_KEY) ?? "[]") as unknown;
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is FrontendDiagnosticEvent => Boolean(
+      item && typeof item === "object" &&
+      typeof (item as FrontendDiagnosticEvent).id === "string" &&
+      typeof (item as FrontendDiagnosticEvent).timestamp === "string" &&
+      typeof (item as FrontendDiagnosticEvent).name === "string" &&
+      (item as FrontendDiagnosticEvent).fields && typeof (item as FrontendDiagnosticEvent).fields === "object"
+    )).slice(-DIAGNOSTIC_RING_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function writeDiagnosticRing(events: FrontendDiagnosticEvent[]) {
+  try {
+    if (events.length) {
+      window.localStorage.setItem(DIAGNOSTIC_RING_KEY, JSON.stringify(events.slice(-DIAGNOSTIC_RING_LIMIT)));
+    } else {
+      window.localStorage.removeItem(DIAGNOSTIC_RING_KEY);
+    }
+  } catch {
+    // Diagnostics must never interfere with worksheet interaction.
+  }
+}
+
+function scheduleDiagnosticFlush(delay = DIAGNOSTIC_FLUSH_MS) {
+  if (!diagnosticsActive) return;
+  window.clearTimeout(diagnosticFlushTimer);
+  diagnosticFlushTimer = window.setTimeout(() => {
+    diagnosticFlushTimer = 0;
+    void flushDiagnosticEvents();
+  }, delay);
+}
+
+async function flushDiagnosticEvents() {
+  if (diagnosticFlushInFlight || !diagnosticQueue.length) return;
+  diagnosticFlushInFlight = true;
+  const batch = diagnosticQueue.splice(0, DIAGNOSTIC_BATCH_LIMIT);
+  try {
+    await backend.recordDiagnostics(batch);
+    const acknowledged = new Set(batch.map((item) => item.id));
+    writeDiagnosticRing(readDiagnosticRing().filter((item) => !acknowledged.has(item.id)));
+  } catch {
+    diagnosticQueue = [...batch, ...diagnosticQueue].slice(-DIAGNOSTIC_RING_LIMIT);
+  } finally {
+    diagnosticFlushInFlight = false;
+    if (diagnosticsActive && diagnosticQueue.length) scheduleDiagnosticFlush();
+  }
+}
+
+function recoverDiagnosticRing() {
+  const recovered = readDiagnosticRing();
+  if (!recovered.length) return;
+  diagnosticQueue = recovered;
+  scheduleDiagnosticFlush(0);
+}
+
+function recordDiagnostic(
+  name: string,
+  fields: Record<string, string | number | boolean | null> = {}
+) {
+  const event: FrontendDiagnosticEvent = {
+    id: `${diagnosticSession}-${++diagnosticSequence}`,
+    timestamp: new Date().toISOString(),
+    name,
+    fields
+  };
+  writeDiagnosticRing([...readDiagnosticRing(), event]);
+  diagnosticQueue.push(event);
+  if (diagnosticQueue.length > DIAGNOSTIC_RING_LIMIT) {
+    diagnosticQueue = diagnosticQueue.slice(-DIAGNOSTIC_RING_LIMIT);
+  }
+  scheduleDiagnosticFlush();
+}
+
+function diagnosticErrorType(value: unknown) {
+  return value instanceof Error ? value.name : typeof value;
+}
+
+function diagnosticAssetName(value: string) {
+  return value.split(/[\\/]/).at(-1)?.slice(0, 120) ?? "";
+}
+
+function onWindowError(event: ErrorEvent) {
+  recordDiagnostic("error.unhandled", {
+    type: diagnosticErrorType(event.error),
+    asset: diagnosticAssetName(event.filename),
+    line: event.lineno,
+    column: event.colno
+  });
+  scheduleDiagnosticFlush(0);
+}
+
+function onUnhandledRejection(event: PromiseRejectionEvent) {
+  recordDiagnostic("error.unhandled-rejection", { type: diagnosticErrorType(event.reason) });
+  scheduleDiagnosticFlush(0);
 }
 
 function queueSyncedWheel(source: HTMLElement, deltaTop: number, deltaLeft: number) {
@@ -2339,42 +2833,171 @@ function queueSyncedWheel(source: HTMLElement, deltaTop: number, deltaLeft: numb
 
 function onGridWheel(event: WheelEvent) {
   const source = event.currentTarget as HTMLElement;
-  if (!event.ctrlKey && !event.metaKey) {
+  if (event.ctrlKey || event.metaKey) {
     event.preventDefault();
-    const linePixels = rowHeight.value;
-    const pageY = Math.max(linePixels, source.clientHeight);
-    const pageX = Math.max(columnWidth(columnAtOffset(source.scrollLeft)), source.clientWidth);
-    const multiplierY = event.deltaMode === 1 ? linePixels : event.deltaMode === 2 ? pageY : 1;
-    const multiplierX = event.deltaMode === 1 ? linePixels : event.deltaMode === 2 ? pageX : 1;
-    let deltaLeft = event.deltaX * multiplierX;
-    let deltaTop = event.deltaY * multiplierY;
-    if (event.shiftKey && deltaLeft === 0) {
-      deltaLeft = deltaTop;
-      deltaTop = 0;
-    }
-    queueSyncedWheel(source, deltaTop, deltaLeft);
+    if (!sheet.value || event.deltaY === 0) return;
+    recordDiagnostic("zoom.wheel", {
+      percent: sheetZoomPercent.value,
+      direction: event.deltaY < 0 ? "up" : "down",
+      deltaMode: event.deltaMode,
+      side: source === leftScroll.value ? "left" : "right",
+      pending: Boolean(pendingSheetZoom),
+      frozenRows: effectiveFrozenRows.value.length,
+      frozenColumns: frozenColumns.value.length
+    });
+    const bounds = source.getBoundingClientRect();
+    scheduleSheetZoom(
+      zoom.value + (event.deltaY < 0 ? 0.1 : -0.1),
+      source,
+      event.clientX - bounds.left,
+      event.clientY - bounds.top,
+      "wheel"
+    );
     return;
   }
   event.preventDefault();
+  const linePixels = rowHeight.value;
+  const pageY = Math.max(linePixels, source.clientHeight);
+  const pageX = Math.max(columnWidth(columnAtOffset(source.scrollLeft)), source.clientWidth);
+  const multiplierY = event.deltaMode === 1 ? linePixels : event.deltaMode === 2 ? pageY : 1;
+  const multiplierX = event.deltaMode === 1 ? linePixels : event.deltaMode === 2 ? pageX : 1;
+  let deltaLeft = event.deltaX * multiplierX;
+  let deltaTop = event.deltaY * multiplierY;
+  if (event.shiftKey && deltaLeft === 0) {
+    deltaLeft = deltaTop;
+    deltaTop = 0;
+  }
+  queueSyncedWheel(source, deltaTop, deltaLeft);
+}
+
+function preventWebViewWheelZoom(event: WheelEvent) {
+  if (event.ctrlKey || event.metaKey) event.preventDefault();
+}
+
+function clampSheetZoom(value: number) {
+  if (!Number.isFinite(value)) return zoom.value;
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(1))));
+}
+
+function currentSheetZoomSource(preferred: HTMLElement | null) {
+  if (preferred && (preferred === leftScroll.value || preferred === rightScroll.value)) return preferred;
+  return leftScroll.value ?? rightScroll.value;
+}
+
+function cancelPendingSheetZoom() {
+  if (sheetZoomFrame) window.cancelAnimationFrame(sheetZoomFrame);
+  window.clearTimeout(sheetZoomReloadTimer);
+  sheetZoomFrame = 0;
+  sheetZoomReloadTimer = 0;
+  pendingSheetZoom = null;
+  sheetZoomApplyGeneration++;
+}
+
+function scheduleSheetZoomRegionReload(expectedSheet: string) {
+  window.clearTimeout(sheetZoomReloadTimer);
+  sheetZoomReloadTimer = window.setTimeout(() => {
+    sheetZoomReloadTimer = 0;
+    if (sheet.value !== expectedSheet) return;
+    const request = regionRequest;
+    recordDiagnostic("zoom.region.start", {
+      percent: sheetZoomPercent.value,
+      regionRequest: request,
+      visibleCells: visibleCells.value.length
+    });
+    void reloadVisibleRegion().finally(() => {
+      recordDiagnostic("zoom.region.finish", {
+        percent: sheetZoomPercent.value,
+        regionRequestBefore: request,
+        regionRequestAfter: regionRequest,
+        visibleCells: visibleCells.value.length
+      });
+    });
+  }, ZOOM_SETTLE_MS);
+}
+
+function applySheetZoom(request: NonNullable<typeof pendingSheetZoom>) {
+  if (!request.sheet || request.sheet !== sheet.value) return;
+  const next = clampSheetZoom(request.value);
   const previous = zoom.value;
-  const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((previous + (event.deltaY < 0 ? 0.1 : -0.1)).toFixed(1))));
-  if (next === previous) return;
-  const bounds = source.getBoundingClientRect();
-  const pointerX = event.clientX - bounds.left;
-  const pointerY = event.clientY - bounds.top;
+  if (next === previous) {
+    recordDiagnostic("zoom.noop", { origin: request.origin, percent: sheetZoomPercent.value });
+    return;
+  }
+
+  const source = currentSheetZoomSource(request.source);
+  const currentTop = source?.scrollTop ?? viewportTop.value;
+  const currentLeft = source?.scrollLeft ?? viewportLeft.value;
   const ratio = next / previous;
+  const nextTop = Math.max(0, (currentTop + request.anchorY) * ratio - request.anchorY);
+  const nextLeft = Math.max(0, (currentLeft + request.anchorX) * ratio - request.anchorX);
   zoom.value = next;
   persistLayout();
-  nextTick(() => {
-    const nextLeft = Math.max(0, (source.scrollLeft + pointerX) * ratio - pointerX);
-    const nextTop = Math.max(0, (source.scrollTop + pointerY) * ratio - pointerY);
-    applySyncedScroll(source, nextTop, nextLeft);
+  recordDiagnostic("zoom.apply", {
+    origin: request.origin,
+    fromPercent: Math.round(previous * 100),
+    toPercent: Math.round(next * 100),
+    viewportTop: Math.round(currentTop),
+    viewportLeft: Math.round(currentLeft),
+    visibleCells: visibleCells.value.length,
+    frozenRows: effectiveFrozenRows.value.length,
+    frozenColumns: frozenColumns.value.length
+  });
+
+  window.clearTimeout(loadingTimer);
+  loadingTimer = 0;
+  const generation = ++sheetZoomApplyGeneration;
+  void nextTick(() => {
+    if (generation !== sheetZoomApplyGeneration || request.sheet !== sheet.value) return;
+    const currentSource = currentSheetZoomSource(request.source);
+    if (currentSource) applySyncedScroll(currentSource, nextTop, nextLeft, false);
+    else updateViewportOffsets(nextTop, nextLeft);
+    recordDiagnostic("zoom.layout", {
+      origin: request.origin,
+      percent: sheetZoomPercent.value,
+      viewportTop: Math.round(viewportTop.value),
+      viewportLeft: Math.round(viewportLeft.value),
+      canvasWidth: canvasWidth.value,
+      rowHeight: rowHeight.value
+    });
+    scheduleSheetZoomRegionReload(request.sheet);
   });
 }
 
-function resetZoom() {
-  zoom.value = 1;
-  persistLayout();
+function scheduleSheetZoom(
+  value: number,
+  source: HTMLElement | null = null,
+  anchorX = 0,
+  anchorY = 0,
+  origin: "wheel" | "settings" | "reset" = "settings"
+) {
+  if (!sheet.value) return;
+  pendingSheetZoom = {
+    sheet: sheet.value,
+    value: clampSheetZoom(value),
+    source,
+    anchorX: Math.max(0, anchorX),
+    anchorY: Math.max(0, anchorY),
+    origin
+  };
+  if (sheetZoomFrame) return;
+  sheetZoomFrame = window.requestAnimationFrame(() => {
+    sheetZoomFrame = 0;
+    const request = pendingSheetZoom;
+    pendingSheetZoom = null;
+    if (request) applySheetZoom(request);
+  });
+}
+
+function changeSheetZoom(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const requested = Number(input.value);
+  recordDiagnostic("zoom.settings", { fromPercent: sheetZoomPercent.value, toPercent: requested });
+  scheduleSheetZoom(requested / 100, null, 0, 0, "settings");
+}
+
+function resetSheetZoom() {
+  recordDiagnostic("zoom.reset", { fromPercent: sheetZoomPercent.value });
+  scheduleSheetZoom(1, null, 0, 0, "reset");
 }
 
 function beginColumnResize(col: number, event: PointerEvent) {
@@ -2411,12 +3034,8 @@ function resizeRepositorySidebar(event: PointerEvent) {
 
 function openCellMenu(event: MouseEvent, cell: RegionCell, side: "left" | "right") {
   event.preventDefault();
+  repositoryFileMenu.value.visible = false;
   const selected = containsCell(selection.value, cell.row, cell.col);
-  const hasSelectedAction = selected && rowsForContext(cell.row).some((row) => rowStatusForSource(row) !== "unchanged");
-  if ((cell.rowStatus || rowStatus(cell.row)) === "unchanged" && cell.status === "unchanged" && !hasSelectedAction) {
-    contextMenu.value.visible = false;
-    return;
-  }
   if (!selected) {
     setSingleSelection(cell);
   }
@@ -2431,14 +3050,21 @@ function openCellMenu(event: MouseEvent, cell: RegionCell, side: "left" | "right
   };
 }
 
+function openRepositoryFileMenu(event: MouseEvent, path: string) {
+  event.preventDefault();
+  event.stopPropagation();
+  contextMenu.value.visible = false;
+  repositoryFileMenu.value = {
+    visible: true,
+    x: Math.max(8, Math.min(event.clientX, window.innerWidth - 280)),
+    y: Math.max(8, Math.min(event.clientY, window.innerHeight - 120)),
+    path
+  };
+}
+
 function openRowMenu(event: MouseEvent, row: number, side: "left" | "right") {
   event.preventDefault();
   const selected = Boolean(selection.value && row >= selection.value.startRow && row <= selection.value.endRow);
-  const hasSelectedAction = selected && rowsForContext(row).some((selectedRow) => rowStatusForSource(selectedRow) !== "unchanged");
-  if (rowStatus(row) === "unchanged" && !hasSelectedAction) {
-    contextMenu.value.visible = false;
-    return;
-  }
   if (!selected) {
     beginRowSelection(row, event);
   }
@@ -2480,7 +3106,10 @@ function openColumnMenu(event: MouseEvent, col: number, side: "left" | "right") 
 
 function closeContextMenu(event: PointerEvent) {
   const target = event.target as HTMLElement | null;
-  if (!target?.closest(".context-menu, .id-dialog")) contextMenu.value.visible = false;
+  if (!target?.closest(".context-menu, .repository-file-menu, .id-dialog")) {
+    contextMenu.value.visible = false;
+    repositoryFileMenu.value.visible = false;
+  }
 }
 
 async function finishRepositoryResize() {
@@ -2501,6 +3130,14 @@ function columnName(col: number) {
 }
 
 onMounted(() => {
+  diagnosticsActive = true;
+  recoverDiagnosticRing();
+  recordDiagnostic("ui.mounted", {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    devicePixelRatio: window.devicePixelRatio
+  });
+  loadUIFontScale();
   window.addEventListener("pointermove", resizeColumn);
   window.addEventListener("pointermove", resizeRepositorySidebar);
   window.addEventListener("pointerup", finishPointerAction);
@@ -2509,6 +3146,9 @@ onMounted(() => {
   window.addEventListener("pointerdown", closeContextMenu);
   window.addEventListener("keydown", onWindowKeyDown);
   window.addEventListener("keyup", onWindowKeyUp);
+  window.addEventListener("wheel", preventWebViewWheelZoom, { capture: true, passive: false });
+  window.addEventListener("error", onWindowError);
+  window.addEventListener("unhandledrejection", onUnhandledRejection);
   window.addEventListener("blur", stopOriginalPreview);
   window.addEventListener("focus", scheduleExternalCheck);
   document.addEventListener("visibilitychange", onVisibilityChange);
@@ -2542,7 +3182,10 @@ onBeforeUnmount(() => {
   window.clearInterval(externalCheckTimer);
   window.clearTimeout(findTimers.left);
   window.clearTimeout(findTimers.right);
+  window.clearTimeout(diagnosticFlushTimer);
+  diagnosticsActive = false;
   window.cancelAnimationFrame(wheelFrame);
+  cancelPendingSheetZoom();
   window.removeEventListener("pointermove", resizeColumn);
   window.removeEventListener("pointermove", resizeRepositorySidebar);
   window.removeEventListener("pointerup", finishPointerAction);
@@ -2551,15 +3194,19 @@ onBeforeUnmount(() => {
   window.removeEventListener("pointerdown", closeContextMenu);
   window.removeEventListener("keydown", onWindowKeyDown);
   window.removeEventListener("keyup", onWindowKeyUp);
+  window.removeEventListener("wheel", preventWebViewWheelZoom, true);
+  window.removeEventListener("error", onWindowError);
+  window.removeEventListener("unhandledrejection", onUnhandledRejection);
   window.removeEventListener("blur", stopOriginalPreview);
   window.removeEventListener("focus", scheduleExternalCheck);
   document.removeEventListener("visibilitychange", onVisibilityChange);
+  void flushDiagnosticEvents();
   stopDropListener?.();
 });
 </script>
 
 <template>
-  <div class="app-shell" :aria-busy="startupLoading">
+  <div class="app-shell" :aria-busy="startupLoading" :style="{ '--ui-font-scale': uiFontScale }">
     <header class="toolbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><img src="/appicon.svg" alt="" /></span>
@@ -2622,14 +3269,16 @@ onBeforeUnmount(() => {
           :aria-label="t('toolbar.undo')"
           @click="undo"
         ><AppIcon name="undo" /><span class="button-label">{{ t("toolbar.undo") }}</span></button>
-        <button
-          class="zoom-button ghost"
-          :title="t('toolbar.zoomHelp', { percent: Math.round(zoom * 100) })"
-          @click="resetZoom"
-        ><AppIcon name="zoom" /><span class="full-label">{{ t("toolbar.zoom", { percent: Math.round(zoom * 100) }) }}</span><span class="compact-label" aria-hidden="true">{{ t("toolbar.zoomShort", { percent: Math.round(zoom * 100) }) }}</span></button>
       </div>
 
       <div class="toolbar-group save-actions" :aria-label="t('toolbar.saveResults')">
+        <button
+          class="icon-button ghost"
+          :disabled="!summary || busy || summary.options.readonlyLeft"
+          :title="t('toolbar.openDefaultApplication')"
+          :aria-label="t('toolbar.openDefaultApplication')"
+          @click="openWorkbook()"
+        ><AppIcon name="external-link" /><span class="button-label">{{ t("toolbar.openDefault") }}</span></button>
         <button
           class="icon-button ghost"
           :disabled="!summary || busy || summary.options.readonlyLeft"
@@ -2839,6 +3488,7 @@ onBeforeUnmount(() => {
               role="treeitem"
               :aria-expanded="row.kind === 'directory' ? expandedDirectories.has(row.path) : undefined"
               @click="row.kind === 'directory' ? toggleDirectory(row.path) : selectRepositoryFile(row.path)"
+              @contextmenu="row.kind === 'file' ? openRepositoryFileMenu($event, row.path) : undefined"
             >
               <span class="tree-icon">
                 <template v-if="row.kind === 'directory'">
@@ -3165,7 +3815,7 @@ onBeforeUnmount(() => {
                       v-for="col in visibleColumns"
                       :key="`lh${col}`"
                       class="col-header"
-                      :class="{ 'key-column': activeSheet?.idColumn === col, selected: columnHeaderSelected(col) }"
+                      :class="{ 'key-column': activeSheet?.idColumn === col, 'frozen-header': frozenColumnSet.has(col), selected: columnHeaderSelected(col) }"
                       :style="{
                         top: 0,
                         left: `${columnLeft(col)}px`,
@@ -3185,7 +3835,7 @@ onBeforeUnmount(() => {
                     <div
                       v-for="row in visibleRows"
                       :key="`lr${row}`"
-                      :class="rowClass(row, 'left')"
+                      :class="[rowClass(row, 'left'), { 'frozen-header': frozenRowSet.has(sourceRowForDisplay(row)) }]"
                       :style="{
                         top: `${row * rowHeight}px`,
                         left: 0,
@@ -3233,6 +3883,151 @@ onBeforeUnmount(() => {
                       @blur="commitInlineEdit"
                     />
                     <template v-else>{{ displayedCellText(cell, "left") }}</template>
+                  </div>
+                  <div
+                    v-if="effectiveFrozenRows.length"
+                    class="frozen-row-layer"
+                    :style="{ top: `${rowHeight}px` }"
+                  >
+                    <div
+                      v-for="cell in frozenTopCells"
+                      :key="`lft${cell.row}:${cell.col}`"
+                      :class="[cellClass(cell, 'left'), {
+                        'frozen-pane-cell': true,
+                        'frozen-boundary-row': effectiveFrozenRows.at(-1) === (cell.sourceRow ?? cell.row)
+                      }]"
+                      :style="{
+                        top: `${frozenRowTop(cell.sourceRow ?? cell.row)}px`,
+                        left: `${columnLeft(cell.col)}px`,
+                        width: `${columnWidth(cell.col)}px`,
+                        height: `${rowHeight}px`,
+                        fontSize: `${scaledFontSize}px`
+                      }"
+                      :title="displayedCellValue(cell, 'left').formula ? `=${displayedCellValue(cell, 'left').formula}` : displayedCellValue(cell, 'left').raw"
+                      @pointerdown="beginCellSelection(cell, $event)"
+                      @contextmenu="openCellMenu($event, cell, 'left')"
+                      @dblclick.stop="startInlineEdit(cell)"
+                    >
+                      <input
+                        v-if="inlineEditing(cell)"
+                        v-model="inlineEdit!.value"
+                        class="inline-cell-editor"
+                        :aria-label="t('grid.editLeftCell')"
+                        @pointerdown.stop
+                        @dblclick.stop
+                        @keydown.enter.prevent.stop="commitInlineEdit"
+                        @keydown.esc.prevent.stop="cancelInlineEdit"
+                        @blur="commitInlineEdit"
+                      />
+                      <template v-else>{{ displayedCellText(cell, "left") }}</template>
+                    </div>
+                  </div>
+                  <div
+                    v-if="frozenColumns.length"
+                    class="frozen-column-layer"
+                    :style="{ left: `${rowHeaderWidth}px`, width: `${frozenColumnsWidth}px` }"
+                  >
+                    <div
+                      v-for="cell in frozenLeftCells"
+                      :key="`lfl${cell.row}:${cell.col}`"
+                      :class="[cellClass(cell, 'left'), {
+                        'frozen-pane-cell': true,
+                        'frozen-boundary-column': frozenColumns.at(-1) === cell.col
+                      }]"
+                      :style="{
+                        top: `${cell.row * rowHeight}px`,
+                        left: `${frozenColumnLeft(cell.col)}px`,
+                        width: `${columnWidth(cell.col)}px`,
+                        height: `${rowHeight}px`,
+                        fontSize: `${scaledFontSize}px`
+                      }"
+                      :title="displayedCellValue(cell, 'left').formula ? `=${displayedCellValue(cell, 'left').formula}` : displayedCellValue(cell, 'left').raw"
+                      @pointerdown="beginCellSelection(cell, $event)"
+                      @pointerenter="extendCellSelection(cell)"
+                      @contextmenu="openCellMenu($event, cell, 'left')"
+                      @dblclick.stop="startInlineEdit(cell)"
+                    >
+                      <input
+                        v-if="inlineEditing(cell)"
+                        v-model="inlineEdit!.value"
+                        class="inline-cell-editor"
+                        :aria-label="t('grid.editLeftCell')"
+                        @pointerdown.stop
+                        @dblclick.stop
+                        @keydown.enter.prevent.stop="commitInlineEdit"
+                        @keydown.esc.prevent.stop="cancelInlineEdit"
+                        @blur="commitInlineEdit"
+                      />
+                      <template v-else>{{ displayedCellText(cell, "left") }}</template>
+                    </div>
+                  </div>
+                  <div
+                    v-if="effectiveFrozenRows.length && frozenColumns.length"
+                    class="frozen-corner-layer"
+                    :style="{ top: `${rowHeight}px`, left: `${rowHeaderWidth}px`, width: `${frozenColumnsWidth}px` }"
+                  >
+                    <div
+                      v-for="cell in frozenCornerCells"
+                      :key="`lfc${cell.row}:${cell.col}`"
+                      :class="[cellClass(cell, 'left'), {
+                        'frozen-pane-cell': true,
+                        'frozen-boundary-row': effectiveFrozenRows.at(-1) === (cell.sourceRow ?? cell.row),
+                        'frozen-boundary-column': frozenColumns.at(-1) === cell.col
+                      }]"
+                      :style="{
+                        top: `${frozenRowTop(cell.sourceRow ?? cell.row)}px`,
+                        left: `${frozenColumnLeft(cell.col)}px`,
+                        width: `${columnWidth(cell.col)}px`,
+                        height: `${rowHeight}px`,
+                        fontSize: `${scaledFontSize}px`
+                      }"
+                      :title="displayedCellValue(cell, 'left').formula ? `=${displayedCellValue(cell, 'left').formula}` : displayedCellValue(cell, 'left').raw"
+                      @pointerdown="beginCellSelection(cell, $event)"
+                      @contextmenu="openCellMenu($event, cell, 'left')"
+                      @dblclick.stop="startInlineEdit(cell)"
+                    >
+                      <input
+                        v-if="inlineEditing(cell)"
+                        v-model="inlineEdit!.value"
+                        class="inline-cell-editor"
+                        :aria-label="t('grid.editLeftCell')"
+                        @pointerdown.stop
+                        @dblclick.stop
+                        @keydown.enter.prevent.stop="commitInlineEdit"
+                        @keydown.esc.prevent.stop="cancelInlineEdit"
+                        @blur="commitInlineEdit"
+                      />
+                      <template v-else>{{ displayedCellText(cell, "left") }}</template>
+                    </div>
+                  </div>
+                  <div
+                    v-if="effectiveFrozenRows.length"
+                    class="frozen-row-header-layer"
+                    :style="{ top: `${rowHeight}px`, width: `${rowHeaderWidth}px` }"
+                  >
+                    <div
+                      v-for="row in effectiveFrozenRows"
+                      :key="`lfrh${row}`"
+                      :class="[rowClass(row, 'left'), 'frozen-header', { 'frozen-boundary-row': effectiveFrozenRows.at(-1) === row }]"
+                      :style="{ top: `${frozenRowTop(row)}px`, left: 0, width: `${rowHeaderWidth}px`, height: `${rowHeight}px`, fontSize: `${scaledFontSize}px` }"
+                      @pointerdown="beginRowSelection(row, $event)"
+                      @contextmenu="openRowMenu($event, row, 'left')"
+                    >{{ pinnedRowLabel(row, "left") }}</div>
+                  </div>
+                  <div
+                    v-if="frozenColumns.length"
+                    class="frozen-column-header-layer"
+                    :style="{ left: `${rowHeaderWidth}px`, width: `${frozenColumnsWidth}px`, height: `${rowHeight}px` }"
+                  >
+                    <div
+                      v-for="col in frozenColumns"
+                      :key="`lfch${col}`"
+                      class="col-header"
+                      :class="{ 'key-column': activeSheet?.idColumn === col, 'frozen-header': true, 'frozen-boundary-column': frozenColumns.at(-1) === col, selected: columnHeaderSelected(col) }"
+                      :style="{ top: 0, left: `${frozenColumnLeft(col)}px`, width: `${columnWidth(col)}px`, height: `${rowHeight}px`, fontSize: `${scaledFontSize}px` }"
+                      @pointerdown="beginColumnSelection(col, $event)"
+                      @contextmenu="openColumnMenu($event, col, 'left')"
+                    >{{ columnHeaderLabel(col, "left") }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">{{ t("alignment.keyColumn") }}</span></div>
                   </div>
                 </template>
               </div>
@@ -3284,7 +4079,7 @@ onBeforeUnmount(() => {
                       v-for="col in visibleColumns"
                       :key="`rh${col}`"
                       class="col-header"
-                      :class="{ 'key-column': activeSheet?.idColumn === col, selected: columnHeaderSelected(col) }"
+                      :class="{ 'key-column': activeSheet?.idColumn === col, 'frozen-header': frozenColumnSet.has(col), selected: columnHeaderSelected(col) }"
                       :style="{
                         top: 0,
                         left: `${columnLeft(col)}px`,
@@ -3304,7 +4099,7 @@ onBeforeUnmount(() => {
                     <div
                       v-for="row in visibleRows"
                       :key="`rr${row}`"
-                      :class="rowClass(row, 'right')"
+                      :class="[rowClass(row, 'right'), { 'frozen-header': frozenRowSet.has(sourceRowForDisplay(row)) }]"
                       :style="{
                         top: `${row * rowHeight}px`,
                         left: 0,
@@ -3345,6 +4140,91 @@ onBeforeUnmount(() => {
                     @pointerenter="extendCellSelection(cell)"
                     @contextmenu="openCellMenu($event, cell, 'right')"
                   >{{ cell.right.formula ? `=${cell.right.formula}` : cell.right.display }}</div>
+                  <div
+                    v-if="effectiveFrozenRows.length"
+                    class="frozen-row-layer"
+                    :style="{ top: `${rowHeight}px` }"
+                  >
+                    <div
+                      v-for="cell in frozenTopCells"
+                      :key="`rft${cell.row}:${cell.col}`"
+                      :class="[cellClass(cell, 'right'), {
+                        'frozen-pane-cell': true,
+                        'frozen-boundary-row': effectiveFrozenRows.at(-1) === (cell.sourceRow ?? cell.row)
+                      }]"
+                      :style="{ top: `${frozenRowTop(cell.sourceRow ?? cell.row)}px`, left: `${columnLeft(cell.col)}px`, width: `${columnWidth(cell.col)}px`, height: `${rowHeight}px`, fontSize: `${scaledFontSize}px` }"
+                      :title="cell.right.formula ? `=${cell.right.formula}` : cell.right.raw"
+                      @pointerdown="beginCellSelection(cell, $event)"
+                      @contextmenu="openCellMenu($event, cell, 'right')"
+                    >{{ cell.right.formula ? `=${cell.right.formula}` : cell.right.display }}</div>
+                  </div>
+                  <div
+                    v-if="frozenColumns.length"
+                    class="frozen-column-layer"
+                    :style="{ left: `${rowHeaderWidth}px`, width: `${frozenColumnsWidth}px` }"
+                  >
+                    <div
+                      v-for="cell in frozenLeftCells"
+                      :key="`rfl${cell.row}:${cell.col}`"
+                      :class="[cellClass(cell, 'right'), {
+                        'frozen-pane-cell': true,
+                        'frozen-boundary-column': frozenColumns.at(-1) === cell.col
+                      }]"
+                      :style="{ top: `${cell.row * rowHeight}px`, left: `${frozenColumnLeft(cell.col)}px`, width: `${columnWidth(cell.col)}px`, height: `${rowHeight}px`, fontSize: `${scaledFontSize}px` }"
+                      :title="cell.right.formula ? `=${cell.right.formula}` : cell.right.raw"
+                      @pointerdown="beginCellSelection(cell, $event)"
+                      @pointerenter="extendCellSelection(cell)"
+                      @contextmenu="openCellMenu($event, cell, 'right')"
+                    >{{ cell.right.formula ? `=${cell.right.formula}` : cell.right.display }}</div>
+                  </div>
+                  <div
+                    v-if="effectiveFrozenRows.length && frozenColumns.length"
+                    class="frozen-corner-layer"
+                    :style="{ top: `${rowHeight}px`, left: `${rowHeaderWidth}px`, width: `${frozenColumnsWidth}px` }"
+                  >
+                    <div
+                      v-for="cell in frozenCornerCells"
+                      :key="`rfc${cell.row}:${cell.col}`"
+                      :class="[cellClass(cell, 'right'), {
+                        'frozen-pane-cell': true,
+                        'frozen-boundary-row': effectiveFrozenRows.at(-1) === (cell.sourceRow ?? cell.row),
+                        'frozen-boundary-column': frozenColumns.at(-1) === cell.col
+                      }]"
+                      :style="{ top: `${frozenRowTop(cell.sourceRow ?? cell.row)}px`, left: `${frozenColumnLeft(cell.col)}px`, width: `${columnWidth(cell.col)}px`, height: `${rowHeight}px`, fontSize: `${scaledFontSize}px` }"
+                      :title="cell.right.formula ? `=${cell.right.formula}` : cell.right.raw"
+                      @pointerdown="beginCellSelection(cell, $event)"
+                      @contextmenu="openCellMenu($event, cell, 'right')"
+                    >{{ cell.right.formula ? `=${cell.right.formula}` : cell.right.display }}</div>
+                  </div>
+                  <div
+                    v-if="effectiveFrozenRows.length"
+                    class="frozen-row-header-layer"
+                    :style="{ top: `${rowHeight}px`, width: `${rowHeaderWidth}px` }"
+                  >
+                    <div
+                      v-for="row in effectiveFrozenRows"
+                      :key="`rfrh${row}`"
+                      :class="[rowClass(row, 'right'), 'frozen-header', { 'frozen-boundary-row': effectiveFrozenRows.at(-1) === row }]"
+                      :style="{ top: `${frozenRowTop(row)}px`, left: 0, width: `${rowHeaderWidth}px`, height: `${rowHeight}px`, fontSize: `${scaledFontSize}px` }"
+                      @pointerdown="beginRowSelection(row, $event)"
+                      @contextmenu="openRowMenu($event, row, 'right')"
+                    >{{ pinnedRowLabel(row, "right") }}</div>
+                  </div>
+                  <div
+                    v-if="frozenColumns.length"
+                    class="frozen-column-header-layer"
+                    :style="{ left: `${rowHeaderWidth}px`, width: `${frozenColumnsWidth}px`, height: `${rowHeight}px` }"
+                  >
+                    <div
+                      v-for="col in frozenColumns"
+                      :key="`rfch${col}`"
+                      class="col-header"
+                      :class="{ 'key-column': activeSheet?.idColumn === col, 'frozen-header': true, 'frozen-boundary-column': frozenColumns.at(-1) === col, selected: columnHeaderSelected(col) }"
+                      :style="{ top: 0, left: `${frozenColumnLeft(col)}px`, width: `${columnWidth(col)}px`, height: `${rowHeight}px`, fontSize: `${scaledFontSize}px` }"
+                      @pointerdown="beginColumnSelection(col, $event)"
+                      @contextmenu="openColumnMenu($event, col, 'right')"
+                    >{{ columnHeaderLabel(col, "right") }}<span v-if="activeSheet?.idColumn === col" class="key-column-badge">{{ t("alignment.keyColumn") }}</span></div>
+                  </div>
                 </template>
               </div>
             </div>
@@ -3417,7 +4297,61 @@ onBeforeUnmount(() => {
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
       @pointerdown.stop
     >
+      <template v-if="contextMenu.kind === 'cell'">
+        <button @click="copyClipboardSelection(contextMenu.side)">{{ t("context.clipboardCopy") }}<kbd>Ctrl/⌘ C</kbd></button>
+        <button
+          v-if="contextMenu.side === 'left' && !leftReadonly"
+          :disabled="busy"
+          @click="pasteClipboardSelection"
+        >{{ t("context.clipboardPaste") }}<kbd>Ctrl/⌘ V</kbd></button>
+        <button
+          v-if="contextMenu.side === 'left' && !leftReadonly"
+          :disabled="busy"
+          @click="cutClipboardSelection"
+        >{{ t("context.clipboardCut") }}<kbd>Ctrl/⌘ X</kbd></button>
+        <div class="context-menu-separator"></div>
+      </template>
+      <template v-if="contextMenu.kind === 'row' && contextFreezableRows.length">
+        <button
+          v-if="contextHasUnfrozenRows"
+          class="freeze-rows-action"
+          :disabled="busy"
+          @click="freezeContextRows"
+        >{{ t("context.freezeRows", { count: contextFreezableRows.length }) }}</button>
+        <button
+          v-if="contextHasFrozenRows"
+          class="unfreeze-rows-action"
+          :disabled="busy"
+          @click="unfreezeContextRows(false)"
+        >{{ t("context.unfreezeRows", { count: contextFreezableRows.length }) }}</button>
+        <button
+          v-if="frozenRows.length"
+          class="unfreeze-all-rows-action"
+          :disabled="busy"
+          @click="unfreezeContextRows(true)"
+        >{{ t("context.unfreezeAllRows") }}</button>
+        <div class="context-menu-separator"></div>
+      </template>
       <template v-if="contextMenu.kind === 'column'">
+        <button
+          v-if="contextHasUnfrozenColumns"
+          class="freeze-columns-action"
+          :disabled="busy"
+          @click="freezeContextColumns"
+        >{{ t("context.freezeColumns", { count: contextFreezableColumns.length }) }}</button>
+        <button
+          v-if="contextHasFrozenColumns"
+          class="unfreeze-columns-action"
+          :disabled="busy"
+          @click="unfreezeContextColumns(false)"
+        >{{ t("context.unfreezeColumns", { count: contextFreezableColumns.length }) }}</button>
+        <button
+          v-if="frozenColumns.length"
+          class="unfreeze-all-columns-action"
+          :disabled="busy"
+          @click="unfreezeContextColumns(true)"
+        >{{ t("context.unfreezeAllColumns") }}</button>
+        <div class="context-menu-separator"></div>
         <button
           v-if="contextCopyableColumns.length"
           class="column-copy-action"
@@ -3478,6 +4412,17 @@ onBeforeUnmount(() => {
         · {{ contextStatusLabel }}
       </span>
     </div>
+    <div
+      v-if="repositoryFileMenu.visible"
+      class="context-menu repository-file-menu"
+      :style="{ left: `${repositoryFileMenu.x}px`, top: `${repositoryFileMenu.y}px` }"
+      @pointerdown.stop
+    >
+      <button @click="openWorkbook(repositoryFileMenu.path)">{{ t("context.openDefaultApplication") }}</button>
+      <button @click="revealWorkbook(repositoryFileMenu.path)">
+        {{ platform === "darwin" ? t("context.showInFinder") : t("context.showInFileManager") }}
+      </button>
+    </div>
     <div v-if="idDialog.visible" class="id-dialog-overlay" @pointerdown.self="idDialog.visible = false">
       <form class="id-dialog" @submit.prevent="confirmSpecifiedIDs">
         <strong>{{ t("dialog.idsTitle") }}</strong>
@@ -3532,6 +4477,52 @@ onBeforeUnmount(() => {
                 <option value="ja">日本語</option>
               </select>
             </label>
+          </section>
+          <section class="settings-section">
+            <div class="settings-section-heading">
+              <strong>{{ t("settings.fontSizeTitle") }}</strong>
+              <span>{{ t("settings.fontSizeDescription") }}</span>
+            </div>
+            <div class="settings-font-row">
+              <span class="settings-font-sample" aria-hidden="true">A</span>
+              <input
+                type="range"
+                min="85"
+                max="125"
+                step="5"
+                :value="uiFontPercent"
+                :aria-label="t('settings.fontSizeTitle')"
+                :aria-valuetext="t('settings.fontSizeValue', { percent: uiFontPercent })"
+                @input="changeUIFontScale"
+              />
+              <output>{{ t("settings.fontSizeValue", { percent: uiFontPercent }) }}</output>
+              <button class="compact-button" :disabled="uiFontPercent === 100" @click="resetUIFontScale">
+                {{ t("settings.fontSizeReset") }}
+              </button>
+            </div>
+            <div class="settings-display-divider"></div>
+            <div class="settings-section-heading">
+              <strong>{{ t("settings.sheetZoomTitle") }}</strong>
+              <span>{{ sheet ? t("settings.sheetZoomDescription", { sheet }) : t("settings.sheetZoomNoSheet") }}</span>
+            </div>
+            <div class="settings-font-row settings-sheet-zoom-row">
+              <span class="settings-sheet-sample" :style="{ fontSize: `${scaledFontSize}px` }" aria-hidden="true">A1</span>
+              <input
+                type="range"
+                min="70"
+                max="180"
+                step="10"
+                :value="sheetZoomPercent"
+                :disabled="!sheet"
+                :aria-label="t('settings.sheetZoomTitle')"
+                :aria-valuetext="t('settings.sheetZoomValue', { percent: sheetZoomPercent })"
+                @input="changeSheetZoom"
+              />
+              <output>{{ t("settings.sheetZoomValue", { percent: sheetZoomPercent }) }}</output>
+              <button class="compact-button sheet-zoom-reset" :disabled="!sheet || sheetZoomPercent === 100" @click="resetSheetZoom">
+                {{ t("settings.fontSizeReset") }}
+              </button>
+            </div>
           </section>
           <section class="settings-section">
             <div class="settings-section-heading">

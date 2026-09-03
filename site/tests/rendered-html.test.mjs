@@ -75,18 +75,47 @@ test("guide documents actual shortcuts, the in-app Help entry, and UGit entries"
     assert.match(html, /1(?:–|～)4/); assert.match(html, /5/); assert.match(html, /SpreadsheetCompare/); assert.match(html, /Custom/);
     assert.match(html, /Ctrl \/ ⌘ \+ Shift \+ S/);
     assert.match(html, /Ctrl \/ ⌘ \+ F/); assert.match(html, /F3/); assert.match(html, /Shift \+ F3/);
+    assert.match(html, /Ctrl \/ ⌘ \+ C/); assert.match(html, /Ctrl \/ ⌘ \+ V \/ X/);
+    assert.match(html, /Arrow keys|方向键|矢印キー/);
+    assert.match(html, /mouse wheel|鼠标滚轮|マウスホイール/);
     assert.match(html, /Help|帮助|ヘルプ/);
   }
 });
 
-test("localized changelogs include column alignment, whole-column copy, and in-app Help", async () => {
+test("v0.8 feature and guide pages cover the complete desktop workflow", async () => {
+  const [featureEn, featureZh, featureJa, guideEn, guideZh, guideJa] = await Promise.all([
+    render("/features"), render("/zh-CN/features"), render("/ja/features"),
+    render("/guide"), render("/zh-CN/guide"), render("/ja/guide"),
+  ]);
+  assert.match(featureEn, /Pin any selected rows/); assert.match(featureEn, /UI text size and per-sheet zoom/); assert.match(featureEn, /paste and cut only on the left/);
+  assert.match(featureZh, /任意选中的行固定在上方/); assert.match(featureZh, /UI 字体和每个 Sheet 的缩放/); assert.match(featureZh, /粘贴和剪切仅限左侧/);
+  assert.match(featureJa, /選択した行を上部/); assert.match(featureJa, /UI の文字サイズとシートごとのズーム/); assert.match(featureJa, /貼り付けと切り取りは左側のみ/);
+  assert.match(guideEn, /right-click selected row or column headers/); assert.match(guideEn, /default spreadsheet app/);
+  assert.match(guideZh, /右键所选行头或列头/); assert.match(guideZh, /默认表格工具/);
+  assert.match(guideJa, /行見出しまたは列見出しを右クリック/); assert.match(guideJa, /既定の表計算アプリ/);
+});
+
+test("localized changelogs include v0.8, column alignment, whole-column copy, and in-app Help", async () => {
   const [en, zh, ja] = await Promise.all([render("/changelog"), render("/zh-CN/changelog"), render("/ja/changelog")]);
+  for (const html of [en, zh, ja]) assert.match(html, /v0\.8\.0/);
+  assert.match(en, /unexpected exit/); assert.match(zh, /无操作闪退/); assert.match(ja, /予期せず終了/);
   assert.match(en, /Column-aware comparison and merging/); assert.match(en, /complete columns/);
   assert.match(zh, /按列语义对比与合并/); assert.match(zh, /整列复制/);
   assert.match(ja, /列を対応付けた比較と反映/); assert.match(ja, /列全体/);
   assert.match(en, /In-app help/);
   assert.match(zh, /应用内帮助/);
   assert.match(ja, /アプリ内ヘルプ/);
+  assert.match(en, /Switching between Settings and mouse-wheel worksheet zoom/);
+  assert.match(zh, /在设置和主界面滚轮之间切换表格缩放/);
+  assert.match(ja, /設定とメイングリッドのホイール操作を切り替えても/);
+  assert.match(en, /Local rolling diagnostic logs/);
+  assert.match(zh, /本地轮转诊断日志/);
+  assert.match(ja, /ローカル診断ログ/);
+});
+
+test("public page copy does not describe AI or generated implementation", async () => {
+  const html = (await Promise.all([...routes.keys()].map((route) => render(route)))).join("\n");
+  assert.doesNotMatch(html, /\b(?:AI|Agent|Codex|ChatGPT)\b|人工智能|大模型|生成式|模型生成|生成デモ|generated demonstration/iu);
 });
 
 test("screenshots remain accessible through the standalone viewer", async () => {

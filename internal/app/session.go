@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"os"
@@ -155,6 +157,8 @@ type CellCoordinate struct {
 	Row int `json:"row"`
 	Col int `json:"col"`
 }
+
+const maxClipboardCells = 10000
 
 type Session struct {
 	mu                     sync.RWMutex
@@ -786,6 +790,63 @@ func (s *Session) Region(sheet string, fromRow, rowCount, fromCol, colCount int)
 	return region, nil
 }
 
+// PinnedRegion reads arbitrary logical rows and columns for the frontend's
+// pinned row/column overlays without widening the normal viewport Region.
+func (s *Session) PinnedRegion(sheet string, rows, columns []int) (Region, error) {
+	if len(rows) == 0 || len(columns) == 0 {
+		return Region{Sheet: sheet}, nil
+	}
+	if len(rows)*len(columns) > maxClipboardCells {
+		return Region{}, fmt.Errorf("invalid pinned region (maximum %d cells)", maxClipboardCells)
+	}
+	rows = sortedPositiveCoordinates(rows)
+	columns = sortedPositiveCoordinates(columns)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	leftSheet := s.left.ByName[sheet]
+	var rightSheet *workbook.SheetSnapshot
+	if s.rightSource != nil {
+		rightSheet = s.rightSource.ByName[sheet]
+	}
+	if leftSheet == nil && rightSheet == nil {
+		return Region{}, fmt.Errorf("worksheet %q not found", sheet)
+	}
+	leftMax, rightMax := 0, 0
+	if leftSheet != nil {
+		leftMax = leftSheet.MaxRow
+	}
+	if rightSheet != nil {
+		rightMax = rightSheet.MaxRow
+	}
+	mapped := make([]regionRow, 0, len(rows))
+	for _, row := range rows {
+		mapped = append(mapped, regionRow{
+			display: row,
+			source:  row,
+			left:    physicalRowForLogical(s.leftRows[sheet], row, leftMax),
+			right:   physicalRowForLogical(s.rightRows[sheet], row, rightMax),
+		})
+	}
+	return s.regionForRowsAndColumnsLocked(sheet, mapped, columns)
+}
+
+func sortedPositiveCoordinates(values []int) []int {
+	seen := make(map[int]struct{}, len(values))
+	result := make([]int, 0, len(values))
+	for _, value := range values {
+		if value < 1 {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Ints(result)
+	return result
+}
+
 // FilteredRegion returns a packed viewport containing only rows whose semantic
 // classification matches one of statuses. Display row numbers are dense while
 // SourceRow/LeftRow/RightRow retain the physical coordinates used by edits and
@@ -844,6 +905,19 @@ func (s *Session) regionForRowsLocked(
 	fromCol, colCount int,
 	filters ...[]diff.RowStatus,
 ) (Region, error) {
+	columns := make([]int, 0, colCount)
+	for col := fromCol; col < fromCol+colCount; col++ {
+		columns = append(columns, col)
+	}
+	return s.regionForRowsAndColumnsLocked(sheet, rows, columns, filters...)
+}
+
+func (s *Session) regionForRowsAndColumnsLocked(
+	sheet string,
+	rows []regionRow,
+	columns []int,
+	filters ...[]diff.RowStatus,
+) (Region, error) {
 	leftSheet := s.left.ByName[sheet]
 	originalLeftSheet := s.originalLeft.ByName[sheet]
 	var rightSheet *workbook.SheetSnapshot
@@ -853,23 +927,31 @@ func (s *Session) regionForRowsLocked(
 	if leftSheet == nil && rightSheet == nil {
 		return Region{}, fmt.Errorf("worksheet %q not found", sheet)
 	}
-	statuses := make(map[workbook.CellKey]diff.CellStatus, len(rows)*colCount)
+	statuses := make(map[workbook.CellKey]diff.CellStatus, len(rows)*len(columns))
 	rowStatuses := make(map[int]diff.RowStatus, len(rows))
+	fromCol, toCol := 0, 0
+	if len(columns) > 0 {
+		fromCol, toCol = columns[0], columns[0]
+		for _, col := range columns[1:] {
+			fromCol = min(fromCol, col)
+			toCol = max(toCol, col)
+		}
+	}
 	if s.currentDiff != nil {
 		for _, sheetDiff := range s.currentDiff.Sheets {
 			if sheetDiff.Name == sheet {
-				collectRegionStatuses(sheetDiff, rows, fromCol, fromCol+colCount-1, statuses, rowStatuses)
+				collectRegionStatuses(sheetDiff, rows, fromCol, toCol, statuses, rowStatuses)
 				break
 			}
 		}
 	}
 	region := Region{
 		Sheet:   sheet,
-		FromCol: fromCol, ToCol: fromCol + colCount - 1,
-		Columns: make([]RegionColumn, 0, colCount),
-		Cells:   make([]RegionCell, 0, len(rows)*colCount),
+		FromCol: fromCol, ToCol: toCol,
+		Columns: make([]RegionColumn, 0, len(columns)),
+		Cells:   make([]RegionCell, 0, len(rows)*len(columns)),
 	}
-	for col := region.FromCol; col <= region.ToCol; col++ {
+	for _, col := range columns {
 		region.Columns = append(region.Columns, RegionColumn{
 			Col: col, LeftCol: physicalColumnForLogical(s.leftCols[sheet], col),
 			RightCol: physicalColumnForLogical(s.rightCols[sheet], col),
@@ -882,7 +964,7 @@ func (s *Session) regionForRowsLocked(
 	leftMatches := s.searchMatchesLocked(SearchLeft, sheet, activeFilters)
 	rightMatches := s.searchMatchesLocked(SearchRight, sheet, activeFilters)
 	for _, row := range rows {
-		for col := region.FromCol; col <= region.ToCol; col++ {
+		for _, col := range columns {
 			leftCol := physicalColumnForLogical(s.leftCols[sheet], col)
 			rightCol := physicalColumnForLogical(s.rightCols[sheet], col)
 			ref := workbook.CellRef{Sheet: sheet, Row: row.source, Col: col}
@@ -1658,26 +1740,9 @@ func (s *Session) EditLeft(ref workbook.CellRef, value, valueType string) error 
 	if err != nil {
 		return err
 	}
-	after := before
-	after.Value.Present = true
-	after.Value.Formula = ""
-	switch valueType {
-	case "clear":
-		after.Value = workbook.CellValue{}
-	case "formula":
-		after.Value.Raw = ""
-		after.Value.Display = ""
-		after.Value.Formula = strings.TrimPrefix(value, "=")
-		after.Value.Type = "formula"
-	case "number":
-		if _, err := strconv.ParseFloat(value, 64); err != nil {
-			return fmt.Errorf("invalid number %q", value)
-		}
-		after.Value.Raw, after.Value.Display, after.Value.Type = value, value, "number"
-	case "text", "":
-		after.Value.Raw, after.Value.Display, after.Value.Type = value, value, "string"
-	default:
-		return fmt.Errorf("unsupported edit type %q", valueType)
+	after, err := editedCellState(before, value, valueType)
+	if err != nil {
+		return err
 	}
 	if editValuesEqual(before.Value, after.Value) {
 		return nil
@@ -1701,6 +1766,219 @@ func (s *Session) EditLeft(ref workbook.CellRef, value, valueType string) error 
 	}
 	s.recordHistoryLocked([]merge.Operation{{Ref: ref, Before: before, After: after, Kind: "edit"}})
 	return nil
+}
+
+func editedCellState(before merge.CellState, value, valueType string) (merge.CellState, error) {
+	after := before
+	after.Value.Present = true
+	after.Value.Formula = ""
+	switch valueType {
+	case "clear":
+		after.Value = workbook.CellValue{}
+	case "formula":
+		after.Value.Raw = ""
+		after.Value.Display = ""
+		after.Value.Formula = strings.TrimPrefix(value, "=")
+		after.Value.Type = "formula"
+	case "number":
+		if _, err := strconv.ParseFloat(value, 64); err != nil {
+			return merge.CellState{}, fmt.Errorf("invalid number %q", value)
+		}
+		after.Value.Raw, after.Value.Display, after.Value.Type = value, value, "number"
+	case "text", "":
+		after.Value.Raw, after.Value.Display, after.Value.Type = value, value, "string"
+	default:
+		return merge.CellState{}, fmt.Errorf("unsupported edit type %q", valueType)
+	}
+	return after, nil
+}
+
+// ClipboardText serializes the displayed logical selection as Excel-compatible
+// tab-separated text. Explicit rows are logical source rows supplied by the
+// packed filtered view and retain their display order.
+func (s *Session) ClipboardText(
+	sheetName, side string,
+	startRow, endRow, startCol, endCol int,
+	rows []int,
+) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if startCol < 1 || endCol < startCol {
+		return "", fmt.Errorf("invalid column range %d:%d", startCol, endCol)
+	}
+	logicalRows, err := clipboardRows(startRow, endRow, rows)
+	if err != nil {
+		return "", err
+	}
+	if len(logicalRows)*(endCol-startCol+1) > maxClipboardCells {
+		return "", fmt.Errorf("too many cells selected (maximum %d)", maxClipboardCells)
+	}
+	var source *workbook.WorkbookSnapshot
+	switch side {
+	case "left":
+		source = s.comparisonLeft
+	case "right":
+		source = s.right
+	default:
+		return "", fmt.Errorf("unsupported clipboard side %q", side)
+	}
+	if source == nil {
+		return "", fmt.Errorf("no %s workbook is available", side)
+	}
+	sheet := source.ByName[sheetName]
+	if sheet == nil {
+		return "", fmt.Errorf("worksheet %q not found", sheetName)
+	}
+	var buffer bytes.Buffer
+	writer := csv.NewWriter(&buffer)
+	writer.Comma = '\t'
+	writer.UseCRLF = true
+	for _, row := range logicalRows {
+		record := make([]string, 0, endCol-startCol+1)
+		for col := startCol; col <= endCol; col++ {
+			value := sheet.Cell(row, col)
+			switch {
+			case value.Formula != "":
+				record = append(record, "="+value.Formula)
+			case value.Raw != "":
+				record = append(record, value.Raw)
+			default:
+				record = append(record, value.Display)
+			}
+		}
+		if err := writer.Write(record); err != nil {
+			return "", err
+		}
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return "", err
+	}
+	return buffer.String(), nil
+}
+
+func clipboardRows(startRow, endRow int, rows []int) ([]int, error) {
+	if len(rows) > 0 {
+		result := make([]int, 0, len(rows))
+		seen := make(map[int]struct{}, len(rows))
+		for _, row := range rows {
+			if row < 1 {
+				return nil, fmt.Errorf("invalid row %d", row)
+			}
+			if _, exists := seen[row]; exists {
+				continue
+			}
+			seen[row] = struct{}{}
+			result = append(result, row)
+		}
+		return result, nil
+	}
+	if startRow < 1 || endRow < startRow {
+		return nil, fmt.Errorf("invalid row range %d:%d", startRow, endRow)
+	}
+	result := make([]int, 0, endRow-startRow+1)
+	for row := startRow; row <= endRow; row++ {
+		result = append(result, row)
+	}
+	return result, nil
+}
+
+// PasteLeftText parses spreadsheet TSV and applies the complete block as one
+// undoable Session operation. It never creates columns outside the editable
+// workbook's existing logical column mapping.
+func (s *Session) PasteLeftText(sheetName string, startRow, startCol int, text string) error {
+	rows, err := parseClipboardText(text)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.options.ReadonlyLeft {
+		return errors.New("left workbook is read-only")
+	}
+	if startRow < 1 || startCol < 1 {
+		return fmt.Errorf("invalid paste origin %d:%d", startRow, startCol)
+	}
+	if s.left.ByName[sheetName] == nil {
+		return fmt.Errorf("left worksheet %q not found", sheetName)
+	}
+	cellCount := 0
+	for _, row := range rows {
+		cellCount += len(row)
+	}
+	if cellCount == 0 || cellCount > maxClipboardCells {
+		return fmt.Errorf("invalid clipboard cell count %d (maximum %d)", cellCount, maxClipboardCells)
+	}
+	for _, values := range rows {
+		for colOffset := range values {
+			logicalCol := startCol + colOffset
+			if physicalColumnForLogical(s.leftCols[sheetName], logicalCol) == 0 {
+				return errors.New(sessionText(s.options.Locale,
+					"The pasted range extends beyond the editable workbook's columns.",
+					"粘贴范围超出了可编辑工作簿的现有列。",
+					"貼り付け範囲が編集可能なブックの既存列を超えています。"))
+			}
+		}
+	}
+	operations := make([]merge.Operation, 0, cellCount)
+	for rowOffset, values := range rows {
+		logicalRow := startRow + rowOffset
+		physicalRow := s.ensureLeftPhysicalRowLocked(sheetName, logicalRow)
+		for colOffset, value := range values {
+			logicalCol := startCol + colOffset
+			physicalCol := physicalColumnForLogical(s.leftCols[sheetName], logicalCol)
+			ref := workbook.CellRef{Sheet: sheetName, Row: physicalRow, Col: physicalCol}
+			before, captureErr := merge.Capture(s.leftFile, ref)
+			if captureErr != nil {
+				return captureErr
+			}
+			after, editErr := editedCellState(before, value, clipboardValueType(value))
+			if editErr != nil {
+				return editErr
+			}
+			if editValuesEqual(before.Value, after.Value) {
+				continue
+			}
+			operations = append(operations, merge.Operation{
+				Ref: ref, Before: before, After: after, Kind: "paste",
+			})
+		}
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	return s.applyOperationsLocked(sheetName, operations)
+}
+
+func clipboardValueType(value string) string {
+	if value == "" {
+		return "clear"
+	}
+	if strings.HasPrefix(value, "=") {
+		return "formula"
+	}
+	if _, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil {
+		return "number"
+	}
+	return "text"
+}
+
+func parseClipboardText(text string) ([][]string, error) {
+	if text == "" {
+		return [][]string{{""}}, nil
+	}
+	reader := csv.NewReader(strings.NewReader(text))
+	reader.Comma = '\t'
+	reader.FieldsPerRecord = -1
+	reader.LazyQuotes = true
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("invalid clipboard table: %w", err)
+	}
+	if len(records) == 0 {
+		return [][]string{{""}}, nil
+	}
+	return records, nil
 }
 
 func editValuesEqual(before, after workbook.CellValue) bool {

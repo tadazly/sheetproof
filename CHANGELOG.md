@@ -6,6 +6,23 @@ English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
 
 User-visible SheetProof changes.
 
+## 0.8.0 — 2026-09-03
+
+_Preview · Faster worksheet navigation and editing_
+
+Frozen headers, keyboard editing, system clipboard actions, and external open commands now fit everyday configuration review.
+
+- Right-click selected row or column headers to pin any rows at the top or columns at the left. Only the selected items are pinned, so intervening rows and columns remain in the normal grid. Sheets with a detected record key pin the first row by default, and each workbook-and-sheet setting is restored when reopened.
+- Added and deleted rows now describe the editable local workbook relative to the read-only comparison source: local-only rows are added and comparison-only rows are locally deleted.
+- Typing starts an edit in the selected editable left cell; double-click, Enter, and F2 remain available. The read-only right grid never accepts editing input.
+- Copy selections from either side to the system clipboard. The editable left grid supports Ctrl/Command+V paste and Ctrl/Command+X cut, with each batch recorded as one undo step.
+- Open the current editable workbook in the system default spreadsheet app from the toolbar. Repository file menus can also open it or reveal it in Windows File Explorer and macOS Finder.
+- Use the arrow keys to move the active grid cell; hold Shift with an arrow key to extend the selection.
+- Settings now provides global UI font sizing from 85% to 125% and per-workbook-and-sheet worksheet zoom from 70% to 180%. Both apply immediately and persist. The toolbar zoom button is gone, while Ctrl/Command + mouse wheel remains available over the grid.
+- Switching between Settings and mouse-wheel worksheet zoom is now stable, and continuous zooming stays responsive without unnecessary reloads.
+- Local rolling diagnostic logs now help identify unexpected exits without recording workbook paths, worksheet names, or cell contents.
+- Fixed an unexpected exit that could occur while a repository index was built in the background. XLSX files that Excel or WPS can open despite unusual internal cell order are now read without changing the source, and other parse failures remain isolated to the affected index.
+
 ## 0.7.0 — 2026-08-13
 
 _Preview · Column-aware comparison and merging_
@@ -46,7 +63,7 @@ _Preview · English, Simplified Chinese, and Japanese throughout_
 
 The desktop app, CLI, documentation, and website now share a complete three-language experience, with persistent language choice and localized product examples.
 
-- The desktop interface, settings, native confirmations, difference states, merge actions, and generated demonstration workbooks are available in English, Simplified Chinese, and Japanese.
+- The desktop interface, settings, native confirmations, difference states, merge actions, and localized demonstration workbooks are available in English, Simplified Chinese, and Japanese.
 - CLI help, status text, and errors follow --lang en|zh-CN|ja, while JSON keys and enum values remain stable for automation.
 - The website, README, changelog, SEO metadata, navigation, and product screenshots now have matching English, Simplified Chinese, and Japanese versions.
 - Language choice persists across restarts. An explicit --lang affects only that launch, and Follow system can return to operating-system detection.

@@ -6,7 +6,7 @@
 
 > Git 上の XLSX 変更を確認し、必要な項目だけを反映。
 
-SheetProof は Git ワークツリーの .xlsx と検証済みの Git リビジョンを比較し、レコードをキーで揃え、確認したセルまたは行を編集可能な左側へ反映します。
+SheetProof は Git ワークツリーの .xlsx と検証済みの Git リビジョンを比較し、レコードをキーで揃え、確認したセル、行、列を編集可能な左側へ反映します。
 
 バージョン管理している設定ブックをレビューする開発者やコンテンツチーム向けです。ファイルはローカルで処理し、Excel は必要ありません。
 
@@ -26,6 +26,7 @@ XLSX は圧縮された OOXML パッケージです。テキスト diff では�
 
 - **ブック内容の比較**: シート、値、数式、明示的な空値、型を比較します。表示書式はセルが同じかどうかの判定に含めません。
 - **2 ペイン差分レビュー**: 同期した仮想グリッド、差分移動、スクロールバーの印で追加・削除・変更・競合を確認します。
+- **キーボードとシステムツールの連携**: 選択した行や列を上部または左側に固定し、設定で UI の文字サイズとワークシートのズームを調整して、キーボード操作、システムクリップボード、既定の表計算アプリを利用できます。
 - **挿入列の自動対応付け**: 信頼できる一意のテキスト見出しで共通列を揃え、片側だけの挿入列が後続列をずらさないようにします。
 - **現在のシートの行絞り込み**: 確認中の元行を保ったまま、追加・削除・変更・競合を組み合わせて絞り込めます。
 - **現在のシート内を検索**: 左右を別々に検索し、大文字小文字、Unicode 単語全体、RE2 正規表現を組み合わせ、絞り込み行だけにも限定できます。
@@ -38,12 +39,12 @@ XLSX は圧縮された OOXML パッケージです。テキスト diff では�
 
 ## ダウンロード
 
-**0.7.0 プレビュー**
+**0.8.0 プレビュー**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.7.0.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.0.zip)
 
 ## Windows／macOS で初めて開くとき
 

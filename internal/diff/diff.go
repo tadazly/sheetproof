@@ -242,9 +242,9 @@ func classifyRows(sd *SheetDiff, left, right *workbook.SheetSnapshot, keyColumn 
 		status := RowUnchanged
 		switch {
 		case !leftHas && rightHas:
-			status = RowAdded
-		case leftHas && !rightHas:
 			status = RowDeleted
+		case leftHas && !rightHas:
+			status = RowAdded
 		default:
 			different, allDataDifferent := rowDifference(
 				left, right, row, columnsByRow[row], sd.IDColumn,

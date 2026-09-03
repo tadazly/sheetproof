@@ -4,7 +4,7 @@
     "product": {
       "name": "SheetProof",
       "legacyName": "ugxlsx",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "channel": "preview",
       "formats": [
         ".xlsx"
@@ -23,10 +23,10 @@
     },
     "downloads": {
       "releases": "https://github.com/tadazly/sheetproof/releases",
-      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-windows-amd64.exe",
-      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-macos-universal.zip",
-      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SHA256SUMS.txt",
-      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.7.0.zip"
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.0.zip"
     },
     "screenshots": {
       "keyAlignment": {
@@ -58,7 +58,7 @@
         "displayName": "SheetProof",
         "slogan": "Review XLSX changes in Git.",
         "tagline": "Review and apply XLSX changes in Git.",
-        "description": "SheetProof compares .xlsx workbooks in a Git worktree with validated Git revisions, aligns records by key, and applies approved changes to the editable left workbook.",
+        "description": "SheetProof compares .xlsx workbooks in a Git worktree with validated Git revisions, aligns records by key, and applies approved cells, rows, or columns to the editable left workbook.",
         "channel": "Preview"
       },
       "features": {
@@ -69,6 +69,10 @@
         "sideBySideReview": {
           "title": "Side-by-side review",
           "summary": "Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data."
+        },
+        "desktopEditing": {
+          "title": "Keyboard and system-tool workflow",
+          "summary": "Pin selected rows or columns, adjust UI text and worksheet zoom in Settings, navigate and edit by keyboard, then use the system clipboard or default spreadsheet app when needed."
         },
         "columnAlignment": {
           "title": "Inserted-column alignment",
@@ -142,7 +146,7 @@
       "seo": {
         "home": {
           "title": "SheetProof — Review and apply XLSX changes in Git",
-          "description": "Compare .xlsx workbooks with Git revisions, align records by key, and apply approved cells or rows locally."
+          "description": "Compare .xlsx workbooks with Git revisions, align records by key, and apply approved cells, rows, or columns locally."
         },
         "features": {
           "title": "Features",
@@ -158,7 +162,7 @@
         },
         "changelog": {
           "title": "Changelog",
-          "description": "User-visible changes in SheetProof 0.1.0 through 0.7.0."
+          "description": "User-visible changes in SheetProof 0.1.0 through 0.8.0."
         }
       }
     },
@@ -168,7 +172,7 @@
         "displayName": "SheetProof · 表鉴",
         "slogan": "审阅 Git 中的 XLSX 变更。",
         "tagline": "Git 工作流中的 XLSX 差异审阅工具。",
-        "description": "SheetProof 比较 Git 工作区中的 .xlsx 与经过校验的 Git 版本，按主键对齐记录，并将确认的单元格或整行应用到可编辑左侧。",
+        "description": "SheetProof 比较 Git 工作区中的 .xlsx 与经过校验的 Git 版本，按主键对齐记录，并将确认的单元格、整行或整列应用到可编辑左侧。",
         "channel": "预览版"
       },
       "features": {
@@ -179,6 +183,10 @@
         "sideBySideReview": {
           "title": "双栏差异审阅",
           "summary": "使用同步虚拟网格、差异导航和滚动条标记核对新增、删除、修改与冲突。"
+        },
+        "desktopEditing": {
+          "title": "键盘与系统工具协作",
+          "summary": "将所选行列固定在上方或左侧，在设置中调整 UI 字体和表格缩放，用方向键浏览、直接输入编辑，并通过系统剪贴板或默认表格工具继续处理。"
         },
         "columnAlignment": {
           "title": "插入列自动对齐",
@@ -252,7 +260,7 @@
       "seo": {
         "home": {
           "title": "SheetProof · 表鉴 — 审阅并应用 Git 中的 XLSX 修改",
-          "description": "比较 .xlsx 工作簿与 Git 版本，按主键对齐记录，并在本机应用确认的单元格或整行。"
+          "description": "比较 .xlsx 工作簿与 Git 版本，按主键对齐记录，并在本机应用确认的单元格、整行或整列。"
         },
         "features": {
           "title": "功能",
@@ -268,7 +276,7 @@
         },
         "changelog": {
           "title": "更新日志",
-          "description": "SheetProof 0.1.0 至 0.7.0 的用户可见变化。"
+          "description": "SheetProof 0.1.0 至 0.8.0 的用户可见变化。"
         }
       }
     },
@@ -278,7 +286,7 @@
         "displayName": "SheetProof（シートプルーフ）",
         "slogan": "Git 上の XLSX 変更をレビュー。",
         "tagline": "Git 上の XLSX 変更を確認し、必要な項目だけを反映。",
-        "description": "SheetProof は Git ワークツリーの .xlsx と検証済みの Git リビジョンを比較し、レコードをキーで揃え、確認したセルまたは行を編集可能な左側へ反映します。",
+        "description": "SheetProof は Git ワークツリーの .xlsx と検証済みの Git リビジョンを比較し、レコードをキーで揃え、確認したセル、行、列を編集可能な左側へ反映します。",
         "channel": "プレビュー"
       },
       "features": {
@@ -289,6 +297,10 @@
         "sideBySideReview": {
           "title": "2 ペイン差分レビュー",
           "summary": "同期した仮想グリッド、差分移動、スクロールバーの印で追加・削除・変更・競合を確認します。"
+        },
+        "desktopEditing": {
+          "title": "キーボードとシステムツールの連携",
+          "summary": "選択した行や列を上部または左側に固定し、設定で UI の文字サイズとワークシートのズームを調整して、キーボード操作、システムクリップボード、既定の表計算アプリを利用できます。"
         },
         "columnAlignment": {
           "title": "挿入列の自動対応付け",
@@ -362,7 +374,7 @@
       "seo": {
         "home": {
           "title": "SheetProof — Git 上の XLSX 変更を確認して反映",
-          "description": ".xlsx と Git リビジョンを比較し、レコードをキーで揃え、確認したセルや行だけをローカルで反映します。"
+          "description": ".xlsx と Git リビジョンを比較し、レコードをキーで揃え、確認したセル、行、列だけをローカルで反映します。"
         },
         "features": {
           "title": "機能",
@@ -378,7 +390,7 @@
         },
         "changelog": {
           "title": "変更履歴",
-          "description": "SheetProof 0.1.0 から 0.7.0 までのユーザー向け変更履歴。"
+          "description": "SheetProof 0.1.0 から 0.8.0 までのユーザー向け変更履歴。"
         }
       }
     }
@@ -478,6 +490,23 @@
   "changelog": {
     "releases": [
       {
+        "version": "0.8.0",
+        "date": "2026-09-03",
+        "channel": "preview",
+        "changes": [
+          "frozenPanes",
+          "localChangeDirection",
+          "keyboardEditing",
+          "clipboardEditing",
+          "externalWorkbookOpen",
+          "cellNavigation",
+          "uiFontScaling",
+          "stableWorksheetZoom",
+          "diagnosticLogging",
+          "backgroundIndexStability"
+        ]
+      },
+      {
         "version": "0.7.0",
         "date": "2026-08-13",
         "channel": "preview",
@@ -573,6 +602,22 @@
     ],
     "locales": {
       "en": {
+        "0.8.0": {
+          "title": "Faster worksheet navigation and editing",
+          "summary": "Frozen headers, keyboard editing, system clipboard actions, and external open commands now fit everyday configuration review.",
+          "changes": {
+            "frozenPanes": "Right-click selected row or column headers to pin any rows at the top or columns at the left. Only the selected items are pinned, so intervening rows and columns remain in the normal grid. Sheets with a detected record key pin the first row by default, and each workbook-and-sheet setting is restored when reopened.",
+            "localChangeDirection": "Added and deleted rows now describe the editable local workbook relative to the read-only comparison source: local-only rows are added and comparison-only rows are locally deleted.",
+            "keyboardEditing": "Typing starts an edit in the selected editable left cell; double-click, Enter, and F2 remain available. The read-only right grid never accepts editing input.",
+            "clipboardEditing": "Copy selections from either side to the system clipboard. The editable left grid supports Ctrl/Command+V paste and Ctrl/Command+X cut, with each batch recorded as one undo step.",
+            "externalWorkbookOpen": "Open the current editable workbook in the system default spreadsheet app from the toolbar. Repository file menus can also open it or reveal it in Windows File Explorer and macOS Finder.",
+            "cellNavigation": "Use the arrow keys to move the active grid cell; hold Shift with an arrow key to extend the selection.",
+            "uiFontScaling": "Settings now provides global UI font sizing from 85% to 125% and per-workbook-and-sheet worksheet zoom from 70% to 180%. Both apply immediately and persist. The toolbar zoom button is gone, while Ctrl/Command + mouse wheel remains available over the grid.",
+            "stableWorksheetZoom": "Switching between Settings and mouse-wheel worksheet zoom is now stable, and continuous zooming stays responsive without unnecessary reloads.",
+            "diagnosticLogging": "Local rolling diagnostic logs now help identify unexpected exits without recording workbook paths, worksheet names, or cell contents.",
+            "backgroundIndexStability": "Fixed an unexpected exit that could occur while a repository index was built in the background. XLSX files that Excel or WPS can open despite unusual internal cell order are now read without changing the source, and other parse failures remain isolated to the affected index."
+          }
+        },
         "0.7.0": {
           "title": "Column-aware comparison and merging",
           "summary": "Inserted columns no longer shift every later comparison, and complete columns can be selected and applied.",
@@ -607,7 +652,7 @@
           "title": "English, Simplified Chinese, and Japanese throughout",
           "summary": "The desktop app, CLI, documentation, and website now share a complete three-language experience, with persistent language choice and localized product examples.",
           "changes": {
-            "localizedDesktop": "The desktop interface, settings, native confirmations, difference states, merge actions, and generated demonstration workbooks are available in English, Simplified Chinese, and Japanese.",
+            "localizedDesktop": "The desktop interface, settings, native confirmations, difference states, merge actions, and localized demonstration workbooks are available in English, Simplified Chinese, and Japanese.",
             "localizedCli": "CLI help, status text, and errors follow --lang en|zh-CN|ja, while JSON keys and enum values remain stable for automation.",
             "localizedWebsite": "The website, README, changelog, SEO metadata, navigation, and product screenshots now have matching English, Simplified Chinese, and Japanese versions.",
             "languagePersistence": "Language choice persists across restarts. An explicit --lang affects only that launch, and Follow system can return to operating-system detection.",
@@ -660,6 +705,22 @@
         }
       },
       "zh-CN": {
+        "0.8.0": {
+          "title": "更顺手的表格浏览与编辑",
+          "summary": "固定表头、键盘编辑、系统剪贴板与外部打开现在可直接用于日常配表核对。",
+          "changes": {
+            "frozenPanes": "在所选行头或列头右键，可将任意多行固定在上方、任意多列固定在左侧；只固定明确选中的行列，中间未选项继续留在普通表格中。识别到主键列的配表 Sheet 默认固定首行，状态按工作簿路径和 Sheet 保存，下次打开继续沿用。",
+            "localChangeDirection": "新增和删除改为以左侧本地工作簿相对右侧对比来源为准：本地独有行显示为新增，远端独有行显示为本地删除。",
+            "keyboardEditing": "选中可编辑的左侧单元格后可直接输入开始编辑，也可继续使用双击、Enter 或 F2；只读右侧不接收编辑输入。",
+            "clipboardEditing": "左右选区均可复制到系统剪贴板；可编辑左侧支持 Ctrl/Command+V 粘贴和 Ctrl/Command+X 剪切，批量写入或清空只占一次撤销。",
+            "externalWorkbookOpen": "工具栏可用系统默认表格工具打开当前可编辑工作簿；仓库文件右键菜单还可直接打开，或在 Windows 文件管理器和 macOS 访达中显示。",
+            "cellNavigation": "网格获得焦点后可用上下左右方向键移动活动单元格，Shift 加方向键可扩展选区。",
+            "uiFontScaling": "设置中可将全局 UI 字体调整为 85%～125%，也可将当前工作簿与 Sheet 的表格缩放调整为 70%～180%；两项均立即生效并持久化。工具栏不再显示表格缩放按钮，网格上的 Ctrl/Command + 鼠标滚轮仍可使用。",
+            "stableWorksheetZoom": "在设置和主界面滚轮之间切换表格缩放时不再异常退出，连续缩放也保持稳定流畅。",
+            "diagnosticLogging": "新增本地轮转诊断日志，便于定位异常退出；日志不记录工作簿路径、Sheet 名或单元格内容。",
+            "backgroundIndexStability": "修复打开仓库后可能在后台索引期间无操作闪退的问题。内部单元格顺序特殊但 Excel 或 WPS 可以打开的 XLSX 现在也能读取，且不会修改源文件；其他解析异常只会影响对应索引，不再结束整个应用。"
+          }
+        },
         "0.7.0": {
           "title": "按列语义对比与合并",
           "summary": "中间插列不再使后续列整体错位，并可选中整列后一次应用。",
@@ -694,7 +755,7 @@
           "title": "桌面、命令行与官网完整支持中英日三语",
           "summary": "桌面应用、CLI、文档和官网现提供一致的英语、简体中文和日语体验，并支持语言持久化与本地化产品示例。",
           "changes": {
-            "localizedDesktop": "桌面界面、设置、原生确认、差异状态、合并操作和生成式演示工作簿均支持英语、简体中文和日语。",
+            "localizedDesktop": "桌面界面、设置、原生确认、差异状态、合并操作和本地化演示工作簿均支持英语、简体中文和日语。",
             "localizedCli": "CLI 帮助、状态文本和错误遵循 --lang en|zh-CN|ja；JSON 字段与枚举值保持稳定，便于自动化使用。",
             "localizedWebsite": "官网、README、更新日志、SEO 元数据、导航和产品截图现提供彼此对应的英语、简体中文和日语版本。",
             "languagePersistence": "语言选择会跨重启保留；显式 --lang 只覆盖本次启动，“跟随系统”可恢复操作系统语言探测。",
@@ -747,6 +808,22 @@
         }
       },
       "ja": {
+        "0.8.0": {
+          "title": "シートの移動と編集をよりスムーズに",
+          "summary": "見出し固定、キーボード編集、システムクリップボード、外部アプリで開く操作に対応しました。",
+          "changes": {
+            "frozenPanes": "選択した行見出しまたは列見出しを右クリックすると、任意の行を上部、任意の列を左側に固定できます。明示的に選択した項目だけを固定するため、間の未選択行・列は通常のグリッドに残ります。レコードキーを検出した設定シートでは先頭行を既定で固定し、ブックとシートごとの状態を次回も復元します。",
+            "localChangeDirection": "追加・削除は、読み取り専用の比較元に対する編集可能なローカルブックの状態を示します。ローカルだけの行は追加、比較元だけの行はローカルでの削除です。",
+            "keyboardEditing": "編集可能な左セルを選んで入力すると編集を開始します。ダブルクリック、Enter、F2 も利用でき、読み取り専用の右グリッドでは編集を開始しません。",
+            "clipboardEditing": "左右どちらの選択範囲もシステムクリップボードへコピーできます。編集可能な左側では Ctrl/Command+V の貼り付けと Ctrl/Command+X の切り取りに対応し、一括操作は 1 回で元に戻せます。",
+            "externalWorkbookOpen": "ツールバーから現在の編集可能なブックを既定の表計算アプリで開けます。リポジトリのファイルメニューから開くほか、Windows のエクスプローラーまたは macOS の Finder に表示できます。",
+            "cellNavigation": "矢印キーでアクティブセルを移動し、Shift と矢印キーで選択範囲を広げられます。",
+            "uiFontScaling": "設定でグローバルな UI の文字サイズを 85%～125%、現在のブックとシートのズームを 70%～180% に調整できます。どちらもすぐ反映されて保存されます。ツールバーのズームボタンは削除されましたが、グリッド上の Ctrl/Command + マウスホイールは引き続き利用できます。",
+            "stableWorksheetZoom": "設定とメイングリッドのホイール操作を切り替えてもシートのズームが安定し、連続操作も滑らかに行えるようになりました。",
+            "diagnosticLogging": "予期しない終了の調査に役立つ容量制限付きローカル診断ログを追加しました。ブックのパス、シート名、セル内容は記録しません。",
+            "backgroundIndexStability": "リポジトリのバックグラウンド索引中に予期せず終了する問題を修正しました。内部のセル順序が特殊でも Excel または WPS で開ける XLSX を元ファイルを変更せず読み取れるようになり、その他の解析エラーも該当する索引だけに限定されます。"
+          }
+        },
         "0.7.0": {
           "title": "列を対応付けた比較と反映",
           "summary": "途中に列を挿入しても後続列がずれず、列全体を選んで反映できます。",
@@ -781,7 +858,7 @@
           "title": "デスクトップ、CLI、Web サイトを英語・簡体字中国語・日本語に対応",
           "summary": "デスクトップアプリ、CLI、ドキュメント、Web サイトで一貫した 3 言語表示を提供し、言語設定の保存とローカライズ済みの製品例に対応しました。",
           "changes": {
-            "localizedDesktop": "デスクトップ画面、設定、ネイティブ確認、差分状態、反映操作、生成デモブックを英語・簡体字中国語・日本語で利用できます。",
+            "localizedDesktop": "デスクトップ画面、設定、ネイティブ確認、差分状態、反映操作、ローカライズ済みデモブックを英語・簡体字中国語・日本語で利用できます。",
             "localizedCli": "CLI のヘルプ、状態表示、エラーは --lang en|zh-CN|ja に従い、JSON のキーと列挙値は自動化向けに変わりません。",
             "localizedWebsite": "Web サイト、README、変更履歴、SEO メタデータ、ナビゲーション、製品画像に対応する英語・簡体字中国語・日本語版を用意しました。",
             "languagePersistence": "選択した言語は再起動後も保持されます。明示的な --lang はその起動だけを上書きし、「システムに従う」で OS の言語検出へ戻せます。",

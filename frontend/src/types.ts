@@ -192,6 +192,7 @@ export interface BootstrapState {
   loading: boolean;
   hasSession: boolean;
   error: string;
+  platform?: string;
   mode?: "" | "files" | "repository";
   repository?: RepositoryView;
 }

@@ -5,10 +5,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -114,12 +116,66 @@ func (Reader) OpenContext(ctx context.Context, path string) (*excelize.File, *Wo
 	if err != nil {
 		return nil, nil, workbookOpenError(abs, err)
 	}
-	snapshot, err := snapshotContext(ctx, f, abs, id)
-	if err != nil {
-		_ = f.Close()
+	snapshot, err := guardedSnapshotContext(ctx, f, abs, id)
+	if err == nil {
+		return f, snapshot, nil
+	}
+	_ = f.Close()
+	var parserPanic *spreadsheetParserPanic
+	if !errors.As(err, &parserPanic) {
 		return nil, nil, err
 	}
-	return f, snapshot, nil
+
+	repaired, reorderedRows, repairErr := openCellOrderRepairedWorkbook(ctx, abs)
+	if repairErr != nil {
+		if contextErr := contextError(ctx); contextErr != nil {
+			return nil, nil, contextErr
+		}
+		return nil, nil, &Error{Code: ErrCorrupt, Path: abs, Err: fmt.Errorf("%v; cell-order repair failed: %w", err, repairErr)}
+	}
+	if reorderedRows == 0 {
+		return nil, nil, &Error{Code: ErrCorrupt, Path: abs, Err: err}
+	}
+	snapshot, retryErr := guardedSnapshotContext(ctx, repaired, abs, id)
+	if retryErr != nil {
+		_ = repaired.Close()
+		if contextErr := contextError(ctx); contextErr != nil {
+			return nil, nil, contextErr
+		}
+		return nil, nil, &Error{Code: ErrCorrupt, Path: abs, Err: fmt.Errorf("cell-order repair retry failed: %w", retryErr)}
+	}
+	return repaired, snapshot, nil
+}
+
+type spreadsheetParserPanic struct {
+	kind    string
+	message string
+}
+
+func (e *spreadsheetParserPanic) Error() string {
+	if e.message == "" {
+		return "spreadsheet parser panic: " + e.kind
+	}
+	return "spreadsheet parser panic: " + e.kind + ": " + e.message
+}
+
+func guardedSnapshotContext(
+	ctx context.Context,
+	file *excelize.File,
+	path string,
+	id FileIdentity,
+) (snapshot *WorkbookSnapshot, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicError := &spreadsheetParserPanic{kind: fmt.Sprintf("%T", recovered)}
+			if runtimeError, ok := recovered.(runtime.Error); ok {
+				panicError.message = runtimeError.Error()
+			}
+			snapshot = nil
+			err = panicError
+		}
+	}()
+	return snapshotContext(ctx, file, path, id)
 }
 
 func workbookOpenError(path string, cause error) error {

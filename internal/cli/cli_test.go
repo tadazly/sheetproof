@@ -71,6 +71,7 @@ func TestDiffJSONUsesSameUniqueIDAlignmentAsDesktop(t *testing.T) {
 		DifferenceCount int `json:"differenceCount"`
 		Sheets          []struct {
 			AddedRowCount    int `json:"addedRowCount"`
+			DeletedRowCount  int `json:"deletedRowCount"`
 			ModifiedRowCount int `json:"modifiedRowCount"`
 		} `json:"sheets"`
 	}
@@ -78,7 +79,8 @@ func TestDiffJSONUsesSameUniqueIDAlignmentAsDesktop(t *testing.T) {
 		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
 	}
 	if result.DifferenceCount != 2 || len(result.Sheets) != 1 ||
-		result.Sheets[0].AddedRowCount != 1 || result.Sheets[0].ModifiedRowCount != 0 {
+		result.Sheets[0].DeletedRowCount != 1 || result.Sheets[0].AddedRowCount != 0 ||
+		result.Sheets[0].ModifiedRowCount != 0 {
 		t.Fatalf("ID-aligned CLI result = %+v", result)
 	}
 }

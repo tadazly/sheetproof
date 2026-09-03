@@ -6,7 +6,7 @@
 
 > Git 工作流中的 XLSX 差异审阅工具。
 
-SheetProof 比较 Git 工作区中的 .xlsx 与经过校验的 Git 版本，按主键对齐记录，并将确认的单元格或整行应用到可编辑左侧。
+SheetProof 比较 Git 工作区中的 .xlsx 与经过校验的 Git 版本，按主键对齐记录，并将确认的单元格、整行或整列应用到可编辑左侧。
 
 适合需要审阅版本化配置表的开发者和内容团队。文件只在本机处理，也不依赖 Excel。
 
@@ -26,6 +26,7 @@ SheetProof 会识别双方共同的 `id` 表头，或唯一且无歧义的 `*ID`
 
 - **理解工作簿语义的对比**: 比较工作表、值、公式、显式空值和类型；显示格式不参与相等判断。
 - **双栏差异审阅**: 使用同步虚拟网格、差异导航和滚动条标记核对新增、删除、修改与冲突。
+- **键盘与系统工具协作**: 将所选行列固定在上方或左侧，在设置中调整 UI 字体和表格缩放，用方向键浏览、直接输入编辑，并通过系统剪贴板或默认表格工具继续处理。
 - **插入列自动对齐**: 按可靠且唯一的文本表头对齐双方共有列，使单侧插入列保持为局部差异，不再带偏后续列。
 - **当前工作表行筛选**: 组合筛选新增、删除、修改和冲突，同时保留正在核对的来源行。
 - **当前工作表查找**: 左右独立搜索，支持大小写、Unicode 全词和 RE2 正则选项，并可限定在当前差异行筛选范围内。
@@ -38,12 +39,12 @@ SheetProof 会识别双方共同的 `id` 表头，或唯一且无歧义的 `*ID`
 
 ## 下载
 
-**0.7.0 预览版**
+**0.8.0 预览版**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.7.0/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.7.0.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.0.zip)
 
 ## Windows 与 macOS 首次打开
 

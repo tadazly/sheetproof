@@ -4,12 +4,13 @@
     "displayName": "SheetProof",
     "slogan": "Review XLSX changes in Git.",
     "tagline": "Review and apply XLSX changes in Git.",
-    "description": "SheetProof compares .xlsx workbooks in a Git worktree with validated Git revisions, aligns records by key, and applies approved changes to the editable left workbook.",
+    "description": "SheetProof compares .xlsx workbooks in a Git worktree with validated Git revisions, aligns records by key, and applies approved cells, rows, or columns to the editable left workbook.",
     "channel": "Preview"
   },
   "features": {
     "workbookComparison": { "title": "Workbook-aware comparison", "summary": "Compare worksheets, values, formulas, explicit blanks, and types. Display formatting does not determine whether cells are equal." },
     "sideBySideReview": { "title": "Side-by-side review", "summary": "Use synchronized virtual grids, focused navigation, and scrollbar markers for added, deleted, modified, and conflicting data." },
+    "desktopEditing": { "title": "Keyboard and system-tool workflow", "summary": "Pin selected rows or columns, adjust UI text and worksheet zoom in Settings, navigate and edit by keyboard, then use the system clipboard or default spreadsheet app when needed." },
     "columnAlignment": { "title": "Inserted-column alignment", "summary": "Align reliable unique text headers before comparison, keeping one-sided inserted columns local instead of shifting every later column." },
     "rowFilters": { "title": "Current-sheet row filters", "summary": "Combine added, deleted, modified, and conflict filters without losing the source row being reviewed." },
     "currentSheetFind": { "title": "Find in the current worksheet", "summary": "Search the left and right sides independently with case, Unicode whole-word, and RE2 regular-expression options, including within filtered rows." },
@@ -32,10 +33,10 @@
     "mergeResult": { "alt": "SheetProof after merging one HP value to the left", "caption": "After the approved HP value is copied left, that cell is equal while every other difference remains." }
   },
   "seo": {
-    "home": { "title": "SheetProof — Review and apply XLSX changes in Git", "description": "Compare .xlsx workbooks with Git revisions, align records by key, and apply approved cells or rows locally." },
+    "home": { "title": "SheetProof — Review and apply XLSX changes in Git", "description": "Compare .xlsx workbooks with Git revisions, align records by key, and apply approved cells, rows, or columns locally." },
       "features": { "title": "Features", "description": "Workbook-aware Git comparison, key alignment, selective application, undo, and safe local saving." },
     "guide": { "title": "Guide", "description": "Open files or repositories, review differences, configure UGit, and save SheetProof results safely." },
     "download": { "title": "Download", "description": "Download the unsigned SheetProof preview for Windows amd64 or macOS universal and verify SHA-256." },
-    "changelog": { "title": "Changelog", "description": "User-visible changes in SheetProof 0.1.0 through 0.7.0." }
+    "changelog": { "title": "Changelog", "description": "User-visible changes in SheetProof 0.1.0 through 0.8.0." }
   }
 }

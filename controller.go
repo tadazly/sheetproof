@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"slices"
 	"strings"
 	"sync"
 
 	coreapp "github.com/tadazly/sheetproof/internal/app"
+	"github.com/tadazly/sheetproof/internal/diagnostics"
 	"github.com/tadazly/sheetproof/internal/diff"
+	"github.com/tadazly/sheetproof/internal/fileopener"
 	"github.com/tadazly/sheetproof/internal/localization"
 	"github.com/tadazly/sheetproof/internal/preferences"
 	"github.com/tadazly/sheetproof/internal/repository"
@@ -85,6 +88,11 @@ type Controller struct {
 	shuttingDown              bool
 	switchPrompt              func() (string, error)
 	dialog                    func(context.Context, runtime.MessageDialogOptions) (string, error)
+	clipboardRead             func(context.Context) (string, error)
+	clipboardWrite            func(context.Context, string) error
+	openWorkbook              func(string) error
+	revealWorkbook            func(string) error
+	diagnosticLog             *diagnostics.Logger
 }
 
 func NewController(left, right string, options coreapp.Options) *Controller {
@@ -100,6 +108,8 @@ func newControllerWithPreferences(left, right string, options coreapp.Options, p
 	return &Controller{
 		left: left, right: right, options: options,
 		prefs: prefs, dialog: showChoiceDialog,
+		clipboardRead: runtime.ClipboardGetText, clipboardWrite: runtime.ClipboardSetText,
+		openWorkbook: fileopener.OpenDefault, revealWorkbook: fileopener.Reveal,
 	}
 }
 
@@ -111,6 +121,9 @@ func (c *Controller) ask(ctx context.Context, options runtime.MessageDialogOptio
 }
 
 func (c *Controller) startup(ctx context.Context) {
+	if c.diagnosticLog != nil {
+		c.diagnosticLog.Record("app.lifecycle.startup", nil)
+	}
 	c.mu.Lock()
 	c.ctx = ctx
 	repositoryPath := c.options.RepositoryPath
@@ -185,6 +198,7 @@ type BootstrapState struct {
 	HasSession bool            `json:"hasSession"`
 	Error      string          `json:"error"`
 	Mode       string          `json:"mode"`
+	Platform   string          `json:"platform"`
 	Repository *RepositoryView `json:"repository,omitempty"`
 }
 
@@ -247,6 +261,7 @@ func (c *Controller) clearStoredApplicationData(all bool) error {
 		c.differenceIndexCancel = nil
 	}
 	c.repositoryView.DifferenceIndexing = false
+	diagnosticLog := c.diagnosticLog
 	c.prefsMu.Lock()
 	var err error
 	if all {
@@ -256,6 +271,10 @@ func (c *Controller) clearStoredApplicationData(all bool) error {
 	}
 	c.prefsMu.Unlock()
 	c.mu.Unlock()
+	if all && err == nil && diagnosticLog != nil {
+		diagnosticLog.Clear()
+		diagnosticLog.Record("diagnostics.cleared", nil)
+	}
 	return err
 }
 
@@ -270,6 +289,7 @@ func (c *Controller) Bootstrap() BootstrapState {
 	defer c.mu.Unlock()
 	state := BootstrapState{
 		Loading: c.loading, HasSession: c.session != nil, Error: c.loadErr, Mode: c.mode,
+		Platform: goruntime.GOOS,
 	}
 	if c.repo != nil {
 		view := cloneRepositoryView(c.repositoryView)
@@ -370,6 +390,9 @@ func ugitConfigurationContext(inspection ugit.Inspection, locale string) string 
 }
 
 func (c *Controller) shutdown(_ context.Context) {
+	if c.diagnosticLog != nil {
+		c.diagnosticLog.Record("app.lifecycle.shutdown.start", nil)
+	}
 	c.mu.Lock()
 	c.shuttingDown = true
 	c.differenceIndexGeneration++
@@ -388,13 +411,20 @@ func (c *Controller) shutdown(_ context.Context) {
 		_ = session.Close()
 	}
 	removeTemporary(temp)
+	if c.diagnosticLog != nil {
+		c.diagnosticLog.Record("app.lifecycle.shutdown.finish", nil)
+	}
 }
 
 func (c *Controller) beforeClose(ctx context.Context) bool {
 	c.mu.Lock()
 	session := c.session
 	c.mu.Unlock()
-	if session == nil || !session.Dirty() {
+	dirty := session != nil && session.Dirty()
+	if c.diagnosticLog != nil {
+		c.diagnosticLog.Record("app.lifecycle.before-close", map[string]any{"dirty": dirty})
+	}
+	if !dirty {
 		return false
 	}
 	locale := c.options.Locale
@@ -1234,6 +1264,14 @@ func (c *Controller) Region(sheet string, fromRow, rowCount, fromCol, colCount i
 	return session.Region(sheet, fromRow, rowCount, fromCol, colCount)
 }
 
+func (c *Controller) PinnedRegion(sheet string, rows, columns []int) (coreapp.Region, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Region{}, err
+	}
+	return session.PinnedRegion(sheet, rows, columns)
+}
+
 func (c *Controller) FilteredRegion(
 	sheet string,
 	statuses []diff.RowStatus,
@@ -1289,6 +1327,125 @@ func (c *Controller) Differences(sheet string, offset, limit int) (any, error) {
 		return nil, err
 	}
 	return session.Differences(sheet, offset, limit)
+}
+
+func (c *Controller) CopySelectionToClipboard(
+	sheet, side string,
+	startRow, endRow, startCol, endCol int,
+	rows []int,
+) error {
+	session, err := c.getSession()
+	if err != nil {
+		return err
+	}
+	text, err := session.ClipboardText(sheet, side, startRow, endRow, startCol, endCol, rows)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	ctx, write := c.ctx, c.clipboardWrite
+	c.mu.Unlock()
+	if write == nil {
+		return errors.New("clipboard is unavailable")
+	}
+	return write(ctx, text)
+}
+
+func (c *Controller) PasteClipboard(sheet string, row, col int) (coreapp.Summary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	c.mu.Lock()
+	ctx, read := c.ctx, c.clipboardRead
+	c.mu.Unlock()
+	if read == nil {
+		return coreapp.Summary{}, errors.New("clipboard is unavailable")
+	}
+	text, err := read(ctx)
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	if err := session.PasteLeftText(sheet, row, col, text); err != nil {
+		return coreapp.Summary{}, err
+	}
+	return session.Summary(), nil
+}
+
+func (c *Controller) CutSelectionToClipboard(
+	sheet string,
+	startRow, endRow, startCol, endCol int,
+	rows, clearRows []int,
+) (coreapp.Summary, error) {
+	session, err := c.getSession()
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	text, err := session.ClipboardText(sheet, "left", startRow, endRow, startCol, endCol, rows)
+	if err != nil {
+		return coreapp.Summary{}, err
+	}
+	c.mu.Lock()
+	ctx, write := c.ctx, c.clipboardWrite
+	c.mu.Unlock()
+	if write == nil {
+		return coreapp.Summary{}, errors.New("clipboard is unavailable")
+	}
+	if err := write(ctx, text); err != nil {
+		return coreapp.Summary{}, err
+	}
+	if err := session.ClearLeftSelection(sheet, startRow, endRow, startCol, endCol, clearRows); err != nil {
+		return coreapp.Summary{}, err
+	}
+	return session.Summary(), nil
+}
+
+func (c *Controller) OpenWorkbook(relative string) error {
+	path, err := c.workbookPath(relative)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	open := c.openWorkbook
+	c.mu.Unlock()
+	if open == nil {
+		return errors.New("default workbook application is unavailable")
+	}
+	return open(path)
+}
+
+func (c *Controller) RevealWorkbook(relative string) error {
+	path, err := c.workbookPath(relative)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	reveal := c.revealWorkbook
+	c.mu.Unlock()
+	if reveal == nil {
+		return errors.New("file manager is unavailable")
+	}
+	return reveal(path)
+}
+
+func (c *Controller) workbookPath(relative string) (string, error) {
+	c.mu.Lock()
+	repo, session := c.repo, c.session
+	c.mu.Unlock()
+	if relative != "" {
+		if repo == nil {
+			return "", errors.New("repository is not open")
+		}
+		return repo.ResolveRelativePath(relative)
+	}
+	if session == nil {
+		return "", errors.New("no workbook is open")
+	}
+	path := session.Summary().Diff.LeftFile
+	if path == "" {
+		return "", errors.New("no editable workbook is open")
+	}
+	return path, nil
 }
 
 func (c *Controller) CopyRightToLeft(sheet string, row, col int) (coreapp.Summary, error) {
@@ -1814,6 +1971,7 @@ func (c *Controller) startRepositoryDifferenceIndex(
 	c.differenceIndexGeneration++
 	generation := c.differenceIndexGeneration
 	locale := c.options.Locale
+	diagnosticLog := c.diagnosticLog
 	c.repositoryView.DifferenceFiles = []string{}
 	c.repositoryView.DifferenceIndexing = true
 	c.wg.Add(1)
@@ -1823,7 +1981,16 @@ func (c *Controller) startRepositoryDifferenceIndex(
 			cancel()
 			c.wg.Done()
 		}()
-		result, skipped, err := exactRepositoryDifferenceFiles(indexContext, repo, branch, files, locale)
+		result, skipped, err := runRepositoryDifferenceIndexSafely(diagnosticLog, func() ([]string, []string, error) {
+			return exactRepositoryDifferenceFiles(indexContext, repo, branch, files, locale)
+		})
+		var panicError *repositoryDifferenceIndexPanic
+		if errors.As(err, &panicError) {
+			err = errors.New(uiText(locale,
+				"An unexpected internal error occurred while reading a workbook for the changed-workbook list.",
+				"读取工作簿以建立差异表索引时发生内部错误。",
+				"差分のあるブック一覧の作成中に、ブックの読み取りで内部エラーが発生しました。"))
+		}
 		cacheWarning := ""
 		if err == nil {
 			currentSignature, signatureErr := repo.DifferenceIndexSignatureContext(indexContext, branch, files)
@@ -1890,6 +2057,29 @@ func (c *Controller) startRepositoryDifferenceIndex(
 			)
 		}
 	}()
+}
+
+type repositoryDifferenceIndexPanic struct {
+	kind string
+}
+
+func (e *repositoryDifferenceIndexPanic) Error() string {
+	return "repository difference index panic: " + e.kind
+}
+
+func runRepositoryDifferenceIndexSafely(
+	diagnosticLog *diagnostics.Logger,
+	task func() ([]string, []string, error),
+) (result, skipped []string, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			recordPanic(diagnosticLog, "repository.difference-index.panic", recovered)
+			result = nil
+			skipped = nil
+			err = &repositoryDifferenceIndexPanic{kind: fmt.Sprintf("%T", recovered)}
+		}
+	}()
+	return task()
 }
 
 func exactRepositoryDifferenceFiles(

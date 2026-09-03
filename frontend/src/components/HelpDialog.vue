@@ -27,6 +27,7 @@ const shortcutGroups = [
       ["help.diffFilters", ["1–4"]],
       ["help.allDiffFilters", ["5"]],
       ["help.selectWorksheet", ["Ctrl / ⌘", "A"]],
+      ["help.navigateCells", ["Arrow keys"]],
       ["help.previewOriginal", ["Tab"]],
       ["help.zoom", ["Ctrl / ⌘", "Mouse wheel"]]
     ]
@@ -35,7 +36,10 @@ const shortcutGroups = [
     title: "help.editAndSave",
     items: [
       ["help.clearSelection", ["Backspace / Delete"]],
-      ["help.editCell", ["Double-click"]],
+      ["help.editCell", ["Type / Double-click / F2"]],
+      ["help.copyCells", ["Ctrl / ⌘", "C"]],
+      ["help.pasteCells", ["Ctrl / ⌘", "V"]],
+      ["help.cutCells", ["Ctrl / ⌘", "X"]],
       ["help.commitEdit", ["Enter"]],
       ["help.cancelEdit", ["Esc"]],
       ["help.undo", ["Ctrl / ⌘", "Z"]],

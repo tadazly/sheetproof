@@ -169,8 +169,8 @@ func TestCompareClassifiesAddedDeletedModifiedAndConflictRows(t *testing.T) {
 	want := []RowDiff{
 		{Row: 2, ID: "1", Status: RowConflict},
 		{Row: 3, ID: "2", Status: RowModified},
-		{Row: 4, ID: "3", Status: RowAdded},
-		{Row: 5, ID: "4", Status: RowDeleted},
+		{Row: 4, ID: "3", Status: RowDeleted},
+		{Row: 5, ID: "4", Status: RowAdded},
 	}
 	if len(data.Rows) != len(want) {
 		t.Fatalf("rows = %+v", data.Rows)
@@ -184,6 +184,26 @@ func TestCompareClassifiesAddedDeletedModifiedAndConflictRows(t *testing.T) {
 		if item.Ref.Row == 2 && item.RowStatus != RowConflict {
 			t.Fatalf("conflict cell row status = %s", item.RowStatus)
 		}
+	}
+}
+
+func TestCompareClassifiesLeftOnlyLocalRecordAsAdded(t *testing.T) {
+	left := book("local.xlsx", sheet("配置", 0, map[workbook.CellKey]workbook.CellValue{
+		{Row: 1, Col: 1}: value("id", "string"),
+		{Row: 2, Col: 1}: value("1", "number"),
+		{Row: 3, Col: 1}: value("2", "number"),
+	}))
+	right := book("remote.xlsx", sheet("配置", 0, map[workbook.CellKey]workbook.CellValue{
+		{Row: 1, Col: 1}: value("id", "string"),
+		{Row: 2, Col: 1}: value("1", "number"),
+	}))
+
+	data := Compare(left, right).Sheets[0]
+	if data.AddedRowCount != 1 || data.DeletedRowCount != 0 || len(data.Rows) != 1 {
+		t.Fatalf("local-only row summary = %+v", data)
+	}
+	if data.Rows[0].Row != 3 || data.Rows[0].Status != RowAdded {
+		t.Fatalf("local-only row = %+v, want added row 3", data.Rows[0])
 	}
 }
 

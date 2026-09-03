@@ -169,6 +169,7 @@ describe("App", () => {
     const clearAllData = vi.fn(async () => undefined);
     window.localStorage.setItem("sheetproof:repository-search-history:repo", "[]");
     window.localStorage.setItem("sheetproof:sheet-layout:v1:file:sheet", "{}");
+    window.localStorage.setItem("sheetproof:ui-font-scale:v1", "1.2");
     window.localStorage.setItem("unrelated", "keep");
     window.go = {
       main: {
@@ -202,8 +203,65 @@ describe("App", () => {
     expect(clearAllData).toHaveBeenCalledOnce();
     expect(window.localStorage.getItem("sheetproof:repository-search-history:repo")).toBeNull();
     expect(window.localStorage.getItem("sheetproof:sheet-layout:v1:file:sheet")).toBeNull();
+    expect(window.localStorage.getItem("sheetproof:ui-font-scale:v1")).toBeNull();
     expect(window.localStorage.getItem("unrelated")).toBe("keep");
+    expect(wrapper.get(".app-shell").attributes("style")).toContain("--ui-font-scale: 1");
     expect(wrapper.get(".settings-result").text()).toContain("下次启动时不会自动打开仓库");
+  });
+
+  it("adjusts UI font size immediately and restores it on the next launch", async () => {
+    window.localStorage.setItem("sheetproof:ui-font-scale:v1", "1.15");
+    let wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.get(".app-shell").attributes("style")).toContain("--ui-font-scale: 1.15");
+    await wrapper.get('button[aria-label="设置"]').trigger("click");
+    const slider = wrapper.get('input[aria-label="UI 字体大小"]');
+    expect((slider.element as HTMLInputElement).value).toBe("115");
+    await slider.setValue("125");
+    expect(window.localStorage.getItem("sheetproof:ui-font-scale:v1")).toBe("1.25");
+    expect(wrapper.get(".app-shell").attributes("style")).toContain("--ui-font-scale: 1.25");
+
+    wrapper.unmount();
+    wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.get(".app-shell").attributes("style")).toContain("--ui-font-scale: 1.25");
+  });
+
+  it("keeps unsent diagnostics in a bounded browser ring and uploads them on the next launch", async () => {
+    vi.useFakeTimers();
+    const failingDiagnostics = vi.fn(async () => { throw new Error("bridge unavailable"); });
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: false, error: "" }),
+          RecordDiagnostics: failingDiagnostics
+        }
+      }
+    };
+    let wrapper = mount(App);
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(120);
+    await flushPromises();
+    const pending = JSON.parse(window.localStorage.getItem("sheetproof:diagnostics:ring:v1") ?? "[]") as Array<{ name: string }>;
+    expect(pending.map((event) => event.name)).toContain("ui.mounted");
+    wrapper.unmount();
+
+    const recoveredDiagnostics = vi.fn(async (events: Array<{ name: string }>) => { void events; });
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: false, error: "" }),
+          RecordDiagnostics: recoveredDiagnostics
+        }
+      }
+    };
+    wrapper = mount(App);
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(120);
+    await flushPromises();
+    const recoveredNames = recoveredDiagnostics.mock.calls.flatMap(([events]) => events.map((event) => event.name));
+    expect(recoveredNames).toContain("ui.mounted");
+    expect(window.localStorage.getItem("sheetproof:diagnostics:ring:v1")).toBeNull();
   });
 
   it("renders Git difftool snapshots as read-only without exposing temporary directories", async () => {
@@ -888,7 +946,7 @@ describe("App", () => {
     expect(wrapper.findAll(".file-strip .editable-source")).toHaveLength(1);
     expect(wrapper.findAll(".file-strip .readonly-source")).toHaveLength(1);
     expect(wrapper.findAll(".grid-panel")[0].get(".panel-permission").text()).toBe("可编辑");
-    expect(wrapper.text()).toContain("双击单元格进行编辑");
+    expect(wrapper.text()).toContain("选中后直接输入、双击或按 F2 编辑");
     expect(wrapper.text()).toContain("保存到当前工作区");
   });
 
@@ -1667,8 +1725,8 @@ describe("App", () => {
     expect(wrapper.get(".row-header").attributes("style")).toContain("left: 0px");
     const leftCell = wrapper.findAll(".grid-panel")[0].get(".cell");
     const rightCell = wrapper.findAll(".grid-panel")[1].get(".cell");
-    expect(leftCell.classes()).toEqual(expect.arrayContaining(["difference", "cell-deleted"]));
-    expect(rightCell.classes()).toEqual(expect.arrayContaining(["difference", "cell-added"]));
+    expect(leftCell.classes()).toEqual(expect.arrayContaining(["difference", "cell-added"]));
+    expect(rightCell.classes()).toEqual(expect.arrayContaining(["difference", "cell-deleted"]));
     await leftCell.trigger("dblclick");
     expect(leftCell.classes()).toEqual(expect.arrayContaining(["difference", "selected", "active"]));
     expect((wrapper.get(".inline-cell-editor").element as HTMLInputElement).value).toBe("旧");
@@ -2137,7 +2195,7 @@ describe("App", () => {
     expect(wrapper.text()).not.toContain("过期区域");
   });
 
-  it("supports drag selection, context-menu copy, and batch coordinates", async () => {
+  it("coalesces main-grid wheel zoom after settings changes while keeping native UI zoom blocked", async () => {
     const loaded = structuredClone(emptySummary);
     loaded.diff.equal = false;
     loaded.diff.sheetCount = 1;
@@ -2159,6 +2217,7 @@ describe("App", () => {
     }));
     const copyMany = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
     const undo = vi.fn(async () => ({ ...loaded, dirty: false, undoCount: 0 }));
+    const recordDiagnostics = vi.fn(async (events: Array<{ name: string }>) => { void events; });
     const regionCall = vi.fn(async (...args: [string, number, number, number, number]) => {
       void args;
       return { sheet: "批量", fromRow: 1, toRow: 1, fromCol: 1, toCol: 2, cells };
@@ -2174,27 +2233,81 @@ describe("App", () => {
           })),
           Region: regionCall,
           CopyRightToLeftMany: copyMany,
-          Undo: undo
+          Undo: undo,
+          RecordDiagnostics: recordDiagnostics
         }
       }
     };
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.get(".zoom-button .full-label").text()).toBe("缩放 100%");
-    wrapper.get(".grid-scroll").element.dispatchEvent(new WheelEvent("wheel", {
+    expect(wrapper.find(".zoom-button").exists()).toBe(false);
+    const gridZoomWheel = new WheelEvent("wheel", {
       bubbles: true,
       cancelable: true,
       ctrlKey: true,
       deltaY: -100,
       clientX: 40,
       clientY: 40
-    }));
+    });
+    wrapper.get(".grid-scroll").element.dispatchEvent(gridZoomWheel);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     await flushPromises();
-    expect(wrapper.get(".zoom-button .full-label").text()).toBe("缩放 110%");
-    expect(window.localStorage.length).toBe(1);
-    await wrapper.get(".zoom-button").trigger("click");
-    expect(wrapper.get(".zoom-button .full-label").text()).toBe("缩放 100%");
+    expect(gridZoomWheel.defaultPrevented).toBe(true);
+    expect([...Array(window.localStorage.length)]
+      .map((_, index) => window.localStorage.key(index))
+      .filter((key) => key?.startsWith("sheetproof:sheet-layout:v1:"))).toHaveLength(1);
+    const shellZoomWheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      metaKey: true,
+      deltaY: -100
+    });
+    window.dispatchEvent(shellZoomWheel);
+    expect(shellZoomWheel.defaultPrevented).toBe(true);
+    await wrapper.get('button[aria-label="设置"]').trigger("click");
+    const zoomSlider = wrapper.get('input[aria-label="表格缩放"]');
+    expect((zoomSlider.element as HTMLInputElement).value).toBe("110");
+    await zoomSlider.setValue("140");
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    await flushPromises();
+    const savedLayout = JSON.parse([...Array(window.localStorage.length)]
+      .map((_, index) => window.localStorage.key(index))
+      .filter((key): key is string => Boolean(key?.startsWith("sheetproof:sheet-layout:v1:")))
+      .map((key) => window.localStorage.getItem(key))[0] ?? "{}");
+    expect(savedLayout.zoom).toBe(1.4);
+    await wrapper.get('.settings-dialog button[aria-label="关闭"]').trigger("click");
     const gridScrolls = wrapper.findAll(".grid-scroll");
+    const regionCallsBeforeWheelZoom = regionCall.mock.calls.length;
+    for (let index = 0; index < 3; index++) {
+      const wheel = new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+        deltaY: -100,
+        clientX: 40,
+        clientY: 40
+      });
+      gridScrolls[0].element.dispatchEvent(wheel);
+      expect(wheel.defaultPrevented).toBe(true);
+    }
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+    await flushPromises();
+    expect(regionCall.mock.calls.length).toBe(regionCallsBeforeWheelZoom + 1);
+    await new Promise((resolve) => window.setTimeout(resolve, 140));
+    const diagnosticNames = recordDiagnostics.mock.calls
+      .flatMap(([events]) => events)
+      .map((event) => event.name);
+    expect(diagnosticNames).toEqual(expect.arrayContaining([
+      "zoom.settings", "zoom.wheel", "zoom.apply", "zoom.layout", "zoom.region.start", "zoom.region.finish"
+    ]));
+    await wrapper.get('button[aria-label="设置"]').trigger("click");
+    expect((wrapper.get('input[aria-label="表格缩放"]').element as HTMLInputElement).value).toBe("150");
+    await wrapper.get(".sheet-zoom-reset").trigger("click");
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    await flushPromises();
+    expect((wrapper.get('input[aria-label="表格缩放"]').element as HTMLInputElement).value).toBe("100");
+    await wrapper.get('.settings-dialog button[aria-label="关闭"]').trigger("click");
     const initialTop = (gridScrolls[0].element as HTMLElement).scrollTop;
     const initialLeft = (gridScrolls[0].element as HTMLElement).scrollLeft;
     const leftWheel = new WheelEvent("wheel", {
@@ -2228,7 +2341,9 @@ describe("App", () => {
     (wrapper.get(".grid-scroll").element as HTMLElement).scrollTop = 250;
     await rightCells[1].trigger("contextmenu", { clientX: 120, clientY: 120 });
     expect(wrapper.find(".context-menu").exists()).toBe(true);
-    await wrapper.get(".context-menu button").trigger("click");
+    const copyToLeft = wrapper.findAll(".context-menu button")
+      .find((button) => button.text().includes("复制单元格到左侧"));
+    await copyToLeft!.trigger("click");
     await flushPromises();
     expect(copyMany).toHaveBeenCalledWith("批量", [
       { row: 1, col: 1 },
@@ -2319,6 +2434,198 @@ describe("App", () => {
     expect(readonlyClear.defaultPrevented).toBe(false);
     expect(clearSelection).toHaveBeenCalledTimes(2);
     wrapper.unmount();
+  });
+
+  it("persists selected pinned rows and columns and supports typing, arrows, clipboard shortcuts, and external open", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.equal = false;
+    loaded.diff.sheetCount = 1;
+    loaded.diff.differentSheetCount = 1;
+    loaded.diff.differenceCount = 1;
+    loaded.diff.sheets = [{
+      name: "配置", status: "modified", orderDifferent: false,
+      differenceCount: 1, maxRow: 3, maxCol: 3, idColumn: 1, nextId: 4,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 1, conflictRowCount: 0,
+      rows: [{ row: 2, leftRow: 2, rightRow: 2, status: "modified" }]
+    }];
+    loaded.selectedSheet = "配置";
+    const value = (raw: string) => ({ present: true, raw, display: raw, type: "string" });
+    const cells = [1, 2, 3].flatMap((row) => [1, 2, 3].map((col) => ({
+      row, sourceRow: row, leftRow: row, rightRow: row, col,
+      axis: `${String.fromCharCode(64 + col)}${row}`,
+      status: row === 2 && col === 2 ? "modified" : "unchanged",
+      rowStatus: row === 2 ? "modified" as const : "unchanged" as const,
+      left: value(`左${row}-${col}`), right: value(`右${row}-${col}`)
+    })));
+    const differences = async () => [{
+      ref: { sheet: "配置", row: 2, col: 2 }, status: "modified", rowStatus: "modified",
+      left: value("左2-2"), right: value("右2-2")
+    }];
+    const region = vi.fn(async (
+      _sheet: string, fromRow: number, rowCount: number, fromCol: number, colCount: number
+    ) => ({
+      sheet: "配置",
+      fromRow,
+      toRow: Math.min(3, fromRow + rowCount - 1),
+      fromCol,
+      toCol: Math.min(3, fromCol + colCount - 1),
+      cells: cells.filter((cell) =>
+        cell.row >= fromRow && cell.row < fromRow + rowCount &&
+        cell.col >= fromCol && cell.col < fromCol + colCount
+      )
+    }));
+    const editLeft = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
+    const copyClipboard = vi.fn(async () => undefined);
+    const pasteClipboard = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
+    const cutClipboard = vi.fn(async () => ({ ...loaded, dirty: true, undoCount: 1 }));
+    const openWorkbook = vi.fn(async () => undefined);
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({ loading: false, hasSession: true, error: "", platform: "windows" }),
+          Summary: async () => loaded,
+          Differences: differences,
+          Region: region,
+          EditLeft: editLeft,
+          CopySelectionToClipboard: copyClipboard,
+          PasteClipboard: pasteClipboard,
+          CutSelectionToClipboard: cutClipboard,
+          OpenWorkbook: openWorkbook
+        }
+      }
+    };
+
+    let wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.find(".freeze-toggle").exists()).toBe(false);
+    expect(wrapper.findAll(".frozen-row-layer")).toHaveLength(2);
+
+    const [leftGrid, rightGrid] = wrapper.findAll(".grid-scroll");
+    (leftGrid.element as HTMLElement).focus();
+    const arrow = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowRight" });
+    leftGrid.element.dispatchEvent(arrow);
+    await flushPromises();
+    expect(arrow.defaultPrevented).toBe(true);
+    expect(wrapper.text()).toContain("C2");
+
+    const typing = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Z" });
+    leftGrid.element.dispatchEvent(typing);
+    await wrapper.vm.$nextTick();
+    expect(typing.defaultPrevented).toBe(true);
+    expect((wrapper.get(".inline-cell-editor").element as HTMLInputElement).value).toBe("Z");
+    await wrapper.get(".inline-cell-editor").trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    expect(editLeft).toHaveBeenCalledWith("配置", 2, 3, "Z", "text");
+
+    const copy = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ctrlKey: true, key: "c" });
+    leftGrid.element.dispatchEvent(copy);
+    await flushPromises();
+    expect(copyClipboard).toHaveBeenCalledWith("配置", "left", 2, 2, 3, 3, []);
+    const paste = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ctrlKey: true, key: "v" });
+    leftGrid.element.dispatchEvent(paste);
+    await flushPromises();
+    expect(pasteClipboard).toHaveBeenCalledWith("配置", 2, 3);
+    const cut = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ctrlKey: true, key: "x" });
+    leftGrid.element.dispatchEvent(cut);
+    await flushPromises();
+    expect(cutClipboard).toHaveBeenCalledWith("配置", 2, 2, 3, 3, [], []);
+
+    (rightGrid.element as HTMLElement).focus();
+    const readonlyPaste = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ctrlKey: true, key: "v" });
+    rightGrid.element.dispatchEvent(readonlyPaste);
+    await flushPromises();
+    expect(readonlyPaste.defaultPrevented).toBe(false);
+    expect(pasteClipboard).toHaveBeenCalledTimes(1);
+
+    await wrapper.get('button[aria-label="使用系统默认表格工具打开可编辑工作簿"]').trigger("click");
+    await flushPromises();
+    expect(openWorkbook).toHaveBeenCalledWith("");
+
+    const rowThreeHeader = wrapper.findAll(".row-header-layer .row-header")
+      .find((item) => item.text() === "3");
+    expect(rowThreeHeader).toBeDefined();
+    await rowThreeHeader!.trigger("contextmenu", { clientX: 120, clientY: 180 });
+    await wrapper.get(".freeze-rows-action").trigger("click");
+    await flushPromises();
+    const columnThreeHeader = wrapper.findAll(".col-header-layer .col-header")
+      .find((item) => item.text().startsWith("C"));
+    expect(columnThreeHeader).toBeDefined();
+    await columnThreeHeader!.trigger("contextmenu", { clientX: 260, clientY: 120 });
+    await wrapper.get(".freeze-columns-action").trigger("click");
+    await flushPromises();
+    await wrapper.get('button[aria-label="设置"]').trigger("click");
+    await wrapper.get('input[aria-label="表格缩放"]').setValue("150");
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    await flushPromises();
+    await wrapper.get('.settings-dialog button[aria-label="关闭"]').trigger("click");
+    const savedLayout = JSON.parse(window.localStorage.getItem(
+      `sheetproof:sheet-layout:v1:${loaded.diff.leftFile}:配置`
+    ) ?? "{}");
+    expect(savedLayout).toMatchObject({ zoom: 1.5, frozenRows: [1, 3], frozenColumns: [3] });
+    expect(wrapper.findAll(".frozen-row-header-layer .row-header").map((item) => item.text()))
+      .toEqual(["1", "3", "1", "3"]);
+    expect(wrapper.findAll(".frozen-column-header-layer .col-header").map((item) => item.text()))
+      .toEqual(["C", "C"]);
+    expect(wrapper.findAll(".row-header-layer .row-header").some((item) => item.text() === "2")).toBe(true);
+    expect(wrapper.findAll(".col-header-layer .col-header").some((item) => item.text().startsWith("B"))).toBe(true);
+
+    wrapper.unmount();
+    wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.find(".freeze-toggle").exists()).toBe(false);
+    expect(wrapper.findAll(".frozen-row-header-layer .row-header").map((item) => item.text()))
+      .toEqual(["1", "3", "1", "3"]);
+    expect(wrapper.findAll(".frozen-column-header-layer .col-header").map((item) => item.text()))
+      .toEqual(["C", "C"]);
+    await wrapper.get('button[aria-label="设置"]').trigger("click");
+    expect((wrapper.get('input[aria-label="表格缩放"]').element as HTMLInputElement).value).toBe("150");
+  });
+
+  it("opens repository workbook context actions with platform-specific file-manager copy", async () => {
+    const loaded = structuredClone(emptySummary);
+    loaded.diff.sheetCount = 1;
+    loaded.diff.sheets = [{
+      name: "配置", status: "equal", orderDifferent: false,
+      differenceCount: 0, maxRow: 1, maxCol: 1, idColumn: 0, nextId: 0,
+      addedRowCount: 0, deletedRowCount: 0, modifiedRowCount: 0, conflictRowCount: 0,
+      rows: []
+    }];
+    loaded.selectedSheet = "配置";
+    const activeRepository = {
+      ...structuredClone(repositoryView),
+      selectedFile: "config/activity/reward.xlsx",
+      leftState: "ready",
+      rightState: "ready",
+      comparisonActive: true
+    };
+    const openWorkbook = vi.fn(async () => undefined);
+    const revealWorkbook = vi.fn(async () => undefined);
+    window.go = {
+      main: {
+        Controller: {
+          Bootstrap: async () => ({
+            loading: false, hasSession: true, error: "", platform: "darwin", repository: activeRepository
+          }),
+          Summary: async () => loaded,
+          Differences: async () => [],
+          Region: async () => ({ sheet: "配置", fromRow: 1, toRow: 1, fromCol: 1, toCol: 1, cells: [] }),
+          OpenWorkbook: openWorkbook,
+          RevealWorkbook: revealWorkbook
+        }
+      }
+    };
+    const wrapper = mount(App);
+    await flushPromises();
+    const file = wrapper.get('button.tree-row[title="config/activity/reward.xlsx"]');
+    await file.trigger("contextmenu", { clientX: 120, clientY: 120 });
+    expect(wrapper.get(".repository-file-menu").text()).toContain("在访达中显示");
+    await wrapper.get(".repository-file-menu button").trigger("click");
+    await flushPromises();
+    expect(openWorkbook).toHaveBeenCalledWith("config/activity/reward.xlsx");
+    await file.trigger("contextmenu", { clientX: 120, clientY: 120 });
+    await wrapper.findAll(".repository-file-menu button")[1].trigger("click");
+    await flushPromises();
+    expect(revealWorkbook).toHaveBeenCalledWith("config/activity/reward.xlsx");
   });
 
   it("shows conflict colors, row counts, and multi-row ID append actions", async () => {
@@ -2451,7 +2758,7 @@ describe("App", () => {
     const wrapper = mount(App);
     await flushPromises();
     expect(wrapper.get(".row-status-chip.conflict").text()).toBe("冲突 2");
-    expect(wrapper.findAll(".grid-panel")[1].findAll(".cell.row-conflict")).toHaveLength(6);
+    expect(wrapper.findAll(".grid-panel")[1].findAll(".canvas > .cell.row-conflict")).toHaveLength(6);
     const activeConflictFilter = wrapper.findAll(".diff-filter-tabs button")
       .find((button) => button.attributes("aria-selected") === "true");
     expect(activeConflictFilter?.text()).toContain("冲突");
@@ -2465,10 +2772,10 @@ describe("App", () => {
     await conflictFilter!.trigger("click");
 
     const rightPanel = wrapper.findAll(".grid-panel")[1];
-    const rowHeaders = rightPanel.findAll(".row-header");
+    const rowHeaders = rightPanel.findAll(".row-header-layer .row-header");
     await rowHeaders[0].trigger("pointerdown", { button: 0 });
     await rowHeaders[1].trigger("pointerenter");
-    const rowThreeCell = rightPanel.findAll(".cell").find((cell) => cell.text() === "2");
+    const rowThreeCell = rightPanel.findAll(".canvas > .cell").find((cell) => cell.text() === "2");
     await rowThreeCell!.trigger("contextmenu", { clientX: 120, clientY: 120 });
     const menuText = wrapper.get(".context-menu").text();
     expect(menuText).toContain("覆盖左侧单元格");
@@ -2692,7 +2999,9 @@ describe("App", () => {
     expect(wrapper.get(".context-menu").text()).toContain("复制单元格到左侧");
     expect(wrapper.get(".context-menu").text()).toContain("复制整行到左侧");
     expect(wrapper.get(".context-menu").text()).not.toContain("将整行新增到左侧");
-    await wrapper.findAll(".context-menu button")[0].trigger("click");
+    const copyCellsToLeft = wrapper.findAll(".context-menu button")
+      .find((button) => button.text().includes("复制单元格到左侧"));
+    await copyCellsToLeft!.trigger("click");
     await flushPromises();
     expect(copyMany).toHaveBeenCalledWith("混合选择", [
       { row: 2, col: 1 },
@@ -2717,7 +3026,8 @@ describe("App", () => {
     await rightPanel.findAll(".cell")[0].trigger("contextmenu", { clientX: 120, clientY: 120 });
     const menu = wrapper.get(".context-menu");
     expect(menu.text()).toContain("所选内容包含冲突，请单独处理冲突");
-    expect(menu.findAll("button")).toHaveLength(0);
+    expect(menu.findAll("button")).toHaveLength(1);
+    expect(menu.get("button").text()).toContain("复制单元格");
   });
 
   it("uses raw row append only for conflicts whose id column is not numeric", async () => {

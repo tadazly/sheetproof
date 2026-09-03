@@ -14,7 +14,7 @@ param(
     [ValidateRange(600, 2160)]
     [int]$WindowHeight = 1050,
 
-    [ValidateRange(0, 30)]
+    [ValidateRange(0, 90)]
     [int]$WarmupSeconds = 5,
 
     [ValidateRange(1, 30)]
@@ -27,7 +27,11 @@ param(
 
     [string[]]$Clicks = @(),
 
+    [string[]]$BeforeCtrlWheelClicks = @(),
+
     [string[]]$RightClicks = @(),
+
+    [string[]]$CtrlWheels = @(),
 
     [switch]$ClientAreaOnly,
 
@@ -98,6 +102,18 @@ public static class UgglsxAcceptanceWindow {
 
     [DllImport("user32.dll")]
     public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+
+    public static void SendCtrlWheel(int delta) {
+        keybd_event(0x11, 0, 0, UIntPtr.Zero);
+        try {
+            mouse_event(0x0800, 0, 0, unchecked((uint)delta), UIntPtr.Zero);
+        } finally {
+            keybd_event(0x11, 0, 0x0002, UIntPtr.Zero);
+        }
+    }
 
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out Rect rect);
@@ -188,6 +204,34 @@ if ($settledWindowHandle -eq [IntPtr]::Zero) {
 $windowHandle = $settledWindowHandle
 [void][UgglsxAcceptanceWindow]::SetForegroundWindow($windowHandle)
 
+function Invoke-WindowClicks {
+    param([string[]]$Coordinates)
+
+    foreach ($click in $Coordinates) {
+        $parts = $click.Split(',')
+        if ($parts.Count -ne 2) {
+            throw "Click coordinates must use x,y window-relative format: $click"
+        }
+        $clickX = 0
+        $clickY = 0
+        if (-not [int]::TryParse($parts[0], [ref]$clickX) -or -not [int]::TryParse($parts[1], [ref]$clickY)) {
+            throw "Click coordinates must be integers: $click"
+        }
+        $clickRect = New-Object UgglsxAcceptanceWindow+Rect
+        if (-not [UgglsxAcceptanceWindow]::GetWindowRect($windowHandle, [ref]$clickRect)) {
+            throw "Could not read the SheetProof window bounds before click: $click"
+        }
+        [void][UgglsxAcceptanceWindow]::SetForegroundWindow($windowHandle)
+        [void][UgglsxAcceptanceWindow]::SetCursorPos($clickRect.Left + $clickX, $clickRect.Top + $clickY)
+        try {
+            [UgglsxAcceptanceWindow]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        } finally {
+            [UgglsxAcceptanceWindow]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        }
+        Start-Sleep -Milliseconds $KeyDelayMilliseconds
+    }
+}
+
 foreach ($key in $Keys) {
     [void][UgglsxAcceptanceWindow]::SetForegroundWindow($windowHandle)
     [System.Windows.Forms.SendKeys]::SendWait($key)
@@ -218,29 +262,39 @@ foreach ($click in $RightClicks) {
     Start-Sleep -Milliseconds $KeyDelayMilliseconds
 }
 
-foreach ($click in $Clicks) {
-    $parts = $click.Split(',')
-    if ($parts.Count -ne 2) {
-        throw "Click coordinates must use x,y window-relative format: $click"
+Invoke-WindowClicks -Coordinates $BeforeCtrlWheelClicks
+
+foreach ($wheel in $CtrlWheels) {
+    $parts = $wheel.Split(',')
+    if ($parts.Count -ne 3) {
+        throw "Ctrl-wheel input must use x,y,delta window-relative format: $wheel"
     }
-    $clickX = 0
-    $clickY = 0
-    if (-not [int]::TryParse($parts[0], [ref]$clickX) -or -not [int]::TryParse($parts[1], [ref]$clickY)) {
-        throw "Click coordinates must be integers: $click"
+    $wheelX = 0
+    $wheelY = 0
+    $wheelDelta = 0
+    if (-not [int]::TryParse($parts[0], [ref]$wheelX) -or
+        -not [int]::TryParse($parts[1], [ref]$wheelY) -or
+        -not [int]::TryParse($parts[2], [ref]$wheelDelta)) {
+        throw "Ctrl-wheel coordinates and delta must be integers: $wheel"
     }
-    $clickRect = New-Object UgglsxAcceptanceWindow+Rect
-    if (-not [UgglsxAcceptanceWindow]::GetWindowRect($windowHandle, [ref]$clickRect)) {
-        throw "Could not read the SheetProof window bounds before click: $click"
+    if ($wheelDelta -eq 0 -or [Math]::Abs($wheelDelta) -gt 1200) {
+        throw "Ctrl-wheel delta must be between -1200 and 1200 and cannot be zero: $wheel"
+    }
+    $wheelRect = New-Object UgglsxAcceptanceWindow+Rect
+    if (-not [UgglsxAcceptanceWindow]::GetWindowRect($windowHandle, [ref]$wheelRect)) {
+        throw "Could not read the SheetProof window bounds before Ctrl-wheel input: $wheel"
     }
     [void][UgglsxAcceptanceWindow]::SetForegroundWindow($windowHandle)
-    [void][UgglsxAcceptanceWindow]::SetCursorPos($clickRect.Left + $clickX, $clickRect.Top + $clickY)
-    try {
-        [UgglsxAcceptanceWindow]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-    } finally {
-        [UgglsxAcceptanceWindow]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-    }
+    [void][UgglsxAcceptanceWindow]::SetCursorPos($wheelRect.Left + $wheelX, $wheelRect.Top + $wheelY)
+    [UgglsxAcceptanceWindow]::SendCtrlWheel($wheelDelta)
     Start-Sleep -Milliseconds $KeyDelayMilliseconds
+    $process.Refresh()
+    if ($process.HasExited) {
+        throw "SheetProof exited after Ctrl-wheel input (exit code $($process.ExitCode))."
+    }
 }
+
+Invoke-WindowClicks -Coordinates $Clicks
 
 $rect = New-Object UgglsxAcceptanceWindow+Rect
 if ($ClientAreaOnly) {

@@ -1,10 +1,106 @@
 # 第二、三轮交付与下一轮迭代交接
 
-更新时间：2026-08-18
+更新时间：2026-09-03
 
 本文是新会话接手 SheetProof（原 `ugxlsx`）的当前事实基线。第一轮历史交付保留在
 `docs/iteration-1-handoff.md`；项目约束见根目录 `AGENTS.md`，实现设计见
 `docs/architecture.md`。
+
+## 2026-09-02 表格浏览、编辑与系统工具优化
+
+- 开始前 `main...origin/main` 工作树干净；按用户授权执行 `git pull --ff-only`，远端已是最新。
+- 行列固定改为行头/列头右键操作，不占工具栏。用户可逐次固定任意显式选中的行列；固定行
+  按原序叠放顶部、固定列叠放左侧，中间未固定项仍留在普通滚动区。识别到可靠记录主键的
+  配表 Sheet 默认固定首行，显式坐标集合按“左侧工作簿路径 + Sheet”持久化；旧首 N 行列
+  数值缓存会迁移。新增 `PinnedRegion` 只读取固定坐标与当前视口的有界交叉集合。
+- 新增/删除统一描述左侧可编辑工作簿相对右侧只读来源：本地独有行是新增，来源独有行是
+  本地删除；Go、CLI、搜索与前端颜色语义及测试一并调整。
+- 左侧选中单元格后直接输入即可编辑；双击、Enter、F2 保留。方向键移动活动单元格，
+  Shift+方向键扩展选区。系统剪贴板支持左右复制，只有可编辑左侧允许粘贴和剪切；批量
+  粘贴/清空各形成一个撤销步骤，右侧只读保护不变。
+- 工具栏新增“外部打开”，仓库文件右键菜单支持默认表格工具和 Windows 文件管理器 / macOS
+  访达；平台调用集中在 `internal/fileopener`，路径必须是已存在的 `.xlsx`。
+- 工具栏删除固定行列和表格缩放入口。设置新增全局 UI 字体 85%～125%（5% 步长）以及
+  当前工作簿/Sheet 的表格缩放 70%～180%（10% 步长）；前者单独持久化，后者复用原 Sheet
+  布局缓存。主界面网格保留 Ctrl/Command+滚轮缩放；窗口捕获阶段只阻止 WebView 页面缩放，
+  Windows 原生配置还关闭 WebView2 页面/pinch zoom。设置与滚轮共用逐帧合并调度，滚动校正
+  只提交一次，并在停止 140ms 后重载一次可见 Region，用于降低连续缩放压力；用户后续实机
+  仍复现闪退，当前不得把该问题标记为已解决。系统 WER、CrashDumps、Application 事件与 Reliability
+  记录仍为空，但实际 WebView `Breadcrumbs` 在退出前留下连续 `ZoomPlus/ZoomMinus`。因此新增
+  2 MiB JSONL 轮转诊断日志：记录精确 EXE SHA-256、Wails/WebView2 进程故障、Go panic 和不含
+  业务内容的缩放/Region 事件；前端未确认事件由 80 条 localStorage 环形缓冲在下次启动补写。
+  三语界面、公开产品事实、README、CHANGELOG、架构和手工验收文档已同步，官网未部署。
+- 自动化验证：`go test ./...`、`go vet ./...`；前端 7 个文件 84 项测试、ESLint、TypeScript
+  与生产构建；官网 16 条静态路由构建和 11 项渲染测试；Darwin amd64/arm64 的根包与
+  `internal/fileopener` 均完成 `go test -c` 交叉编译。`go test -race ./...` 因本机
+  `CGO_ENABLED=0` 且没有 GCC 为 `BLOCKED`，不得写成通过。
+- Windows 真实 GUI 使用隔离 APPDATA/LOCALAPPDATA 验收，产物
+  `build/bin/SheetProof.exe` 为 17,639,424 字节，SHA-256
+  `CB24EF572509308D7FAD413B45A3613FCE78706F5F87B9E14D3B591F5BAE70C1`。已直接观察任意行列
+  固定及重启恢复、未固定中间行列、125% UI 字体和 140% Sheet 缩放重启恢复、本地新增绿标、
+  键盘输入/方向键、复制/粘贴/剪切及右侧只读、WPS 打开正确左侧文件。截图保存在忽略目录
+  `build/acceptance/interaction-20260902-v3/`。滚轮修复另按用户原始顺序在同一进程中把设置
+  调到 140%，关闭设置后对主网格 Ctrl+滚轮，再打开设置直接观察为 130%；连续六次滚轮压力
+  复验后为 80%，进程全程存活。截图保存在 `build/acceptance/wheel-zoom-20260902-v2/`；验收
+  进程、隔离配置和临时 XLSX 已清理，只保留两张 PNG 证据。
+- 最终诊断构建按“设置 140% → 主网格三次 Ctrl+滚轮”运行后显示 110%，本地 JSONL 共 19 条，
+  含 `app.start/stop`、设置、滚轮、布局和 Region 完成事件；日志自报 SHA-256 与产物完全一致。
+  脱敏样本和截图位于 `build/acceptance/diagnostic-logging-20260903/`。这只证明埋点可用，不能
+  替代用户环境再次复现并回传日志。
+- 用户随后再次报告连续两次闪退，但其 `%LOCALAPPDATA%` 日志仍停在 09:59:53、1629 字节，
+  仅有三次 `wailsbindings.exe` 构建辅助进程的 `app.start/stop`，没有 `SheetProof.exe`、前端事件、
+  Wails 错误或 panic；同一时段 WebView Breadcrumbs 已更新至 10:22，两个最新会话约 21～22 秒后
+  进入 shutdown 且不含缩放命令。当时只能确认现有证据不能归因到缩放实现，尚不能判断终止来源。
+- 诊断接管已提前到 CLI 解析和 GUI 初始化之前，记录 `process.start/exit` 与关闭生命周期；
+  `wailsbindings` 改用 discard logger。唯一命名产物
+  `build/bin/SheetProof-Diagnostic-20260903-C5767479.exe` 为 17,643,008 字节，SHA-256
+  `C57674799D85FC577AF871EC69FDFC5F13139BFA31049E2B633DEEB4D2592744`。隔离 Windows GUI 启动、
+  渲染和正常关闭通过，日志精确记录该文件名/hash、前端 mounted、before-close、shutdown 和
+  `process.exit code=0`；截图与样本位于 `build/acceptance/diagnostic-entry-20260903/`。随后用户
+  用该唯一命名文件完成了可归因复现。
+- 用户随后用唯一命名 EXE 连续复现三次；第三次完全不缩放，仅选中单元格并等待也在约 20 秒
+  退出。Windows UserAssist 确认实际运行了该精确路径，独立空闲测试以 20.391 秒、退出码 2
+  重现；重定向 stderr 得到完整 Go panic：`excelize v2.10.1 xlsxWorksheet.checkRow` 访问索引 18、
+  实际长度 17，调用来自后台 `startRepositoryDifferenceIndex`，不是缩放事件。实际候选工作簿的
+  worksheet 第 866～868 行存在 `S/T/U/W/(X)/R/Q` 等逆序单元格节点，最后 Q 列小于此前最大
+  W/X 列，正好触发第三方解析器按末节点分配稀疏数组的越界缺陷。
+- Reader 现会捕获第三方解析 panic；针对这种可被 Excel/WPS 容忍的非升序 cell OOXML，在系统
+  临时目录生成只调整节点顺序的副本后重试，绝不修改源文件。后台索引再增加最外层 panic
+  隔离和脱敏堆栈日志，未覆盖的解析缺陷只会结束当前索引并显示错误，不再退出应用。回归夹具
+  覆盖 namespace 前缀、自闭合 cell、公式/类型保留、二次规范化 no-op 和源文件身份不变；真实
+  问题工作簿已成功读取 5 个 Sheet、72,046 个有效单元格。
+- 最终修复产物 `build/bin/SheetProof-Fixed-20260903-79A9E0E8.exe` 为 17,670,144 字节，SHA-256
+  `79A9E0E830B9EEF0ED0516DAB16CD5C922EB268A400EF4F1AC16FE0F2C44E176`。隔离应用缓存后以同一真实
+  仓库重新建立索引，60 秒截图直接显示差异表已完成为 103，随后日志依次记录 before-close、
+  shutdown、`app.stop` 和 `process.exit code=0`；隔离偏好也实际写入 103 个精确结果。最终哈希产物
+  在生成 XLSX 对上的同进程流程还实测设置缩放 100%→140%、返回主界面、选中 A1 后 Ctrl+滚轮
+  降为 130%，Region 完成且正常退出。最终证据位于
+  `build/acceptance/background-index-panic-fix-final-20260903/`，隔离配置与临时 XLSX 已清理。
+- 修复后 `go test ./...`、`go vet ./...` 通过；Darwin amd64/arm64 的根包和 workbook 测试包均
+  交叉编译通过；官网三语事实同步、lint、16 条静态路由和 11 项渲染测试通过。
+  `go test -race` 仍因 `CGO_ENABLED=0` 且本机缺少 GCC 为 `BLOCKED`。
+- macOS 原生 GUI 为 `NOT TESTED`（当前宿主是 Windows）；Darwin 双架构交叉编译与前端
+  Finder 文案/调用测试通过，不能替代 macOS 实机。未执行 commit、push、Release 或部署。
+- 2026-09-03 正式发布准备以最新公开 Preview `v0.7.0` 为基线；本轮同时包含多项向后兼容的
+  表格工作流扩展和稳定性修复，因此按 SemVer 推导 Minor 候选 `v0.8.0`。产品事实、三语
+  README/CHANGELOG、CLI/Wails/package 版本和预期下载 URL 已同步；Release Notes 生成器及其
+  3 项测试通过，`v0.8.0` 本地标签、远端标签和 GitHub Release 均确认不存在。
+- 官网审计补齐三语功能页和指南中遗漏的固定行列、字体与 Sheet 缩放、键盘编辑/导航、剪贴板
+  保护及系统外部打开工作流；单元格/行文案同步扩展为单元格/行/列。旧的未引用静态 JSON
+  副本已删除，避免继续保留过期产品事实；公开内容没有 AI、Agent、Codex、ChatGPT、生成式
+  实现等描述。官网使用 Node 24 完成 lint、16 个静态路由构建和 13 项渲染测试，桌面前端与
+  官网的 production 依赖审计均为 0 个漏洞。
+- 本次 `v0.8.0` Windows amd64 候选为 `build/bin/SheetProof.exe`，17,670,144 字节，SHA-256
+  `EA5B28A8C74C52693CDA1CF1569C41067D4CC2A767418474280B0B2BF167278D`；文件元数据与 CLI
+  均返回 `0.8.0`，Authenticode 状态为未签名。精确候选在隔离配置中对网格执行 Ctrl+滚轮，
+  日志直接记录 100%→110%、一次 Region 重载和 `process.exit code=0`；12 张三语官网截图也已
+  用该 EXE 重拍并逐张目视确认 16/90/15 差异基线、语言、布局、通用演示路径和正常退出。
+- 候选差异、未跟踪源码、三语公开内容、官网资产和 Windows EXE 的隐私扫描未发现凭据、私钥、
+  私人用户/工作区路径、基础设施身份或个人文件；公开文案专项扫描同样为 0。当前仍处于两阶段
+  正式发布确认点，没有暂存、提交、推送、创建标签、运行远程 workflow、发布 Release 或部署
+  候选官网。确认后计划先提交并普通推送 `main`，对提交运行双平台 workflow，成功后创建并推送
+  annotated `v0.8.0`，核对标签 workflow 生成的 Draft Release、双平台资产、校验和及说明后
+  发布 GitHub Release，最后通过维护者本轮显式提供的 SSH 目标部署并核对源站、Cloudflare 和同实例站点。
 
 ## 2026-08-18 Agent 上下文与技能路由优化
 

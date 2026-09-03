@@ -597,6 +597,53 @@ func TestSessionClearLeftSelectionIsOneUndoCommand(t *testing.T) {
 	}
 }
 
+func TestSessionClipboardCopyPasteAndUndoBatch(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.xlsx")
+	right := filepath.Join(dir, "right.xlsx")
+	writeRowsWorkbook(t, left, [][]any{{"id", "value"}, {1, "old"}, {2, "keep"}})
+	writeRowsWorkbook(t, right, [][]any{{"id", "value"}, {1, "remote"}, {2, "keep"}})
+	session, err := Open(left, right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	text, err := session.ClipboardText("Sheet1", "left", 1, 2, 1, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text != "id\tvalue\r\n1\told\r\n" {
+		t.Fatalf("clipboard text = %q", text)
+	}
+	if err := session.PasteLeftText("Sheet1", 2, 2, "new\r\nsecond\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	if summary := session.Summary(); summary.UndoCount != 1 || !summary.Dirty {
+		t.Fatalf("paste history = %+v", summary)
+	}
+	region, err := session.Region("Sheet1", 2, 2, 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Left.Raw != "new" || region.Cells[1].Left.Raw != "second" {
+		t.Fatalf("pasted cells = %+v", region.Cells)
+	}
+	if err := session.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	region, err = session.Region("Sheet1", 2, 2, 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.Cells[0].Left.Raw != "old" || region.Cells[1].Left.Raw != "keep" || session.Summary().UndoCount != 0 {
+		t.Fatalf("undo paste = cells %+v summary %+v", region.Cells, session.Summary())
+	}
+	if err := session.PasteLeftText("Sheet1", 2, 2, "too\twide"); err == nil {
+		t.Fatal("paste beyond editable columns unexpectedly succeeded")
+	}
+}
+
 func TestSessionRegionKeepsOpeningLeftValueAfterEditAndSave(t *testing.T) {
 	pair, err := testutil.CreatePair(t.TempDir())
 	if err != nil {
@@ -755,11 +802,11 @@ func TestSessionCopiesAndAppendsConflictRowsWithUndo(t *testing.T) {
 	}
 	defer session.Close()
 	sheet := session.Summary().Diff.Sheets[0]
-	if sheet.ConflictRowCount != 1 || sheet.DeletedRowCount != 1 || sheet.NextID != 3 {
+	if sheet.ConflictRowCount != 1 || sheet.AddedRowCount != 1 || sheet.NextID != 3 {
 		t.Fatalf("initial row summary = %+v", sheet)
 	}
 	filtered, err := session.FilteredRegion(
-		"配置", []diff.RowStatus{diff.RowConflict, diff.RowDeleted}, 1, 10, 1, 3,
+		"配置", []diff.RowStatus{diff.RowConflict, diff.RowAdded}, 1, 10, 1, 3,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1018,7 +1065,7 @@ func TestGitMergeAlignsShiftedUniqueIDsAndExplainsFileConflict(t *testing.T) {
 	defer session.Close()
 	summary := session.Summary()
 	sheet := summary.Diff.Sheets[0]
-	if sheet.DifferenceCount != 3 || sheet.DeletedRowCount != 1 ||
+	if sheet.DifferenceCount != 3 || sheet.AddedRowCount != 1 ||
 		sheet.ModifiedRowCount != 1 || sheet.ConflictRowCount != 0 {
 		t.Fatalf("aligned summary = %+v", sheet)
 	}
@@ -1079,7 +1126,7 @@ func TestOrdinaryComparisonAlignsInsertedUniqueIDAndPreservesConflictRule(t *tes
 	defer session.Close()
 	summary := session.Summary()
 	sheet := summary.Diff.Sheets[0]
-	if sheet.AddedRowCount != 1 || sheet.DeletedRowCount != 0 ||
+	if sheet.DeletedRowCount != 1 || sheet.AddedRowCount != 0 ||
 		sheet.ModifiedRowCount != 0 || sheet.ConflictRowCount != 1 {
 		t.Fatalf("aligned row counts = %+v", sheet)
 	}
@@ -1102,15 +1149,15 @@ func TestOrdinaryComparisonAlignsInsertedUniqueIDAndPreservesConflictRule(t *tes
 		t.Fatalf("same-ID all-data change lost conflict status: %+v", region.Cells[9])
 	}
 	if region.Cells[3].Right.Raw != "99" || region.Cells[3].Left.Present ||
-		region.Cells[3].RowStatus != diff.RowAdded {
-		t.Fatalf("inserted ID row was not classified as added in place: %+v", region.Cells[3])
+		region.Cells[3].RowStatus != diff.RowDeleted {
+		t.Fatalf("remote-only ID row was not classified as locally deleted in place: %+v", region.Cells[3])
 	}
 
 	if err := session.CopyRowsRightToLeft("Sheet1", []int{3}); err != nil {
 		t.Fatal(err)
 	}
 	afterCopy := session.Summary().Diff.Sheets[0]
-	if afterCopy.AddedRowCount != 0 || afterCopy.ConflictRowCount != 1 {
+	if afterCopy.DeletedRowCount != 0 || afterCopy.ConflictRowCount != 1 {
 		t.Fatalf("copying aligned addition changed unrelated classifications: %+v", afterCopy)
 	}
 	copied, err := session.Region("Sheet1", 3, 1, 1, 3)
@@ -1124,7 +1171,7 @@ func TestOrdinaryComparisonAlignsInsertedUniqueIDAndPreservesConflictRule(t *tes
 		t.Fatal(err)
 	}
 	afterUndo := session.Summary().Diff.Sheets[0]
-	if afterUndo.AddedRowCount != 1 || afterUndo.ConflictRowCount != 1 {
+	if afterUndo.DeletedRowCount != 1 || afterUndo.ConflictRowCount != 1 {
 		t.Fatalf("undo did not restore aligned classifications: %+v", afterUndo)
 	}
 	if err := session.CopyRowsRightToLeft("Sheet1", []int{5}); err != nil {
@@ -1171,7 +1218,7 @@ func TestOrdinaryComparisonAlignsLocalizedQualifiedIDHeader(t *testing.T) {
 	defer session.Close()
 	summary := session.Summary()
 	sheet := summary.Diff.Sheets[0]
-	if sheet.DeletedRowCount != 1 || sheet.AddedRowCount != 0 ||
+	if sheet.AddedRowCount != 1 || sheet.DeletedRowCount != 0 ||
 		sheet.ModifiedRowCount != 0 || sheet.ConflictRowCount != 0 {
 		t.Fatalf("localized ID row counts = %+v", sheet)
 	}
@@ -1184,8 +1231,8 @@ func TestOrdinaryComparisonAlignsLocalizedQualifiedIDHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	if region.Cells[0].Left.Raw != "20045" || region.Cells[0].Right.Present ||
-		region.Cells[0].RowStatus != diff.RowDeleted {
-		t.Fatalf("left-only localized ID was not deleted: %+v", region.Cells[0])
+		region.Cells[0].RowStatus != diff.RowAdded {
+		t.Fatalf("left-only localized ID was not added: %+v", region.Cells[0])
 	}
 	if region.Cells[3].Left.Raw != "50001" || region.Cells[3].Right.Raw != "50001" ||
 		region.Cells[3].Status != diff.Unchanged ||
@@ -1216,14 +1263,14 @@ func TestRightOnlyMiddleRowsKeepTheirOriginalNeighborhood(t *testing.T) {
 	}
 	defer session.Close()
 	sheet := session.Summary().Diff.Sheets[0]
-	if sheet.AddedRowCount != 2 || sheet.DeletedRowCount != 0 ||
+	if sheet.DeletedRowCount != 2 || sheet.AddedRowCount != 0 ||
 		sheet.ModifiedRowCount != 0 || sheet.ConflictRowCount != 0 {
 		t.Fatalf("middle deletion counts = %+v", sheet)
 	}
 	wantRows := map[int]string{44: "43", 49: "48"}
 	for _, row := range sheet.Rows {
 		if wantID := wantRows[row.Row]; wantID != "" {
-			if row.Status != diff.RowAdded || row.ID != wantID || row.LeftRow != 0 || row.RightRow != row.Row {
+			if row.Status != diff.RowDeleted || row.ID != wantID || row.LeftRow != 0 || row.RightRow != row.Row {
 				t.Fatalf("middle deletion row = %+v, want logical row %d ID %s", row, row.Row, wantID)
 			}
 			delete(wantRows, row.Row)
@@ -1270,7 +1317,7 @@ func TestSessionCanSetAndClearManualKeyColumnBeforeEditing(t *testing.T) {
 		t.Fatal(err)
 	}
 	keyed := session.Summary()
-	if keyed.Diff.Sheets[0].IDColumn != 1 || keyed.Diff.Sheets[0].AddedRowCount != 1 ||
+	if keyed.Diff.Sheets[0].IDColumn != 1 || keyed.Diff.Sheets[0].DeletedRowCount != 1 ||
 		keyed.Diff.Sheets[0].ModifiedRowCount != 0 || !keyed.RowAlignment.Sheets["Sheet1"].Applied {
 		t.Fatalf("manual key result = %+v / %+v", keyed.Diff.Sheets[0], keyed.RowAlignment.Sheets["Sheet1"])
 	}
@@ -1380,7 +1427,7 @@ func TestUniqueIDAlignmentAppliesAcrossComparisonEntryPoints(t *testing.T) {
 			}
 			defer session.Close()
 			sheet := session.Summary().Diff.Sheets[0]
-			if sheet.AddedRowCount != 1 || sheet.ModifiedRowCount != 0 || sheet.DeletedRowCount != 0 {
+			if sheet.DeletedRowCount != 1 || sheet.ModifiedRowCount != 0 || sheet.AddedRowCount != 0 {
 				t.Fatalf("entry point row counts = %+v", sheet)
 			}
 		})
@@ -1434,7 +1481,7 @@ func TestOrdinaryComparisonPartiallyAlignsReliableIDsAroundAmbiguousRows(t *test
 				t.Fatalf("reliable IDs were not partially aligned: %+v", summary.RowAlignment)
 			}
 			sheet := summary.Diff.Sheets[0]
-			if sheet.DeletedRowCount != 3 || sheet.AddedRowCount != 0 ||
+			if sheet.AddedRowCount != 3 || sheet.DeletedRowCount != 0 ||
 				sheet.ModifiedRowCount != 0 || sheet.ConflictRowCount != 0 {
 				t.Fatalf("ambiguous helper rows created false differences: %+v", sheet)
 			}
@@ -1442,10 +1489,10 @@ func TestOrdinaryComparisonPartiallyAlignsReliableIDsAroundAmbiguousRows(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			if region.Cells[0].Right.Present || region.Cells[0].RowStatus != diff.RowDeleted ||
-				region.Cells[2].Right.Present || region.Cells[2].RowStatus != diff.RowDeleted ||
-				region.Cells[4].Right.Present || region.Cells[4].RowStatus != diff.RowDeleted {
-				t.Fatalf("left-only IDs were not retained as deleted rows: %+v", region.Cells)
+			if region.Cells[0].Right.Present || region.Cells[0].RowStatus != diff.RowAdded ||
+				region.Cells[2].Right.Present || region.Cells[2].RowStatus != diff.RowAdded ||
+				region.Cells[4].Right.Present || region.Cells[4].RowStatus != diff.RowAdded {
+				t.Fatalf("left-only IDs were not retained as added rows: %+v", region.Cells)
 			}
 			if region.Cells[6].Left.Raw != "1001" || region.Cells[6].Right.Raw != "1001" ||
 				region.Cells[6].Status != diff.Unchanged ||
@@ -1920,6 +1967,35 @@ func TestSessionCanAttachAndDetachRightWithoutLosingLeftEdits(t *testing.T) {
 	}
 	if err := session.CopyRightToLeft(workbook.CellRef{Sheet: "数据 表", Row: 1, Col: 1}); err == nil {
 		t.Fatal("copy unexpectedly succeeded without a right workbook")
+	}
+}
+
+func TestPinnedRegionKeepsOnlyExplicitRowsAndColumns(t *testing.T) {
+	pair, err := testutil.CreatePair(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := Open(pair.Left, pair.Right, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	region, err := session.PinnedRegion("数据 表", []int{3, 1, 3}, []int{2, 1, 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if region.FromRow != 1 || region.ToRow != 3 || region.FromCol != 1 || region.ToCol != 2 {
+		t.Fatalf("unexpected pinned bounds: %+v", region)
+	}
+	if len(region.Cells) != 4 {
+		t.Fatalf("pinned cell count = %d, want 4", len(region.Cells))
+	}
+	want := []struct{ row, col int }{{1, 1}, {1, 2}, {3, 1}, {3, 2}}
+	for index, cell := range region.Cells {
+		if cell.Row != want[index].row || cell.SourceRow != want[index].row || cell.Col != want[index].col {
+			t.Fatalf("cell %d = row %d source %d col %d, want %+v", index, cell.Row, cell.SourceRow, cell.Col, want[index])
+		}
 	}
 }
 
