@@ -2101,7 +2101,7 @@ describe("App", () => {
     await flushPromises();
 
     expect(differencesCall).toHaveBeenCalledWith("数据", 0, 10000);
-    expect(regionCall).toHaveBeenCalledWith("数据", 85, 48, 1, 20);
+    expect(regionCall).toHaveBeenCalledWith("数据", 86, 48, 1, 18);
     expect(wrapper.get(".sheet-item.active").text()).toContain("数据");
     expect(wrapper.text()).toContain("D120");
     const activeFilter = wrapper.findAll(".diff-filter-tabs button")
@@ -2569,6 +2569,24 @@ describe("App", () => {
     expect(wrapper.findAll(".row-header-layer .row-header").some((item) => item.text() === "2")).toBe(true);
     expect(wrapper.findAll(".col-header-layer .col-header").some((item) => item.text().startsWith("B"))).toBe(true);
 
+    for (const [sideIndex, grid] of wrapper.findAll(".grid-scroll").entries()) {
+      const bodyHeaders = grid.findAll(".row-header-layer .row-header");
+      expect(bodyHeaders.some((item) => ["1", "3"].includes(item.text()))).toBe(false);
+      expect(bodyHeaders[0].text()).toBe("2");
+      expect((bodyHeaders[0].element as HTMLElement).style.top).toBe("105px");
+      expect((bodyHeaders[1].element as HTMLElement).style.top).toBe("140px");
+      const bodyColumns = grid.findAll(".col-header-layer .col-header");
+      expect(bodyColumns.some((item) => item.text() === "C")).toBe(false);
+      expect((bodyColumns[0].element as HTMLElement).style.left).toBe("207px");
+      expect((bodyColumns[1].element as HTMLElement).style.left).toBe("351px");
+      // Every real cell has exactly one rendered home: body, pinned row,
+      // pinned column, or their corner. Editing never creates duplicate inputs.
+      for (const cell of cells) {
+        const side = sideIndex === 0 ? "左" : "右";
+        expect(grid.findAll(".cell").filter((item) => item.text() === `${side}${cell.row}-${cell.col}`)).toHaveLength(1);
+      }
+    }
+
     wrapper.unmount();
     wrapper = mount(App);
     await flushPromises();
@@ -2759,6 +2777,10 @@ describe("App", () => {
     await flushPromises();
     expect(wrapper.get(".row-status-chip.conflict").text()).toBe("冲突 2");
     expect(wrapper.findAll(".grid-panel")[1].findAll(".canvas > .cell.row-conflict")).toHaveLength(6);
+    const keyHeader = wrapper.findAll(".col-header-layer .col-header")[0];
+    await keyHeader.trigger("contextmenu", { clientX: 120, clientY: 120 });
+    await wrapper.get(".freeze-columns-action").trigger("click");
+    await flushPromises();
     const activeConflictFilter = wrapper.findAll(".diff-filter-tabs button")
       .find((button) => button.attributes("aria-selected") === "true");
     expect(activeConflictFilter?.text()).toContain("冲突");
@@ -2770,12 +2792,13 @@ describe("App", () => {
     const conflictFilter = wrapper.findAll(".diff-filter-tabs button")
       .find((button) => button.text().includes("冲突"));
     await conflictFilter!.trigger("click");
+    await flushPromises();
 
     const rightPanel = wrapper.findAll(".grid-panel")[1];
     const rowHeaders = rightPanel.findAll(".row-header-layer .row-header");
     await rowHeaders[0].trigger("pointerdown", { button: 0 });
     await rowHeaders[1].trigger("pointerenter");
-    const rowThreeCell = rightPanel.findAll(".canvas > .cell").find((cell) => cell.text() === "2");
+    const rowThreeCell = rightPanel.findAll(".cell").find((cell) => cell.text() === "2");
     await rowThreeCell!.trigger("contextmenu", { clientX: 120, clientY: 120 });
     const menuText = wrapper.get(".context-menu").text();
     expect(menuText).toContain("覆盖左侧单元格");
@@ -2802,6 +2825,8 @@ describe("App", () => {
       .find((cell) => cell.text() === "10");
     expect(appendedLeftCell?.classes()).toContain("cell-added");
     expect(appendedLeftCell?.classes()).not.toContain("cell-deleted");
+    expect(wrapper.findAll(".grid-panel")[0].findAll(".frozen-column-layer .cell")
+      .map((cell) => cell.text())).toEqual(["10", "11"]);
   });
 
   it("filters packed rows with current-sheet metrics, shortcuts, and no persistence", async () => {

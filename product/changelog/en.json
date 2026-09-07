@@ -1,4 +1,12 @@
 {
+  "0.8.1": {
+    "title": "Column alignment and frozen pane fixes",
+    "summary": "Inserted columns align correctly beside blank headers, and pinned rows and columns have a separate place in the grid.",
+    "changes": {
+      "blankHeaderColumnAlignment": "After a column is inserted near reliable headers, equally sized, ordered spans of blank or repeated headers follow the adjacent shared headers, avoiding extra gaps and false differences in later data columns.",
+      "distinctFrozenPanes": "Pinned rows appear together at the top and pinned columns at the left. The scrolling area excludes those items and closes their gaps, preventing duplicates and overlapping headers. Unpinning restores the original order."
+    }
+  },
   "0.8.0": {
     "title": "Faster worksheet navigation and editing",
     "summary": "Frozen headers, keyboard editing, system clipboard actions, and external open commands now fit everyday configuration review.",

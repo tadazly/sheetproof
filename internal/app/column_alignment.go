@@ -98,19 +98,46 @@ func alignSheetColumns(left, right *workbook.SheetSnapshot) sheetColumnAlignment
 		return identity
 	}
 
-	// Preserve exact physical pairing only for ambiguous headers whose
-	// coordinate has not already been claimed by a reliable header.
-	for col := 1; col <= min(left.MaxCol, right.MaxCol); col++ {
-		if leftToRight[col] != 0 || rightToLeft[col] != 0 {
-			continue
+	// Blank/repeated headers inherit the offset of their surrounding shared
+	// anchors. Physical-index pairing would undo an insertion's offset and
+	// manufacture another missing column (and shifted data) after the anchor.
+	// Only equally sized, order-preserving gaps provide an unambiguous pairing.
+	anchors := []int{0}
+	for col := range leftToRight {
+		anchors = append(anchors, col)
+	}
+	sort.Ints(anchors)
+	anchors = append(anchors, left.MaxCol+1)
+	previousRight := 0
+	for index := 1; index < len(anchors); index++ {
+		previousLeft, nextLeft := anchors[index-1], anchors[index]
+		nextRight := right.MaxCol + 1
+		if nextLeft <= left.MaxCol {
+			nextRight = leftToRight[nextLeft]
 		}
-		leftHeader, rightHeader := leftHeaders[col], rightHeaders[col]
-		leftAmbiguous := leftHeader == "" || leftCounts[leftHeader] != 1
-		rightAmbiguous := rightHeader == "" || rightCounts[rightHeader] != 1
-		if leftAmbiguous && rightAmbiguous && leftHeader == rightHeader {
-			leftToRight[col] = col
-			rightToLeft[col] = col
+		if nextRight-previousRight == nextLeft-previousLeft {
+			clearGap := true
+			for col := previousRight + 1; col < nextRight; col++ {
+				if rightToLeft[col] != 0 {
+					clearGap = false
+					break
+				}
+			}
+			for leftCol := previousLeft + 1; leftCol < nextLeft; leftCol++ {
+				if !clearGap {
+					break
+				}
+				rightCol := previousRight + leftCol - previousLeft
+				leftHeader, rightHeader := leftHeaders[leftCol], rightHeaders[rightCol]
+				leftAmbiguous := leftHeader == "" || leftCounts[leftHeader] != 1
+				rightAmbiguous := rightHeader == "" || rightCounts[rightHeader] != 1
+				if rightToLeft[rightCol] == 0 && leftAmbiguous && rightAmbiguous && leftHeader == rightHeader {
+					leftToRight[leftCol] = rightCol
+					rightToLeft[rightCol] = leftCol
+				}
+			}
 		}
+		previousRight = nextRight
 	}
 
 	beforeLeft := make(map[int][]int)

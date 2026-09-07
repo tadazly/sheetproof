@@ -39,12 +39,12 @@ SheetProof 会识别双方共同的 `id` 表头，或唯一且无歧义的 `*ID`
 
 ## 下载
 
-**0.8.0 预览版**
+**0.8.1 预览版**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.0.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.1.zip)
 
 ## Windows 与 macOS 首次打开
 

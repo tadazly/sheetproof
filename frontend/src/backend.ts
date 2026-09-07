@@ -25,6 +25,16 @@ function controller(): Record<string, (...args: any[]) => Promise<any>> {
   return value;
 }
 
+function indexRuns(indexes: number[]) {
+  const result: { from: number; count: number }[] = [];
+  for (const index of indexes) {
+    const last = result.at(-1);
+    if (last && last.from + last.count === index) last.count++;
+    else result.push({ from: index, count: 1 });
+  }
+  return result;
+}
+
 export const backend = {
   recordDiagnostics: (events: FrontendDiagnosticEvent[]): Promise<void> => {
     const api = controller();
@@ -70,7 +80,7 @@ export const backend = {
       return api.PinnedRegion(sheet, rows, columns);
     }
     // Keep the frontend compatible with an older desktop bridge during hot reload.
-    // One-row Region calls preserve arbitrary, non-contiguous pinned selections.
+    // Read contiguous runs without requesting the omitted rows/columns.
     const normalizedRows = [...new Set(rows)].filter((row) => row > 0).sort((a, b) => a - b);
     const normalizedColumns = [...new Set(columns)].filter((col) => col > 0).sort((a, b) => a - b);
     if (!normalizedRows.length || !normalizedColumns.length) {
@@ -78,9 +88,16 @@ export const backend = {
     }
     const fromCol = normalizedColumns[0];
     const toCol = normalizedColumns.at(-1)!;
-    const selectedColumns = new Set(normalizedColumns);
-    const regions = await Promise.all(normalizedRows.map((row) =>
-      api.Region(sheet, row, 1, fromCol, toCol - fromCol + 1) as Promise<Region>
+    const regions = await Promise.all(indexRuns(normalizedRows).flatMap((row) =>
+      indexRuns(normalizedColumns).map(async (col) => {
+        const region = await api.Region(sheet, row.from, row.count, col.from, col.count) as Region;
+        return {
+          ...region,
+          columns: region.columns?.filter((item) => item.col >= col.from && item.col < col.from + col.count),
+          cells: region.cells.filter((cell) => cell.row >= row.from && cell.row < row.from + row.count &&
+            cell.col >= col.from && cell.col < col.from + col.count)
+        };
+      })
     ));
     return {
       sheet,
@@ -88,8 +105,8 @@ export const backend = {
       toRow: normalizedRows.at(-1)!,
       fromCol,
       toCol,
-      columns: regions[0]?.columns?.filter((column) => selectedColumns.has(column.col)),
-      cells: regions.flatMap((item) => item.cells.filter((cell) => selectedColumns.has(cell.col)))
+      columns: [...new Map(regions.flatMap((region) => region.columns ?? []).map((column) => [column.col, column])).values()],
+      cells: regions.flatMap((item) => item.cells)
     };
   },
   filteredRegion: (
@@ -100,6 +117,19 @@ export const backend = {
     col: number,
     cols: number
   ): Promise<Region> => controller().FilteredRegion(sheet, statuses, row, rows, col, cols),
+  filteredColumnsRegion: async (
+    sheet: string, statuses: string[], row: number, rows: number, columns: number[]
+  ): Promise<Region> => {
+    const regions = await Promise.all(indexRuns(columns).map((col) =>
+      controller().FilteredRegion(sheet, statuses, row, rows, col.from, col.count) as Promise<Region>
+    ));
+    return {
+      sheet, fromRow: row, toRow: regions[0]?.toRow ?? row,
+      fromCol: columns[0] ?? 0, toCol: columns.at(-1) ?? 0,
+      columns: regions.flatMap((region) => region.columns ?? []),
+      cells: regions.flatMap((region) => region.cells)
+    };
+  },
   find: (
     sheet: string,
     side: "left" | "right",

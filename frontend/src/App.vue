@@ -9,6 +9,7 @@ import { backend, type FrontendDiagnosticEvent } from "./backend";
 import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
 import { scrollMarkerGradient, type ScrollMarker } from "./scrollMarkers";
+import { bodyIndex, bodyWindow, logicalIndex } from "./frozenAxis";
 import { initializeLocale, useI18n, type LocalePreference } from "./i18n";
 import { localizeBackendError } from "./i18n/errors";
 import type {
@@ -262,16 +263,15 @@ const totalRows = computed(() => rowFilterActive.value
 const totalCols = computed(() => Math.max(activeSheet.value?.maxCol ?? 0, 14) + 4);
 const visibleColumns = computed(() => {
   if (!region.value) return [];
-  const end = Math.min(totalCols.value, region.value.fromCol + VIEW_COLS - 1);
-  return Array.from({ length: Math.max(0, end - region.value.fromCol + 1) }, (_, index) => region.value!.fromCol + index);
+  return bodyWindow(region.value.fromCol, VIEW_COLS, totalCols.value, frozenColumns.value);
 });
 const visibleRows = computed(() => {
   if (!region.value) return [];
-  const end = Math.min(totalRows.value, region.value.fromRow + VIEW_ROWS - 1);
-  return Array.from({ length: Math.max(0, end - region.value.fromRow + 1) }, (_, index) => region.value!.fromRow + index);
+  return bodyWindow(region.value.fromRow, VIEW_ROWS, totalRows.value, effectiveFrozenRows.value);
 });
 const visibleCells = computed(() => region.value?.cells.filter((cell) =>
-  cell.row <= totalRows.value && cell.col <= totalCols.value
+  cell.row <= totalRows.value && cell.col <= totalCols.value &&
+  !frozenRowSet.value.has(cell.sourceRow ?? cell.row) && !frozenColumnSet.value.has(cell.col)
 ) ?? []);
 const frozenTopCells = computed(() => frozenTopRegion.value?.cells.filter((cell) =>
   !frozenColumnSet.value.has(cell.col)
@@ -299,12 +299,12 @@ const columnOffsets = computed(() => {
   let left = 0;
   for (let col = 1; col <= totalCols.value; col++) {
     offsets[col] = left;
-    left += columnWidth(col);
+    if (!frozenColumnSet.value.has(col)) left += columnWidth(col);
   }
   offsets[totalCols.value + 1] = left;
   return offsets;
 });
-const canvasWidth = computed(() => rowHeaderWidth.value + columnOffsets.value[totalCols.value + 1]);
+const canvasWidth = computed(() => rowHeaderWidth.value + frozenColumnsWidth.value + columnOffsets.value[totalCols.value + 1]);
 const frozenColumnOffsets = computed(() => {
   const offsets = new Map<number, number>();
   let left = 0;
@@ -322,12 +322,13 @@ const markerColumnOffsets = computed(() => {
   let left = 0;
   for (let col = 1; col <= totalCols.value; col++) {
     offsets[col] = left;
-    left += markerColumnWidth(col);
+    if (!frozenColumnSet.value.has(col)) left += markerColumnWidth(col);
   }
   offsets[totalCols.value + 1] = left;
   return offsets;
 });
-const markerCanvasWidth = computed(() => rowHeaderWidth.value + markerColumnOffsets.value[totalCols.value + 1]);
+const markerFrozenWidth = computed(() => frozenColumns.value.reduce((width, col) => width + markerColumnWidth(col), 0));
+const markerCanvasWidth = computed(() => rowHeaderWidth.value + markerFrozenWidth.value + markerColumnOffsets.value[totalCols.value + 1]);
 const scrollbarMarkerStyle = computed<Record<string, string>>(() => {
   if (!diffs.value.length || totalRows.value <= 0 || markerCanvasWidth.value <= 0) {
     return {
@@ -344,13 +345,13 @@ const scrollbarMarkerStyle = computed<Record<string, string>>(() => {
     const status = (item.rowStatus || "modified") as RowStatus;
     const displayRow = displayRows ? displayRows.get(item.ref.row) : item.ref.row;
     if (!displayRow) continue;
-    vertical.push({
-      position: (displayRow + 0.5) / (totalRows.value + 1),
+    if (!frozenRowSet.value.has(item.ref.row)) vertical.push({
+      position: (effectiveFrozenRows.value.length + bodyIndex(displayRow, effectiveFrozenRows.value) + 0.5) / (totalRows.value + 1),
       status
     });
     const col = Math.min(Math.max(item.ref.col, 1), totalCols.value);
-    horizontal.push({
-      position: (rowHeaderWidth.value + markerColumnOffsets.value[col] + markerColumnWidth(col) / 2) / markerCanvasWidth.value,
+    if (!frozenColumnSet.value.has(col)) horizontal.push({
+      position: (rowHeaderWidth.value + markerFrozenWidth.value + markerColumnOffsets.value[col] + markerColumnWidth(col) / 2) / markerCanvasWidth.value,
       status
     });
   }
@@ -1165,7 +1166,7 @@ async function loadSheet(name: string, resetSelection = true) {
   const source = leftScroll.value ?? rightScroll.value;
   const fromRow = changed || resetSelection
     ? 1
-    : Math.floor((source?.scrollTop ?? viewportTop.value) / rowHeight.value) + 1;
+    : rowAtOffset(source?.scrollTop ?? viewportTop.value);
   const fromCol = changed || resetSelection
     ? 1
     : columnAtOffset(source?.scrollLeft ?? viewportLeft.value);
@@ -1192,16 +1193,17 @@ async function loadRegion(fromRow: number, fromCol: number): Promise<boolean> {
   const requestedFilters = [...selectedRowFilters.value];
   const requestedFromRow = Math.max(1, fromRow);
   const requestedFromCol = Math.max(1, fromCol);
-  const bodyRows = requestedFilters.length
-    ? filteredRowMappings.value
-      .slice(requestedFromRow - 1, requestedFromRow - 1 + VIEW_ROWS)
-      .map((item) => item.source)
-    : Array.from({ length: VIEW_ROWS }, (_, index) => requestedFromRow + index);
-  const bodyDisplayRows = new Map(bodyRows.map((sourceRow, index) => [sourceRow, requestedFromRow + index]));
-  const viewportColumns = Array.from({ length: VIEW_COLS }, (_, index) => requestedFromCol + index)
-    .filter((col) => col <= totalCols.value);
+  const displayRows = bodyWindow(requestedFromRow, VIEW_ROWS, totalRows.value, effectiveFrozenRows.value);
+  const bodyRows = displayRows.map((row) => sourceRowForDisplay(row));
+  const bodyDisplayRows = new Map(bodyRows.map((sourceRow, index) => [sourceRow, displayRows[index]]));
+  const viewportColumns = bodyWindow(requestedFromCol, VIEW_COLS, totalCols.value, frozenColumns.value);
+  const hasFrozen = effectiveFrozenRows.value.length > 0 || frozenColumns.value.length > 0;
   try {
-    const bodyRequest = requestedFilters.length
+    const bodyRequest = requestedFilters.length && hasFrozen
+      ? backend.filteredColumnsRegion(requestedSheet, requestedFilters, requestedFromRow, VIEW_ROWS, viewportColumns)
+      : hasFrozen
+      ? backend.pinnedRegion(requestedSheet, bodyRows, viewportColumns)
+      : requestedFilters.length
       ? backend.filteredRegion(
         requestedSheet,
         requestedFilters,
@@ -1223,7 +1225,9 @@ async function loadRegion(fromRow: number, fromCol: number): Promise<boolean> {
         ? backend.pinnedRegion(requestedSheet, effectiveFrozenRows.value, viewportColumns)
         : Promise.resolve(null),
       frozenColumns.value.length && bodyRows.length
-        ? backend.pinnedRegion(requestedSheet, bodyRows, frozenColumns.value)
+        ? requestedFilters.length
+          ? backend.filteredColumnsRegion(requestedSheet, requestedFilters, requestedFromRow, VIEW_ROWS, frozenColumns.value)
+          : backend.pinnedRegion(requestedSheet, bodyRows, frozenColumns.value)
         : Promise.resolve(null),
       effectiveFrozenRows.value.length && frozenColumns.value.length
         ? backend.pinnedRegion(requestedSheet, effectiveFrozenRows.value, frozenColumns.value)
@@ -1241,7 +1245,14 @@ async function loadRegion(fromRow: number, fromCol: number): Promise<boolean> {
         row: bodyDisplayRows.get(cell.sourceRow ?? cell.row) ?? cell.row
       }))
     } : null;
-    region.value = body;
+    region.value = hasFrozen ? {
+      ...body,
+      fromRow: requestedFromRow, toRow: displayRows.at(-1) ?? requestedFromRow,
+      fromCol: requestedFromCol, toCol: viewportColumns.at(-1) ?? requestedFromCol,
+      cells: body.cells.map((cell) => ({
+        ...cell, row: bodyDisplayRows.get(cell.sourceRow ?? cell.row) ?? cell.row
+      }))
+    } : body;
     frozenTopRegion.value = top;
     frozenLeftRegion.value = left;
     frozenCornerRegion.value = corner;
@@ -1257,19 +1268,19 @@ async function loadRegion(fromRow: number, fromCol: number): Promise<boolean> {
 function viewportRegionTarget(source: HTMLElement | null, fallbackRow?: number, fallbackCol?: number) {
   const top = source?.scrollTop ?? viewportTop.value;
   const left = source?.scrollLeft ?? viewportLeft.value;
-  const firstRow = fallbackRow ?? Math.floor(top / rowHeight.value) + 1;
+  const firstRow = fallbackRow ? bodyIndex(fallbackRow, effectiveFrozenRows.value) : Math.floor(top / rowHeight.value) + 1;
   const lastRow = Math.floor((top + Math.max(0, source?.clientHeight ?? 0)) / rowHeight.value) + 1;
   const visibleRowCount = Math.max(1, lastRow - firstRow + 1);
   const rowPadding = Math.max(4, Math.floor((VIEW_ROWS - visibleRowCount) / 2));
   const rawRow = Math.max(1, firstRow - rowPadding);
-  const row = 1 + Math.floor((rawRow - 1) / REGION_ROW_STEP) * REGION_ROW_STEP;
+  const row = logicalIndex(1 + Math.floor((rawRow - 1) / REGION_ROW_STEP) * REGION_ROW_STEP, effectiveFrozenRows.value);
 
-  const firstCol = fallbackCol ?? columnAtOffset(left);
-  const lastCol = columnAtOffset(left + Math.max(0, source?.clientWidth ?? 0));
+  const firstCol = bodyIndex(fallbackCol ?? columnAtOffset(left), frozenColumns.value);
+  const lastCol = bodyIndex(columnAtOffset(left + Math.max(0, source?.clientWidth ?? 0)), frozenColumns.value);
   const visibleColCount = Math.max(1, lastCol - firstCol + 1);
   const colPadding = Math.max(2, Math.floor((VIEW_COLS - visibleColCount) / 2));
   const rawCol = Math.max(1, firstCol - colPadding);
-  const col = 1 + Math.floor((rawCol - 1) / REGION_COL_STEP) * REGION_COL_STEP;
+  const col = logicalIndex(1 + Math.floor((rawCol - 1) / REGION_COL_STEP) * REGION_COL_STEP, frozenColumns.value);
   return { row, col };
 }
 
@@ -1469,10 +1480,10 @@ function setDiffNavigationFilter(status: DiffFilter) {
 function captureRowViewportAnchor(): RowViewportAnchor {
   const source = leftScroll.value ?? rightScroll.value;
   const top = source?.scrollTop ?? viewportTop.value;
-  const firstVisible = Math.max(1, Math.floor(top / rowHeight.value) + 1);
+  const firstVisible = rowAtOffset(top);
   const lastVisible = Math.max(
     firstVisible,
-    Math.floor((top + Math.max(0, source?.clientHeight ?? 0)) / rowHeight.value) + 1
+    rowAtOffset(top + Math.max(0, source?.clientHeight ?? 0))
   );
   const displayRow = activePoint.value?.row &&
     activePoint.value.row >= firstVisible && activePoint.value.row <= lastVisible
@@ -1480,7 +1491,7 @@ function captureRowViewportAnchor(): RowViewportAnchor {
     : firstVisible;
   return {
     sourceRow: sourceRowForDisplay(displayRow),
-    viewportOffset: top - (displayRow - 1) * rowHeight.value
+    viewportOffset: top - (bodyIndex(displayRow, effectiveFrozenRows.value) - 1) * rowHeight.value
   };
 }
 
@@ -1512,7 +1523,7 @@ async function applyRowFilters(focusStatus?: DiffFilter, anchor?: RowViewportAnc
   const displayRow = anchor ? displayRowForAnchor(anchor.sourceRow) : 1;
   const desiredTop = Math.max(
     0,
-    (displayRow - 1) * rowHeight.value + (anchor?.viewportOffset ?? 0)
+    (bodyIndex(displayRow, effectiveFrozenRows.value) - 1) * rowHeight.value + (anchor?.viewportOffset ?? 0)
   );
   for (const element of [leftScroll.value, rightScroll.value]) {
     if (element) element.scrollTop = desiredTop;
@@ -1525,7 +1536,7 @@ async function applyRowFilters(focusStatus?: DiffFilter, anchor?: RowViewportAnc
   updateViewportOffsets(actualTop, viewportLeft.value);
   const target = viewportRegionTarget(
     source,
-    Math.floor(actualTop / rowHeight.value) + 1,
+    rowAtOffset(actualTop),
     columnAtOffset(viewportLeft.value)
   );
   await loadRegion(target.row, target.col);
@@ -1594,8 +1605,13 @@ async function scrollTo(row: number, col: number) {
   const displayRow = rowFilterActive.value
     ? (filteredRowMappings.value.find((item) => item.source === row)?.display ?? 1)
     : row;
-  const desiredTop = Math.max(0, (displayRow - 2) * rowHeight.value);
-  const desiredLeft = columnOffsets.value[Math.max(1, col - 1)] ?? 0;
+  const desiredTop = frozenRowSet.value.has(row)
+    ? viewportTop.value
+    : Math.max(0, (bodyIndex(displayRow, effectiveFrozenRows.value) - 2) * rowHeight.value);
+  const previousCol = logicalIndex(Math.max(1, bodyIndex(col, frozenColumns.value) - 1), frozenColumns.value);
+  const desiredLeft = frozenColumnSet.value.has(col)
+    ? viewportLeft.value
+    : columnOffsets.value[previousCol] ?? 0;
   for (const element of [leftScroll.value, rightScroll.value]) {
     if (element) {
       element.scrollTop = desiredTop;
@@ -1619,7 +1635,8 @@ async function scrollTo(row: number, col: number) {
   const loaded = await loadRegion(target.row, target.col);
   if (!loaded) return;
   await nextTick();
-  const cell = region.value?.cells.find((item) => cellSourceRow(item) === row && item.col === col);
+  const cell = [region.value, frozenTopRegion.value, frozenLeftRegion.value, frozenCornerRegion.value]
+    .flatMap((item) => item?.cells ?? []).find((item) => cellSourceRow(item) === row && item.col === col);
   if (cell) setSingleSelection(cell);
 }
 
@@ -2152,7 +2169,7 @@ async function moveActiveCell(rowDelta: number, colDelta: number, extend: boolea
   let nextTop = source.scrollTop;
   let nextLeft = source.scrollLeft;
   if (!frozenRowSet.value.has(sourceRowForDisplay(target.row))) {
-    const cellTop = target.row * rowHeight.value;
+    const cellTop = rowTop(target.row);
     const cellBottom = cellTop + rowHeight.value;
     const visibleTop = nextTop + rowHeight.value + effectiveFrozenRows.value.length * rowHeight.value;
     const visibleBottom = nextTop + source.clientHeight;
@@ -2542,7 +2559,15 @@ function markerColumnWidth(col: number) {
 }
 
 function columnLeft(col: number) {
-  return rowHeaderWidth.value + (columnOffsets.value[col] ?? 0);
+  return rowHeaderWidth.value + frozenColumnsWidth.value + (columnOffsets.value[col] ?? 0);
+}
+
+function rowTop(row: number) {
+  return (effectiveFrozenRows.value.length + bodyIndex(row, effectiveFrozenRows.value)) * rowHeight.value;
+}
+
+function rowAtOffset(top: number) {
+  return logicalIndex(Math.floor(Math.max(0, top) / rowHeight.value) + 1, effectiveFrozenRows.value);
 }
 
 function columnAtOffset(scrollLeft: number) {
@@ -2555,7 +2580,7 @@ function columnAtOffset(scrollLeft: number) {
     if (offsets[middle] <= target) low = middle;
     else high = middle - 1;
   }
-  return Math.max(1, low);
+  return logicalIndex(bodyIndex(Math.max(1, low), frozenColumns.value), frozenColumns.value);
 }
 
 function layoutKey(name = sheet.value) {
@@ -2693,7 +2718,8 @@ async function revealWorkbook(relative = "") {
 }
 
 function sourceColumn(col: number, side: "left" | "right") {
-  const mapping = region.value?.columns?.find((item) => item.col === col);
+  const mapping = [region.value, frozenTopRegion.value, frozenLeftRegion.value, frozenCornerRegion.value]
+    .flatMap((item) => item?.columns ?? []).find((item) => item.col === col);
   return side === "left" ? (mapping?.leftCol ?? col) : (mapping?.rightCol ?? col);
 }
 
@@ -3810,6 +3836,7 @@ onBeforeUnmount(() => {
             <div v-else ref="leftScroll" class="grid-scroll" :style="scrollbarMarkerStyle" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('left')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
                 <template v-if="region">
+                  <div class="grid-corner-layer" :style="{ width: `${rowHeaderWidth}px` }"><div :style="{ height: `${rowHeight}px` }"></div></div>
                   <div class="col-header-layer">
                     <div
                       v-for="col in visibleColumns"
@@ -3837,7 +3864,7 @@ onBeforeUnmount(() => {
                       :key="`lr${row}`"
                       :class="[rowClass(row, 'left'), { 'frozen-header': frozenRowSet.has(sourceRowForDisplay(row)) }]"
                       :style="{
-                        top: `${row * rowHeight}px`,
+                        top: `${rowTop(row)}px`,
                         left: 0,
                         width: `${rowHeaderWidth}px`,
                         height: `${rowHeight}px`,
@@ -3859,7 +3886,7 @@ onBeforeUnmount(() => {
                     :key="`l${cell.row}:${cell.col}`"
                     :class="cellClass(cell, 'left')"
                     :style="{
-                      top: `${cell.row * rowHeight}px`,
+                      top: `${rowTop(cell.row)}px`,
                       left: `${columnLeft(cell.col)}px`,
                       width: `${columnWidth(cell.col)}px`,
                       height: `${rowHeight}px`,
@@ -3935,7 +3962,7 @@ onBeforeUnmount(() => {
                         'frozen-boundary-column': frozenColumns.at(-1) === cell.col
                       }]"
                       :style="{
-                        top: `${cell.row * rowHeight}px`,
+                        top: `${rowTop(cell.row)}px`,
                         left: `${frozenColumnLeft(cell.col)}px`,
                         width: `${columnWidth(cell.col)}px`,
                         height: `${rowHeight}px`,
@@ -4074,6 +4101,7 @@ onBeforeUnmount(() => {
             <div v-else ref="rightScroll" class="grid-scroll" :style="scrollbarMarkerStyle" tabindex="-1" @pointerdown.capture="focusGrid" @scroll="onScroll('right')" @wheel="onGridWheel">
               <div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${totalRows * rowHeight + rowHeight}px` }">
                 <template v-if="region">
+                  <div class="grid-corner-layer" :style="{ width: `${rowHeaderWidth}px` }"><div :style="{ height: `${rowHeight}px` }"></div></div>
                   <div class="col-header-layer">
                     <div
                       v-for="col in visibleColumns"
@@ -4101,7 +4129,7 @@ onBeforeUnmount(() => {
                       :key="`rr${row}`"
                       :class="[rowClass(row, 'right'), { 'frozen-header': frozenRowSet.has(sourceRowForDisplay(row)) }]"
                       :style="{
-                        top: `${row * rowHeight}px`,
+                        top: `${rowTop(row)}px`,
                         left: 0,
                         width: `${rowHeaderWidth}px`,
                         height: `${rowHeight}px`,
@@ -4129,7 +4157,7 @@ onBeforeUnmount(() => {
                     :key="`r${cell.row}:${cell.col}`"
                     :class="cellClass(cell, 'right')"
                     :style="{
-                      top: `${cell.row * rowHeight}px`,
+                      top: `${rowTop(cell.row)}px`,
                       left: `${columnLeft(cell.col)}px`,
                       width: `${columnWidth(cell.col)}px`,
                       height: `${rowHeight}px`,
@@ -4170,7 +4198,7 @@ onBeforeUnmount(() => {
                         'frozen-pane-cell': true,
                         'frozen-boundary-column': frozenColumns.at(-1) === cell.col
                       }]"
-                      :style="{ top: `${cell.row * rowHeight}px`, left: `${frozenColumnLeft(cell.col)}px`, width: `${columnWidth(cell.col)}px`, height: `${rowHeight}px`, fontSize: `${scaledFontSize}px` }"
+                      :style="{ top: `${rowTop(cell.row)}px`, left: `${frozenColumnLeft(cell.col)}px`, width: `${columnWidth(cell.col)}px`, height: `${rowHeight}px`, fontSize: `${scaledFontSize}px` }"
                       :title="cell.right.formula ? `=${cell.right.formula}` : cell.right.raw"
                       @pointerdown="beginCellSelection(cell, $event)"
                       @pointerenter="extendCellSelection(cell)"

@@ -234,6 +234,62 @@ func TestSessionAlignsInsertedColumnsByUniqueHeaders(t *testing.T) {
 	}
 }
 
+func TestSessionAlignsInsertedColumnBeforeAmbiguousHeaderSpans(t *testing.T) {
+	for _, tail := range []string{"", "重复"} {
+		for _, insertedOnLeft := range []bool{false, true} {
+			t.Run(fmt.Sprintf("header=%q/insertedOnLeft=%t", tail, insertedOnLeft), func(t *testing.T) {
+				dir := t.TempDir()
+				before, after := filepath.Join(dir, "before.xlsx"), filepath.Join(dir, "after.xlsx")
+				writeRowsWorkbook(t, before, [][]any{
+					{"id", "名称", "备注信息", tail, tail, "末尾字段", "", "", "结束", "", ""},
+					{1, "相同", "主线剧情", "版本更", "0826期", "相同", "一周最新", 42, "相同", "尾一", "尾二"},
+				})
+				writeRowsWorkbook(t, after, [][]any{
+					{"id", "名称", "隐藏逻辑", "备注信息", tail, tail, "末尾字段", "", "", "结束", "", ""},
+					{1, "相同", "hide", "主线剧情", "版本更", "0826期", "相同", "一周最新", 43, "相同", "尾一", "尾二"},
+				})
+				left, right := before, after
+				if insertedOnLeft {
+					left, right = after, before
+				}
+				session, err := Open(left, right, Options{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer session.Close()
+				if got := session.Summary().Diff.DifferenceCount; got != 3 {
+					t.Fatalf("differences = %d, want inserted header/value and one real tail edit", got)
+				}
+				region, err := session.Region("Sheet1", 1, 2, 1, 12)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for index, column := range region.Columns {
+					logical := index + 1
+					beforeCol, afterCol := logical, logical
+					if logical == 3 {
+						beforeCol = 0
+					} else if logical > 3 {
+						beforeCol--
+					}
+					wantLeft, wantRight := beforeCol, afterCol
+					if insertedOnLeft {
+						wantLeft, wantRight = afterCol, beforeCol
+					}
+					if column.LeftCol != wantLeft || column.RightCol != wantRight {
+						t.Fatalf("logical column %d = %+v, want %d/%d", logical, column, wantLeft, wantRight)
+					}
+				}
+				for _, cell := range region.Cells {
+					if cell.Col != 3 && !(cell.Row == 2 && cell.Col == 9) && cell.Status != diff.Unchanged {
+						t.Fatalf("unchanged shifted cell reported different: %+v", cell)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestSessionDeletesLeftOnlyColumnAndUndoesRemoval(t *testing.T) {
 	dir := t.TempDir()
 	left := filepath.Join(dir, "left.xlsx")

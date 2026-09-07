@@ -4,7 +4,7 @@
     "product": {
       "name": "SheetProof",
       "legacyName": "ugxlsx",
-      "version": "0.8.0",
+      "version": "0.8.1",
       "channel": "preview",
       "formats": [
         ".xlsx"
@@ -23,10 +23,10 @@
     },
     "downloads": {
       "releases": "https://github.com/tadazly/sheetproof/releases",
-      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-windows-amd64.exe",
-      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SheetProof-macos-universal.zip",
-      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.8.0/SHA256SUMS.txt",
-      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.0.zip"
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.1.zip"
     },
     "screenshots": {
       "keyAlignment": {
@@ -490,6 +490,15 @@
   "changelog": {
     "releases": [
       {
+        "version": "0.8.1",
+        "date": "2026-09-07",
+        "channel": "preview",
+        "changes": [
+          "blankHeaderColumnAlignment",
+          "distinctFrozenPanes"
+        ]
+      },
+      {
         "version": "0.8.0",
         "date": "2026-09-03",
         "channel": "preview",
@@ -602,6 +611,14 @@
     ],
     "locales": {
       "en": {
+        "0.8.1": {
+          "title": "Column alignment and frozen pane fixes",
+          "summary": "Inserted columns align correctly beside blank headers, and pinned rows and columns have a separate place in the grid.",
+          "changes": {
+            "blankHeaderColumnAlignment": "After a column is inserted near reliable headers, equally sized, ordered spans of blank or repeated headers follow the adjacent shared headers, avoiding extra gaps and false differences in later data columns.",
+            "distinctFrozenPanes": "Pinned rows appear together at the top and pinned columns at the left. The scrolling area excludes those items and closes their gaps, preventing duplicates and overlapping headers. Unpinning restores the original order."
+          }
+        },
         "0.8.0": {
           "title": "Faster worksheet navigation and editing",
           "summary": "Frozen headers, keyboard editing, system clipboard actions, and external open commands now fit everyday configuration review.",
@@ -705,6 +722,14 @@
         }
       },
       "zh-CN": {
+        "0.8.1": {
+          "title": "插列对齐与固定行列修复",
+          "summary": "插列后的空表头数据列正确对齐，固定行列与滚动区清晰分离。",
+          "changes": {
+            "blankHeaderColumnAlignment": "在可靠表头附近插入列时，等长且顺序一致的空白或重复表头区段会跟随相邻共有表头对齐，避免额外空列和后续数据连续误报。",
+            "distinctFrozenPanes": "固定行统一排列在顶部，固定列统一排列在左侧；滚动区移除对应行列并连续排列，避免重复显示、空洞和表头遮挡。取消固定后恢复原序。"
+          }
+        },
         "0.8.0": {
           "title": "更顺手的表格浏览与编辑",
           "summary": "固定表头、键盘编辑、系统剪贴板与外部打开现在可直接用于日常配表核对。",
@@ -808,6 +833,14 @@
         }
       },
       "ja": {
+        "0.8.1": {
+          "title": "列の整列と行列固定の修正",
+          "summary": "空の見出しに続く列の挿入差分を正しく整列し、固定部分とスクロール領域を分離します。",
+          "changes": {
+            "blankHeaderColumnAlignment": "信頼できる見出しの近くに列を挿入した場合、同じ長さで順序が一致する空白・重複見出しの区間を隣接する共通見出しに合わせます。余分な空列や後続データの差分誤検出を防ぎます。",
+            "distinctFrozenPanes": "固定した行は上部、列は左側にまとめて表示します。スクロール領域から固定項目を除いて詰めて表示し、重複、空き、見出しの重なりを防ぎます。固定を解除すると元の順序に戻ります。"
+          }
+        },
         "0.8.0": {
           "title": "シートの移動と編集をよりスムーズに",
           "summary": "見出し固定、キーボード編集、システムクリップボード、外部アプリで開く操作に対応しました。",

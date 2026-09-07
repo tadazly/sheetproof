@@ -6,6 +6,15 @@ English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
 
 User-visible SheetProof changes.
 
+## 0.8.1 — 2026-09-07
+
+_Preview · Column alignment and frozen pane fixes_
+
+Inserted columns align correctly beside blank headers, and pinned rows and columns have a separate place in the grid.
+
+- After a column is inserted near reliable headers, equally sized, ordered spans of blank or repeated headers follow the adjacent shared headers, avoiding extra gaps and false differences in later data columns.
+- Pinned rows appear together at the top and pinned columns at the left. The scrolling area excludes those items and closes their gaps, preventing duplicates and overlapping headers. Unpinning restores the original order.
+
 ## 0.8.0 — 2026-09-03
 
 _Preview · Faster worksheet navigation and editing_
