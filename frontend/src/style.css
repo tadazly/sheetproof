@@ -986,6 +986,8 @@ button.ghost:hover:not(:disabled) { border-color: transparent; background: var(-
 
 .grid-scroll {
   position: relative;
+  /* Keep sticky headers and frozen panes below the panel's Find overlay. */
+  isolation: isolate;
   min-height: 0;
   overflow: auto;
   background: var(--color-surface);

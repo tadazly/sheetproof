@@ -7,8 +7,8 @@ import { generateReleaseNotes, renderReleaseNotes } from "./generate-release-not
 test("generates the current release in English with localized changelog links at the end", async () => {
   const notes = await generateReleaseNotes();
 
-  assert.match(notes, /^SheetProof 0\.8\.1 Preview — Inserted columns align correctly beside blank headers, and pinned rows and columns have a separate place in the grid\./);
-  assert.match(notes, /## What's new[\s\S]*equally sized, ordered spans[\s\S]*scrolling area excludes those items/);
+  assert.match(notes, /^SheetProof 0\.8\.2 Preview — Find bars stay visible and keyboard shortcuts are easier to read\./);
+  assert.match(notes, /## What's new[\s\S]*Find bars being covered[\s\S]*desktop sidebar labels/);
   assert.match(notes, /## Downloads[\s\S]*SheetProof-windows-amd64\.exe[\s\S]*SheetProof-macos-universal\.zip[\s\S]*SHA256SUMS\.txt/);
   assert.match(notes, /The Windows build is unsigned\. The macOS build is unsigned and not notarized\./);
   assert.match(notes, /## Other languages\n\n- \[简体中文更新日志\]\(https:\/\/sheetproof\.luyilabs\.com\/zh-CN\/changelog\/\)\n- \[日本語のリリースノート\]\(https:\/\/sheetproof\.luyilabs\.com\/ja\/changelog\/\)\n$/);

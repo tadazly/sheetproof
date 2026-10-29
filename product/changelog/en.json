@@ -1,4 +1,12 @@
 {
+  "0.8.2": {
+    "title": "Find bar and shortcut layout fixes",
+    "summary": "Find bars stay visible and keyboard shortcuts are easier to read.",
+    "changes": {
+      "findOverlayVisibility": "Fixed worksheet Find bars being covered by column headers, row headers, or frozen panes in either grid. Input, search options, and match navigation remain accessible after scrolling.",
+      "guideShortcutLayout": "The website guide places each action above its shortcut and usage conditions, keeping desktop sidebar labels from squeezing key combinations into narrow columns."
+    }
+  },
   "0.8.1": {
     "title": "Column alignment and frozen pane fixes",
     "summary": "Inserted columns align correctly beside blank headers, and pinned rows and columns have a separate place in the grid.",

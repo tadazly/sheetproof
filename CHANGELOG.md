@@ -6,6 +6,15 @@ English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
 
 User-visible SheetProof changes.
 
+## 0.8.2 — 2026-10-29
+
+_Preview · Find bar and shortcut layout fixes_
+
+Find bars stay visible and keyboard shortcuts are easier to read.
+
+- Fixed worksheet Find bars being covered by column headers, row headers, or frozen panes in either grid. Input, search options, and match navigation remain accessible after scrolling.
+- The website guide places each action above its shortcut and usage conditions, keeping desktop sidebar labels from squeezing key combinations into narrow columns.
+
 ## 0.8.1 — 2026-09-07
 
 _Preview · Column alignment and frozen pane fixes_

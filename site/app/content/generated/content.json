@@ -4,7 +4,7 @@
     "product": {
       "name": "SheetProof",
       "legacyName": "ugxlsx",
-      "version": "0.8.1",
+      "version": "0.8.2",
       "channel": "preview",
       "formats": [
         ".xlsx"
@@ -23,10 +23,10 @@
     },
     "downloads": {
       "releases": "https://github.com/tadazly/sheetproof/releases",
-      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SheetProof-windows-amd64.exe",
-      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SheetProof-macos-universal.zip",
-      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SHA256SUMS.txt",
-      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.1.zip"
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.2.zip"
     },
     "screenshots": {
       "keyAlignment": {
@@ -490,6 +490,15 @@
   "changelog": {
     "releases": [
       {
+        "version": "0.8.2",
+        "date": "2026-10-29",
+        "channel": "preview",
+        "changes": [
+          "findOverlayVisibility",
+          "guideShortcutLayout"
+        ]
+      },
+      {
         "version": "0.8.1",
         "date": "2026-09-07",
         "channel": "preview",
@@ -611,6 +620,14 @@
     ],
     "locales": {
       "en": {
+        "0.8.2": {
+          "title": "Find bar and shortcut layout fixes",
+          "summary": "Find bars stay visible and keyboard shortcuts are easier to read.",
+          "changes": {
+            "findOverlayVisibility": "Fixed worksheet Find bars being covered by column headers, row headers, or frozen panes in either grid. Input, search options, and match navigation remain accessible after scrolling.",
+            "guideShortcutLayout": "The website guide places each action above its shortcut and usage conditions, keeping desktop sidebar labels from squeezing key combinations into narrow columns."
+          }
+        },
         "0.8.1": {
           "title": "Column alignment and frozen pane fixes",
           "summary": "Inserted columns align correctly beside blank headers, and pinned rows and columns have a separate place in the grid.",
@@ -722,6 +739,14 @@
         }
       },
       "zh-CN": {
+        "0.8.2": {
+          "title": "搜索栏与快捷键布局修复",
+          "summary": "工作表搜索栏完整显示，官网快捷键更易阅读。",
+          "changes": {
+            "findOverlayVisibility": "修复左右工作表的搜索栏被列头、行头或固定区域遮挡的问题，滚动后仍可正常输入、切换选项和定位匹配。",
+            "guideShortcutLayout": "官网使用说明将动作名称与快捷键、使用条件上下排列，避免桌面侧栏中的长名称把按键说明挤成狭窄竖排。"
+          }
+        },
         "0.8.1": {
           "title": "插列对齐与固定行列修复",
           "summary": "插列后的空表头数据列正确对齐，固定行列与滚动区清晰分离。",
@@ -833,6 +858,14 @@
         }
       },
       "ja": {
+        "0.8.2": {
+          "title": "検索バーとショートカットの表示修正",
+          "summary": "検索バー全体を表示し、サイトのショートカットを読みやすくしました。",
+          "changes": {
+            "findOverlayVisibility": "左右のシートで検索バーが列見出し、行見出し、固定領域に隠れる問題を修正しました。スクロール後も入力、検索オプション、検索結果の移動を操作できます。",
+            "guideShortcutLayout": "サイトの使用ガイドで操作名の下にキー操作と使用条件を配置し、デスクトップのサイドバーでも長い操作名によってキー表記が細く折り返されないようにしました。"
+          }
+        },
         "0.8.1": {
           "title": "列の整列と行列固定の修正",
           "summary": "空の見出しに続く列の挿入差分を正しく整列し、固定部分とスクロール領域を分離します。",

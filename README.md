@@ -39,12 +39,12 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 
 ## Download
 
-**0.8.1 Preview**
+**0.8.2 Preview**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.1/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.1.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.2.zip)
 
 ## First launch on Windows and macOS
 
