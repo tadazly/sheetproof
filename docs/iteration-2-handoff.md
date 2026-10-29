@@ -2119,3 +2119,35 @@ cd frontend && npm run test && npm run typecheck
 - npm 生产依赖审计仍有既有告警：前端 4 high，官网 1 critical、4 high、1 moderate；
   其中包含 SSR、Next 服务端与构建链告警。本轮不改依赖版本；官网只部署静态文件，未新增
   Node 服务。审计告警不记为已修复。
+
+## 2026-10-29：v0.8.2 正式发布完成
+
+- 28 个候选路径以 `Release SheetProof v0.8.2` 提交为
+  `5c12699b39d66741a19b9820ad84a699508cd380` 并普通 fast-forward 推送到 `origin/main`；
+  annotated tag `v0.8.2` 精确指向该提交，提交与标签均使用规定的 GitHub noreply 身份。
+- 提交级工作流 [40811563128](https://github.com/tadazly/sheetproof/actions/runs/40811563128)
+  验证源码并生成 Windows amd64/macOS universal 产物后，才创建并推送标签。
+  标签工作流 [40812156128](https://github.com/tadazly/sheetproof/actions/runs/40812156128)
+  再次通过源码、双平台打包、版本核对、校验和及草稿创建。
+- 已下载并核对正式资产：Windows EXE 为 17,159,680 字节，SHA-256 为
+  `c8a9de5e41e7f7d46228ad808fd341b5a10e01eff3ff96b19774c12fc2dde6ad`；macOS ZIP 为
+  11,216,999 字节，SHA-256 为
+  `85cf70196736a1c053389c296257dba4547300fa8845976af490759a1c286a72`。
+  `SHA256SUMS.txt` 为 192 字节，文件哈希、GitHub API digest 和校验文件一致。
+  Windows CLI/资源版本及 macOS plist 均为 0.8.2，Mac 可执行文件包含 x86_64 和 arm64。
+- 下载到的正式 Windows EXE 已真实打开生成式工作簿，完成聚焦网格、打开 Find、输入 Role
+  并显示匹配的 GUI 验收，搜索栏完整可见。测试窗口已关闭。macOS 已验证打包及双架构，未执行
+  本次真实 macOS GUI 验收；Windows 未签名，macOS 未签名、未公证。
+- 从事实源生成的英文 Release Notes 通过 UTF-8 文件写入并回读核对，包含两项修复、下载链接、
+  签名限制和中日文更新日志链接。[v0.8.2](https://github.com/tadazly/sheetproof/releases/tag/v0.8.2)
+  于 2026-10-29 11:31（UTC+8）公开，正文不含内部任务或私人信息。
+- Release 公开后再次通过官网 lint、16 路由构建和 13 项渲染测试，再以既有原子部署脚本更新
+  Lightsail/Caddy。源站 38 项页面/资源检查与 Cloudflare 公网 38 项检查均通过，三语下载和
+  更新日志均显示 0.8.2。三个资产及源码下载均返回 200，公开校验文件与本地验证副本一致。
+- 线上中文使用说明已在真实浏览器核对桌面 280px 侧栏：15 项动作与按键上下排列、无横向溢出。
+  本地三语五种宽度的布局检查、截图查看器打开/关闭和移动导航打开/Escape 关闭均通过。
+  官网产品截图保持原有三语 12 张，原因见候选记录；本次私有验收截图未进入公开仓库。
+- 同一 Caddy 实例的 10 个既有虚拟主机部署前后状态相同：9 个根路径正常响应，1 个根路径
+  部署前后均为 404；未修改 Caddy 配置。保留部署脚本原有回退目录。
+- 最终隐私扫描覆盖候选、相关历史、发布说明、静态官网和下载/展开后的两平台实际资产，
+  未发现密钥、令牌、私人路径或构建工作区路径。依赖审计既有告警仍按候选记录保留，未宣称修复。
