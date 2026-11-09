@@ -2237,3 +2237,36 @@ cd frontend && npm run test && npm run typecheck
 - npm 审计仍有既有告警：前端 24 项（critical 位于测试工具链），官网 36 项（包括 Next）。
   本次未修改依赖版本或宣称修复告警；生产官网仍为 Caddy 静态文件，无 Node 服务。
   Windows/macOS 仍未签名，macOS 未公证；未执行 macOS 实机 GUI 验收。
+
+## 2026-11-10：v0.9.0 正式发布完成
+
+- 指定的 GPT-6.1 SOL（xhigh）独立审核通过后，发布提交
+  `4f5c5fcc8e5554c5642b49814d0793dfa066b6c1` 已推送到 main，带注释标签 `v0.9.0`
+  指向同一提交。提交级工作流
+  [42667147479](https://github.com/tadazly/sheetproof/actions/runs/42667147479) 与标签工作流
+  [42668390232](https://github.com/tadazly/sheetproof/actions/runs/42668390232) 均通过源码检查、
+  完整 Go race 检查、Windows amd64 和 macOS universal 打包；标签工作流成功创建草稿。
+- 已下载并核对正式资产：Windows EXE 为 17,232,384 字节，SHA-256 为
+  `3c184c96831391276bbee31495a789a1363ac4d25b1461f3102717f9553a9666`；macOS ZIP 为
+  11,264,874 字节，SHA-256 为
+  `a94a6b38a3d389b2cd0a7740e741ddaf5eeb9cdb5205fd4379a8e820f7d9cb24`。
+  `SHA256SUMS.txt` 为 192 字节，文件哈希、GitHub API digest 和校验文件一致。
+  Windows CLI/资源版本与 macOS plist 均为 0.9.0，Mac 可执行文件包含 x86_64 和 arm64。
+- 下载的正式 Windows EXE 已实际从欢迎页进入设置，选择隔离目录、扫描、原生确认并修复。
+  子进程 PATH 无 Git 时仍可使用 UGit 自带 Git；仓库及隔离全局的 XLSX 命令指向正式 EXE，
+  通用工具与 CSV 配置保留，真实全局 Git 配置哈希不变。截图保存在
+  `build/acceptance/release-0.9.0/gui/official-repaired.jpg`，测试进程已关闭。
+  未由 UGit 菜单实测启动外部比对；未执行 macOS 实机 GUI 验收。Windows/macOS 未签名，
+  macOS 未公证。
+- [v0.9.0](https://github.com/tadazly/sheetproof/releases/tag/v0.9.0) 于
+  2026-11-10 01:57（UTC+8）公开，非预发布。公开英文正文已回读，与生成说明一致，
+  包含正式下载、签名限制及中日文更新日志链接，三个发布资产均处于 uploaded 状态。
+- Release 公开后，官网内容同步检查、lint、16 路由构建和 13 项渲染测试再次通过，
+  随后使用既有脚本经 SSH 部署静态官网。源站 65 项页面/资源与本地产物逐字节一致；
+  Cloudflare 公网 65 项检查通过，HTML 仅在排除已核实的 Cloudflare 统计和检测脚本后
+  比较，其余内容及静态资源哈希一致。四个正式下载入口均返回 200。
+- Caddy 保持 active，10 个既有虚拟主机部署前后状态一致：7 个 200、1 个 301、
+  1 个 308、1 个原有 404，TLS 检查全部通过。未修改 Caddy 配置，保留原部署回退目录。
+- 最终隐私检查覆盖源码、差异、前一公开版本后的提交历史、发布说明、静态官网、
+  正式 Windows EXE 与展开后的 macOS 资产，未发现凭据、私人路径或构建工作区路径。
+  依赖审计的既有告警仍按候选记录保留，未宣称修复。
