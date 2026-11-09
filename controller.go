@@ -67,6 +67,11 @@ type RecentRepository struct {
 
 type Controller struct {
 	mu                        sync.Mutex
+	ugitMu                    sync.Mutex
+	ugitOperationCancel       context.CancelFunc
+	ugitScanCancel            context.CancelFunc
+	ugitScanID                uint64
+	ugitScan                  *ugit.RepositoryScan
 	loadMu                    sync.Mutex
 	prefsMu                   sync.Mutex
 	wg                        sync.WaitGroup
@@ -299,18 +304,31 @@ func (c *Controller) Bootstrap() BootstrapState {
 }
 
 func (c *Controller) ConfigureUGit() (UGitConfigurationResult, error) {
-	locale := c.options.Locale
+	ctx, locale, finish, err := c.beginUGitOperation()
+	if err != nil {
+		return UGitConfigurationResult{}, err
+	}
+	defer finish()
 	executablePath, err := ugit.CurrentExecutablePath()
 	if err != nil {
 		return UGitConfigurationResult{}, err
 	}
 	c.mu.Lock()
-	ctx := c.ctx
+	var repositoryRoot string
+	if c.repo != nil {
+		repositoryRoot = c.repo.Root()
+	}
+	left, ugitWorktree := c.left, c.options.UGitWorktree
 	c.mu.Unlock()
+	if repositoryRoot == "" && ugitWorktree {
+		if identified, identifyErr := repository.IdentifyWorktreeFile(left); identifyErr == nil {
+			repositoryRoot = identified.Root
+		}
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	inspection, err := ugit.Inspect(ctx, executablePath)
+	inspection, err := ugit.Inspect(ctx, executablePath, repositoryRoot)
 	if err != nil {
 		return UGitConfigurationResult{}, err
 	}
@@ -342,7 +360,7 @@ func (c *Controller) ConfigureUGit() (UGitConfigurationResult, error) {
 	)
 	if inspection.NeedsUpdate {
 		if len(inspection.ExistingPaths) > 0 {
-			message += uiText(locale, "\n\nOld paths to replace:\n• ", "\n\n需要替换的旧路径：\n• ", "\n\n置き換える古いパス：\n• ") + strings.Join(inspection.ExistingPaths, "\n• ")
+			message += uiText(locale, "\n\nExisting tool paths for XLSX:\n• ", "\n\n现有 XLSX 工具路径：\n• ", "\n\n既存の XLSX ツールパス：\n• ") + strings.Join(inspection.ExistingPaths, "\n• ")
 		} else {
 			message += uiText(locale,
 				"\n\nThe existing *.xlsx tool settings are incomplete or incompatible and will be repaired.",
@@ -350,6 +368,13 @@ func (c *Controller) ConfigureUGit() (UGitConfigurationResult, error) {
 				"\n\n既存の *.xlsx ツール設定が不完全または互換性のない状態です。あわせて修復します。",
 			)
 		}
+	}
+	if inspection.LocalOverride {
+		message += uiText(locale,
+			"\n\nThis repository has tool overrides. Its XLSX entries will also be replaced; wildcard (*.*) tools and rules for other file types will be preserved.",
+			"\n\n此仓库存在优先的工具配置，将一并替换其中的 XLSX 专用项；保留通用（*.*）工具和其他文件类型的规则。",
+			"\n\nこのリポジトリには優先されるツール設定があります。XLSX 専用項目も置き換えます。汎用（*.*）ツールとほかの形式のルールは保持します。",
+		)
 	}
 	cancel := uiText(locale, "Cancel", "取消", "キャンセル")
 	configure := uiText(locale, "Configure UGit", "配置 UGit", "UGit を設定")
@@ -367,7 +392,7 @@ func (c *Controller) ConfigureUGit() (UGitConfigurationResult, error) {
 			Message: uiText(locale, "UGit settings were not changed.", "未修改 UGit 配置。", "UGit の設定は変更されていません。"),
 		}, nil
 	}
-	updated, err := ugit.Configure(ctx, executablePath)
+	updated, err := ugit.Configure(ctx, executablePath, repositoryRoot)
 	if err != nil {
 		return UGitConfigurationResult{}, fmt.Errorf("%s: %w", uiText(locale, "configure UGit", "配置 UGit", "UGit の設定"), err)
 	}
@@ -386,7 +411,15 @@ func ugitConfigurationContext(inspection ugit.Inspection, locale string) string 
 	if len(inspection.ConfigOrigins) > 0 {
 		origins = strings.Join(inspection.ConfigOrigins, uiText(locale, ", ", "、", "、"))
 	}
-	return fmt.Sprintf(uiText(locale, "Git: %s\n*.xlsx setting source: %s", "Git：%s\n*.xlsx 配置来源：%s", "Git：%s\n*.xlsx 設定の参照元：%s"), inspection.GitPath, origins)
+	message := fmt.Sprintf(uiText(locale, "Git: %s\n*.xlsx setting source: %s", "Git：%s\n*.xlsx 配置来源：%s", "Git：%s\n*.xlsx 設定の参照元：%s"), inspection.GitPath, origins)
+	if inspection.RepositoryRoot != "" {
+		return message + "\n" + uiText(locale, "Repository checked: ", "已检查仓库：", "確認したリポジトリ：") + inspection.RepositoryRoot
+	}
+	return message + uiText(locale,
+		"\nOnly global settings were checked. If a repository still opens another tool, use Scan repository folders and repair in Settings to check its overrides.",
+		"\n当前仅检查全局配置。如果某个仓库仍打开其他工具，可在设置中使用“扫描仓库目录并修复”检查覆盖配置。",
+		"\nグローバル設定のみ確認しました。別のツールが開く場合は、設定のフォルダー検索と修復からリポジトリの設定を確認してください。",
+	)
 }
 
 func (c *Controller) shutdown(_ context.Context) {
@@ -395,6 +428,9 @@ func (c *Controller) shutdown(_ context.Context) {
 	}
 	c.mu.Lock()
 	c.shuttingDown = true
+	if c.ugitOperationCancel != nil {
+		c.ugitOperationCancel()
+	}
 	c.differenceIndexGeneration++
 	cancelDifferenceIndex := c.differenceIndexCancel
 	c.differenceIndexCancel = nil

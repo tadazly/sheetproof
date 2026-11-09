@@ -39,12 +39,12 @@ SheetProof 会识别双方共同的 `id` 表头，或唯一且无歧义的 `*ID`
 
 ## 下载
 
-**0.8.2 预览版**
+**0.9.0 预览版**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.2.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.9.0.zip)
 
 ## Windows 与 macOS 首次打开
 
@@ -105,7 +105,7 @@ shasum -a 256 SheetProof-macos-universal.zip
 
 ## UGit
 
-把应用放在固定位置后使用“配置 UGit”。SheetProof 只替换 *.xlsx 差异与合并项，并在写入后校验。
+把应用放在固定位置后使用“配置 UGit”。SheetProof 只替换 *.xlsx 差异与合并项，并在写入后校验。设置中的“扫描仓库目录并修复”：无需打开仓库即可在设置中扫描目录，勾选存在旧工具覆盖的仓库，确认后批量修复 XLSX 关联；保留其他文件类型和通用工具。
 
 ## CLI
 

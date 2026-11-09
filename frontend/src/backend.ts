@@ -8,7 +8,9 @@ import type {
   RepositoryResult,
   SearchSummary,
   Summary,
-  UGitConfigurationResult
+  UGitConfigurationResult,
+  UGitRepositoryScanResult,
+  UGitRepositoryRepairResult
 } from "./types";
 import { t } from "./i18n";
 
@@ -50,6 +52,10 @@ export const backend = {
     controller().Bootstrap(),
   configureUGit: (): Promise<UGitConfigurationResult> =>
     controller().ConfigureUGit(),
+  scanUGitRepositories: (): Promise<UGitRepositoryScanResult> => controller().ScanUGitRepositories(),
+  cancelUGitRepositoryScan: (): Promise<void> => controller().CancelUGitRepositoryScan(),
+  repairUGitRepositories: (scanID: number, paths: string[]): Promise<UGitRepositoryRepairResult> =>
+    controller().RepairUGitRepositories(scanID, paths),
   selectAndOpen: (): Promise<Summary> => controller().SelectAndOpen(),
   openFiles: (left: string, right: string): Promise<Summary> =>
     controller().OpenFiles(left, right),

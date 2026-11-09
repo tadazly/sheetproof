@@ -85,6 +85,16 @@ func Open(path string) (*Repository, Info, error) {
 }
 
 func FindRoot(path string) (string, error) {
+	return FindRootContext(context.Background(), path)
+}
+
+func FindRootContext(ctx context.Context, path string) (string, error) {
+	return FindRootWithGit(ctx, path, "git")
+}
+
+// FindRootWithGit uses the executable already selected by an integration, which
+// may be bundled with that app instead of being available on PATH.
+func FindRootWithGit(ctx context.Context, path, gitExecutable string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", errors.New("仓库路径不能为空")
 	}
@@ -102,7 +112,7 @@ func FindRoot(path string) (string, error) {
 	if !stat.IsDir() {
 		return "", fmt.Errorf("请选择 Git 仓库目录，不能选择文件: %s", absolute)
 	}
-	output, err := runGit(absolute, nil, "rev-parse", "--show-toplevel")
+	output, err := runGitExecutable(ctx, gitExecutable, absolute, nil, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", fmt.Errorf("该目录不是有效的 Git 仓库: %s", absolute)
 	}
@@ -629,10 +639,14 @@ func runGit(directory string, stdout io.Writer, args ...string) ([]byte, error) 
 }
 
 func runGitContext(parent context.Context, directory string, stdout io.Writer, args ...string) ([]byte, error) {
+	return runGitExecutable(parent, "git", directory, stdout, args...)
+}
+
+func runGitExecutable(parent context.Context, gitExecutable, directory string, stdout io.Writer, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(parent, commandTimeout)
 	defer cancel()
 	commandArgs := append([]string{"-C", directory}, args...)
-	command := backgroundcmd.CommandContext(ctx, "git", commandArgs...)
+	command := backgroundcmd.CommandContext(ctx, gitExecutable, commandArgs...)
 	var output bytes.Buffer
 	var stderr bytes.Buffer
 	if stdout == nil {

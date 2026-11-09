@@ -39,12 +39,12 @@ XLSX は圧縮された OOXML パッケージです。テキスト diff では�
 
 ## ダウンロード
 
-**0.8.2 プレビュー**
+**0.9.0 プレビュー**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.2.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.9.0.zip)
 
 ## Windows／macOS で初めて開くとき
 
@@ -105,7 +105,7 @@ shasum -a 256 SheetProof-macos-universal.zip
 
 ## UGit
 
-アプリを固定した場所へ置き、「UGit を設定」を実行します。*.xlsx の差分・マージ項目だけを置き換え、書き込み後に検証します。
+アプリを固定した場所へ置き、「UGit を設定」を実行します。*.xlsx の差分・マージ項目だけを置き換え、書き込み後に検証します。設定からフォルダーを検索し、古い設定があるリポジトリを選択・確認して XLSX の関連付けを一括修復できます。リポジトリを開く必要はなく、ほかの形式と汎用ツールは保持します。
 
 ## CLI
 

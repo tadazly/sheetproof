@@ -6,6 +6,15 @@ English | [简体中文](CHANGELOG.zh-CN.md) | [日本語](CHANGELOG.ja.md)
 
 User-visible SheetProof changes.
 
+## 0.9.0 — 2026-11-10
+
+_Preview · UGit repository scanning and repair_
+
+Scan repository folders and repair XLSX tool associations while keeping other file types unchanged.
+
+- When a repository is open, UGit setup replaces its old XLSX diff and merge rules, preserves wildcard tools and other file associations, and adds specific XLSX rules. Failed writes restore the original configuration. With no repository open, setup explicitly reports that only global settings were checked.
+- Settings now offers folder scanning and batch repository repair without opening a repository. Review and select repositories with older tool overrides, then confirm XLSX association repairs. Other file types and wildcard tools are preserved. Scans can be cancelled, and changed settings or repair failures are reported per repository.
+
 ## 0.8.2 — 2026-10-29
 
 _Preview · Find bar and shortcut layout fixes_

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/tadazly/sheetproof/internal/backgroundcmd"
+	"github.com/tadazly/sheetproof/internal/repository"
 )
 
 const (
@@ -22,7 +23,8 @@ const (
 	diffFallbackKey      = "difftool.*.xlsx_Custom.cmd"
 	mergeCommandKey      = "mergetool.*.xlsx_Custom.cmd"
 	mergeTrustExitKey    = "mergetool.*.xlsx_Custom.trustexitcode"
-	managedKeyExpression = `^(difftool|mergetool)\.\*\.xlsx_[0-9A-Za-z]+\.(cmd|trustexitcode)$`
+	managedKeyExpression = `^(difftool|mergetool)\.\*\.xlsx_[0-9A-Za-z]+\.(cmd|trustexitcode|scope)$`
+	localKeyExpression   = `^(difftool|mergetool)\.\*\.(xlsx|\*)_[0-9A-Za-z]+\.(cmd|trustexitcode|scope)$`
 	commandTimeout       = 10 * time.Second
 )
 
@@ -30,6 +32,7 @@ type Entry struct {
 	Key    string
 	Value  string
 	Origin string
+	Scope  string
 }
 
 type Inspection struct {
@@ -40,10 +43,15 @@ type Inspection struct {
 	ConfigOrigins  []string
 	ExistingPaths  []string
 	Existing       []Entry
+	RepositoryRoot string
+	LocalOverride  bool
+	localEntries   []Entry
 }
 
 type client struct {
-	gitPath string
+	gitPath        string
+	repositoryRoot string
+	execute        func(context.Context, ...string) ([]byte, int, error)
 }
 
 // CurrentExecutablePath returns a stable absolute executable path suitable for
@@ -76,31 +84,38 @@ func CurrentExecutablePath() (string, error) {
 	return path, nil
 }
 
-func Inspect(ctx context.Context, executablePath string) (Inspection, error) {
-	c, err := newClient()
+func Inspect(ctx context.Context, executablePath, repositoryRoot string) (Inspection, error) {
+	c, err := newClient(repositoryRoot)
 	if err != nil {
 		return Inspection{}, err
 	}
 	return c.inspect(ctx, executablePath)
 }
 
-// Configure replaces only UGit's global *.xlsx diff/merge registrations. Any
+// Configure replaces UGit's global *.xlsx registrations and, when necessary,
+// the selected repository's XLSX overrides. Wildcard tools remain unchanged. Any
 // existing XLSX tool entries are snapshotted and restored if a later write or
 // verification step fails.
-func Configure(ctx context.Context, executablePath string) (Inspection, error) {
-	c, err := newClient()
+func Configure(ctx context.Context, executablePath, repositoryRoot string) (Inspection, error) {
+	c, err := newClient(repositoryRoot)
 	if err != nil {
 		return Inspection{}, err
 	}
 	return c.configure(ctx, executablePath)
 }
 
-func newClient() (client, error) {
+func newClient(repositoryRoot string) (client, error) {
 	gitPath, err := findGitExecutable()
 	if err != nil {
 		return client{}, err
 	}
-	return client{gitPath: gitPath}, nil
+	if repositoryRoot != "" {
+		repositoryRoot, err = repository.FindRootWithGit(context.Background(), repositoryRoot, gitPath)
+		if err != nil {
+			return client{}, err
+		}
+	}
+	return client{gitPath: gitPath, repositoryRoot: repositoryRoot}, nil
 }
 
 func findGitExecutable() (string, error) {
@@ -249,42 +264,80 @@ func (c client) inspect(ctx context.Context, executablePath string) (Inspection,
 	if err := validateExecutablePath(executablePath); err != nil {
 		return Inspection{}, err
 	}
-	entries, err := c.listManagedEntries(ctx)
+	entries, err := c.listEntries(ctx, "global", managedKeyExpression)
 	if err != nil {
 		return Inspection{}, err
 	}
-	desired := desiredEntries(executablePath)
-	configured := entriesEqual(entries, desired)
+	var localOverride bool
+	var fallbacks []Entry
+	var localEntries []Entry
+	if c.repositoryRoot != "" {
+		local, err := c.listEntries(ctx, "local", localKeyExpression)
+		if err != nil {
+			return Inspection{}, err
+		}
+		localEntries = local
+		for _, entry := range local {
+			if strings.Contains(entry.Key, ".*.*_") {
+				if strings.HasSuffix(entry.Key, ".cmd") && entry.Value != "" {
+					localOverride = true
+					fallbacks = append(fallbacks, entry)
+				}
+				continue
+			}
+			localOverride = true
+			entries = append(entries, entry)
+		}
+	}
+	desired := configurationEntries(executablePath, entries, localOverride)
+	configured := entriesEqual(entries, desired) && directDiffFirst(entries)
+	visible := append(slices.Clone(entries), fallbacks...)
 	return Inspection{
 		Configured:     configured,
-		NeedsUpdate:    len(entries) > 0 && !configured,
+		NeedsUpdate:    len(visible) > 0 && !configured,
 		ExecutablePath: executablePath,
 		GitPath:        c.gitPath,
-		ConfigOrigins:  configOrigins(entries),
-		ExistingPaths:  existingPaths(entries),
+		ConfigOrigins:  configOrigins(visible),
+		ExistingPaths:  existingPaths(visible),
 		Existing:       entries,
+		RepositoryRoot: c.repositoryRoot,
+		LocalOverride:  localOverride,
+		localEntries:   localEntries,
 	}, nil
 }
 
 func (c client) configure(ctx context.Context, executablePath string) (Inspection, error) {
+	return c.configureChecked(ctx, executablePath, nil)
+}
+
+var errConfigurationChanged = errors.New("仓库配置已变化，请重新扫描")
+
+func (c client) configureChecked(ctx context.Context, executablePath string, expectedLocal []Entry) (Inspection, error) {
 	before, err := c.inspect(ctx, executablePath)
 	if err != nil || before.Configured {
 		return before, err
 	}
-	desired := desiredEntries(executablePath)
-	keys := uniqueKeys(append(slices.Clone(before.Existing), desired...))
+	if expectedLocal != nil && !slices.Equal(expectedLocal, before.localEntries) {
+		return Inspection{}, errConfigurationChanged
+	}
+	desired := configurationEntries(executablePath, before.Existing, before.LocalOverride)
+	locations := uniqueLocations(append(slices.Clone(before.Existing), desired...))
+	var touched []Entry
 	rollback := func(cause error) (Inspection, error) {
 		rollbackCtx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 		defer cancel()
-		if rollbackErr := c.restore(rollbackCtx, keys, before.Existing); rollbackErr != nil {
+		if rollbackErr := c.restore(rollbackCtx, touched, before.Existing); rollbackErr != nil {
 			return Inspection{}, errors.Join(cause, fmt.Errorf("恢复原 UGit 配置失败: %w", rollbackErr))
 		}
 		return Inspection{}, cause
 	}
 
-	for _, key := range keys {
-		if err := c.unsetAll(ctx, key); err != nil {
-			return rollback(fmt.Errorf("清理旧 UGit 配置 %s: %w", key, err))
+	for _, location := range locations {
+		// A Git process can finish the write just before cancellation is
+		// observed. Include every attempted write in rollback, even on error.
+		touched = append(touched, location)
+		if err := c.unsetAll(ctx, location); err != nil {
+			return rollback(fmt.Errorf("清理旧 UGit 配置 %s: %w", location.Key, err))
 		}
 	}
 	for _, entry := range desired {
@@ -302,25 +355,32 @@ func (c client) configure(ctx context.Context, executablePath string) (Inspectio
 	return after, nil
 }
 
-func (c client) restore(ctx context.Context, keys []string, entries []Entry) error {
-	for _, key := range keys {
-		if err := c.unsetAll(ctx, key); err != nil {
-			return err
+func (c client) restore(ctx context.Context, locations []Entry, entries []Entry) error {
+	var errs []error
+	var cleared []Entry
+	for _, location := range locations {
+		if err := c.unsetAll(ctx, location); err != nil {
+			errs = append(errs, err)
+			continue
 		}
+		cleared = append(cleared, location)
 	}
 	for _, entry := range entries {
+		// If cleanup failed, the old value may still exist. Report the failure
+		// without appending a second copy to that unknown state.
+		if !slices.ContainsFunc(cleared, func(location Entry) bool { return sameLocation(location, entry) }) {
+			continue
+		}
 		if err := c.add(ctx, entry); err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
-func (c client) listManagedEntries(ctx context.Context) ([]Entry, error) {
-	output, exitCode, err := c.run(
-		ctx,
-		"config", "--global", "--show-origin", "-z", "--get-regexp", managedKeyExpression,
-	)
+func (c client) listEntries(ctx context.Context, scope, expression string) ([]Entry, error) {
+	args := c.configArgs(Entry{Scope: scope})
+	output, exitCode, err := c.run(ctx, append(args, "--show-origin", "-z", "--get-regexp", expression)...)
 	if exitCode == 1 {
 		return nil, nil
 	}
@@ -341,13 +401,31 @@ func (c client) listManagedEntries(ctx context.Context) ([]Entry, error) {
 		if !found || len(origin) == 0 || len(key) == 0 {
 			return nil, errors.New("Git 返回了无法识别的 UGit 工具配置")
 		}
-		entries = append(entries, Entry{Key: string(key), Value: string(value), Origin: string(origin)})
+		if !bytes.HasPrefix(origin, []byte("file:")) {
+			return nil, errors.New("UGit 配置来源不是可更新的文件")
+		}
+		entries = append(entries, Entry{Key: string(key), Value: string(value), Origin: string(origin), Scope: scope})
 	}
 	return entries, nil
 }
 
-func (c client) unsetAll(ctx context.Context, key string) error {
-	_, exitCode, err := c.run(ctx, "config", "--global", "--unset-all", key)
+func (c client) configArgs(entry Entry) []string {
+	var args []string
+	if entry.Scope == "local" {
+		args = append(args, "-C", c.repositoryRoot)
+	}
+	args = append(args, "config")
+	if entry.Origin != "" {
+		return append(args, "--file", strings.TrimPrefix(entry.Origin, "file:"))
+	}
+	if entry.Scope == "local" {
+		return append(args, "--local")
+	}
+	return append(args, "--global")
+}
+
+func (c client) unsetAll(ctx context.Context, entry Entry) error {
+	_, exitCode, err := c.run(ctx, append(c.configArgs(entry), "--unset-all", entry.Key)...)
 	if exitCode == 1 || exitCode == 5 {
 		return nil
 	}
@@ -355,11 +433,14 @@ func (c client) unsetAll(ctx context.Context, key string) error {
 }
 
 func (c client) add(ctx context.Context, entry Entry) error {
-	_, _, err := c.run(ctx, "config", "--global", "--add", entry.Key, entry.Value)
+	_, _, err := c.run(ctx, append(c.configArgs(entry), "--add", entry.Key, entry.Value)...)
 	return err
 }
 
 func (c client) run(parent context.Context, args ...string) ([]byte, int, error) {
+	if c.execute != nil {
+		return c.execute(parent, args...)
+	}
 	ctx, cancel := context.WithTimeout(parent, commandTimeout)
 	defer cancel()
 	command := backgroundcmd.CommandContext(ctx, c.gitPath, args...)
@@ -433,17 +514,57 @@ func entriesEqual(actual, desired []Entry) bool {
 	type comparableEntry struct {
 		Key   string
 		Value string
+		Scope string
 	}
 	counts := make(map[comparableEntry]int, len(actual))
 	for _, entry := range actual {
-		counts[comparableEntry{Key: entry.Key, Value: entry.Value}]++
+		counts[comparableEntry{Key: entry.Key, Value: entry.Value, Scope: entry.Scope}]++
 	}
 	for _, entry := range desired {
-		comparable := comparableEntry{Key: entry.Key, Value: entry.Value}
+		comparable := comparableEntry{Key: entry.Key, Value: entry.Value, Scope: entry.Scope}
 		if counts[comparable] == 0 {
 			return false
 		}
 		counts[comparable]--
+	}
+	return true
+}
+
+func configurationEntries(executablePath string, existing []Entry, localOverride bool) []Entry {
+	scopes := []string{"global"}
+	if localOverride {
+		scopes = append(scopes, "local")
+	}
+	var result []Entry
+	for _, scope := range scopes {
+		// Write back to the inspected source so cleanup and rollback address
+		// the same file, even when Git uses a non-default configuration path.
+		var origin string
+		for _, entry := range existing {
+			if entry.Scope == scope {
+				origin = entry.Origin
+			}
+		}
+		for _, entry := range desiredEntries(executablePath) {
+			entry.Scope, entry.Origin = scope, origin
+			result = append(result, entry)
+		}
+	}
+	return result
+}
+
+// UGit selects the first matching tool. Custom before SpreadsheetCompare
+// must be repaired even when the set of key/value pairs is identical.
+func directDiffFirst(entries []Entry) bool {
+	seen := make(map[string]bool)
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Key, "difftool.") || !strings.HasSuffix(entry.Key, ".cmd") || seen[entry.Scope] {
+			continue
+		}
+		if entry.Key != diffCommandKey {
+			return false
+		}
+		seen[entry.Scope] = true
 	}
 	return true
 }
@@ -465,15 +586,17 @@ func configOrigins(entries []Entry) []string {
 	return origins
 }
 
-func uniqueKeys(entries []Entry) []string {
-	seen := make(map[string]struct{}, len(entries))
-	var result []string
+func sameLocation(left, right Entry) bool {
+	return left.Key == right.Key && left.Origin == right.Origin && left.Scope == right.Scope
+}
+
+func uniqueLocations(entries []Entry) []Entry {
+	var result []Entry
 	for _, entry := range entries {
-		if _, exists := seen[entry.Key]; exists {
+		if slices.ContainsFunc(result, func(location Entry) bool { return sameLocation(location, entry) }) {
 			continue
 		}
-		seen[entry.Key] = struct{}{}
-		result = append(result, entry.Key)
+		result = append(result, entry)
 	}
 	return result
 }

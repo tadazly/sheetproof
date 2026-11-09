@@ -205,6 +205,28 @@ export interface UGitConfigurationResult {
   message: string;
 }
 
+export interface UGitRepositoryScanResult {
+  scanID: number;
+  cancelled: boolean;
+  scan: {
+    directory: string;
+    inspected: number;
+    repositories: { path: string; tools: string[] }[];
+    issues: { path: string; message: string }[];
+  };
+}
+
+export interface UGitRepositoryRepair {
+  path: string;
+  status: "repaired" | "unchanged" | "changed" | "failed";
+  message: string;
+}
+
+export interface UGitRepositoryRepairResult {
+  cancelled: boolean;
+  results: UGitRepositoryRepair[];
+}
+
 export interface ExternalFileChange {
   changed: boolean;
   path: string;

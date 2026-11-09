@@ -5,6 +5,7 @@ import AppIcon from "./components/AppIcon.vue";
 import EmptyState from "./components/EmptyState.vue";
 import FindWidget from "./components/FindWidget.vue";
 import HelpDialog from "./components/HelpDialog.vue";
+import UGitRepositoryRepair from "./components/UGitRepositoryRepair.vue";
 import { backend, type FrontendDiagnosticEvent } from "./backend";
 import { nextDiffIndex, preferredDiffFilter, type DiffFilter } from "./diffNav";
 import { containsCell, makeRange, rangeSize, type CellPoint, type SelectionRange } from "./gridSelection";
@@ -897,6 +898,12 @@ async function configureUGit() {
       message: result.message
     };
   }
+}
+
+function setUGitRepairBusy(active: boolean) {
+  pendingActions = Math.max(0, pendingActions + (active ? 1 : -1));
+  busy.value = pendingActions > 0;
+  if (active) settingsNotice.value = null;
 }
 
 function normalizeUIFontScale(value: unknown): number {
@@ -4568,6 +4575,7 @@ onBeforeUnmount(() => {
                 <AppIcon name="settings" />{{ t("toolbar.configureUGit") }}
               </button>
             </div>
+            <UGitRepositoryRepair :disabled="busy" @busy="setUGitRepairBusy" />
           </section>
           <div
             v-if="settingsNotice"

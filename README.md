@@ -39,12 +39,12 @@ SheetProof detects a shared `id` header or one unambiguous `*ID` header. You can
 
 ## Download
 
-**0.8.2 Preview**
+**0.9.0 Preview**
 
-- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-windows-amd64.exe)
-- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-macos-universal.zip)
-- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SHA256SUMS.txt)
-- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.2.zip)
+- [Windows amd64](https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SheetProof-windows-amd64.exe)
+- [macOS universal](https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SheetProof-macos-universal.zip)
+- [SHA256SUMS.txt](https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SHA256SUMS.txt)
+- [Source](https://github.com/tadazly/sheetproof/archive/refs/tags/v0.9.0.zip)
 
 ## First launch on Windows and macOS
 
@@ -105,7 +105,7 @@ Use the welcome screen or run `sheetproof compare --left current.xlsx --right ta
 
 ## UGit
 
-Place the app in a stable location, then use Configure UGit. SheetProof replaces only *.xlsx diff and merge entries and verifies the result.
+Place the app in a stable location, then use Configure UGit. SheetProof replaces only *.xlsx diff and merge entries and verifies the result. Settings offers folder scanning: review and select repositories with older overrides, then confirm batch XLSX repairs without opening a repository. Other file types and wildcard tools are preserved.
 
 ## CLI
 

@@ -4,7 +4,7 @@
     "product": {
       "name": "SheetProof",
       "legacyName": "ugxlsx",
-      "version": "0.8.2",
+      "version": "0.9.0",
       "channel": "preview",
       "formats": [
         ".xlsx"
@@ -23,10 +23,10 @@
     },
     "downloads": {
       "releases": "https://github.com/tadazly/sheetproof/releases",
-      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-windows-amd64.exe",
-      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SheetProof-macos-universal.zip",
-      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.8.2/SHA256SUMS.txt",
-      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.8.2.zip"
+      "windows-amd64": "https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SheetProof-windows-amd64.exe",
+      "macos-universal": "https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SheetProof-macos-universal.zip",
+      "checksums": "https://github.com/tadazly/sheetproof/releases/download/v0.9.0/SHA256SUMS.txt",
+      "source": "https://github.com/tadazly/sheetproof/archive/refs/tags/v0.9.0.zip"
     },
     "screenshots": {
       "keyAlignment": {
@@ -490,6 +490,15 @@
   "changelog": {
     "releases": [
       {
+        "version": "0.9.0",
+        "date": "2026-11-10",
+        "channel": "preview",
+        "changes": [
+          "ugitRepositoryOverrides",
+          "ugitRepositoryScan"
+        ]
+      },
+      {
         "version": "0.8.2",
         "date": "2026-10-29",
         "channel": "preview",
@@ -620,6 +629,14 @@
     ],
     "locales": {
       "en": {
+        "0.9.0": {
+          "title": "UGit repository scanning and repair",
+          "summary": "Scan repository folders and repair XLSX tool associations while keeping other file types unchanged.",
+          "changes": {
+            "ugitRepositoryOverrides": "When a repository is open, UGit setup replaces its old XLSX diff and merge rules, preserves wildcard tools and other file associations, and adds specific XLSX rules. Failed writes restore the original configuration. With no repository open, setup explicitly reports that only global settings were checked.",
+            "ugitRepositoryScan": "Settings now offers folder scanning and batch repository repair without opening a repository. Review and select repositories with older tool overrides, then confirm XLSX association repairs. Other file types and wildcard tools are preserved. Scans can be cancelled, and changed settings or repair failures are reported per repository."
+          }
+        },
         "0.8.2": {
           "title": "Find bar and shortcut layout fixes",
           "summary": "Find bars stay visible and keyboard shortcuts are easier to read.",
@@ -739,6 +756,14 @@
         }
       },
       "zh-CN": {
+        "0.9.0": {
+          "title": "UGit 仓库扫描与批量修复",
+          "summary": "扫描仓库目录并修复 XLSX 工具关联，保留其他文件类型的配置。",
+          "changes": {
+            "ugitRepositoryOverrides": "打开仓库后配置 UGit，会替换旧的 XLSX 专用差异与合并规则；保留通用工具和其他文件类型的关联，为 XLSX 添加优先规则，并在写入失败时恢复原配置。未打开仓库时会明确提示只检查全局设置。",
+            "ugitRepositoryScan": "设置新增“扫描仓库目录并修复”：无需打开仓库即可扫描所选目录及子目录，列出并勾选存在旧工具覆盖的仓库，确认后批量修复 XLSX 关联。保留其他文件类型与通用工具配置，扫描可取消，配置变化或修复失败会逐项提示。"
+          }
+        },
         "0.8.2": {
           "title": "搜索栏与快捷键布局修复",
           "summary": "工作表搜索栏完整显示，官网快捷键更易阅读。",
@@ -858,6 +883,14 @@
         }
       },
       "ja": {
+        "0.9.0": {
+          "title": "UGit リポジトリの検索と一括修復",
+          "summary": "フォルダー内のリポジトリを検索し、ほかの形式の設定を保持して XLSX の関連付けを修復します。",
+          "changes": {
+            "ugitRepositoryOverrides": "リポジトリを開いて UGit を設定すると、古い XLSX 専用の差分・マージ設定を置き換えます。汎用ツールとほかの形式の関連付けを保持し、XLSX 専用ルールを追加します。書き込みに失敗した場合は元に戻します。リポジトリを開いていない場合は、グローバル設定のみを確認したことを表示します。",
+            "ugitRepositoryScan": "設定にフォルダー検索と一括修復を追加しました。リポジトリを開かずに古いツール設定を検索し、対象を選択・確認して XLSX の関連付けを修復できます。ほかの形式と汎用ツールを保持します。検索はキャンセルでき、設定変更や失敗はリポジトリごとに表示します。"
+          }
+        },
         "0.8.2": {
           "title": "検索バーとショートカットの表示修正",
           "summary": "検索バー全体を表示し、サイトのショートカットを読みやすくしました。",
